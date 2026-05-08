@@ -63,8 +63,8 @@ export function HandleSetup() {
               border: '1px solid rgba(124,106,250,0.2)'
             }}
           >
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '15px', color: 'var(--bexo-dim)' }}>bexo.app/</span>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '15px', color: 'var(--bexo-accent)' }}>kavin001</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '15px', color: 'var(--bexo-accent)' }}>kavin</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '15px', color: 'var(--bexo-dim)' }}>.mybixo.com</span>
           </div>
         </div>
 
