@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/bexo/"
+title = "BEXO — Student Portfolio App"
+version = "1.0.0"
+id = "artifacts/bexo"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+name = "expo"
+paths = [ "/bexo/" ]
+localPort = 24249
+
+[services.development]
+run = "pnpm --filter @workspace/bexo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/bexo", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/bexo", "run", "serve" ]
+
+[services.env]
+PORT = "24249"
+BASE_PATH = "/bexo/"

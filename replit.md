@@ -1,45 +1,89 @@
-# [Project name]
+# BEXO — Student Portfolio App
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A mobile-first student portfolio app that lets students build stunning, AI-powered portfolio sites in minutes — with a live URL at `handle.mybixo.com`.
 
 ## Run & Operate
 
+- `pnpm --filter @workspace/bexo run dev` — run the Expo mobile app (via workflow)
 - `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- **Mobile**: Expo SDK 54, Expo Router v3 (file-based routing), React Native
+- **Auth**: Supabase Auth — Phone/OTP + Google OAuth
+- **DB**: Supabase PostgreSQL (schema in `supabase/migrations/001_initial_schema.sql`)
+- **Storage**: Supabase Storage (avatars, projects, resumes buckets)
+- **Realtime**: Supabase Realtime for portfolio build status updates
+- **State**: Zustand (`useAuthStore`, `useProfileStore`, `usePortfolioStore`)
+- **AI**: Supabase Edge Function `parse-resume` (OpenAI GPT-4o for resume parsing)
+- **Portfolio Generation**: n8n webhook triggered on `triggerBuild`
+- API: Express 5, Drizzle ORM, Zod validation
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/bexo/` — Expo React Native app
+  - `app/(auth)/` — Login (phone+OTP+Google) and OTP verification screens
+  - `app/(onboarding)/` — Handle setup, resume upload, photo, card flow, generating screens
+  - `app/(main)/` — Dashboard, Portfolio, Post Update tabs (main app)
+  - `stores/` — Zustand stores (auth, profile, portfolio)
+  - `services/resumeParser.ts` — Resume upload + parse via Supabase Edge Function
+  - `lib/supabase.ts` — Supabase client (graceful fallback if not configured)
+  - `constants/colors.ts` — BEXO brand tokens
+- `supabase/migrations/001_initial_schema.sql` — Full DB schema (7 tables + RLS + storage)
+- `supabase/functions/parse-resume/index.ts` — Edge Function for AI resume parsing
+- `artifacts/api-server/` — Express API server
+- `artifacts/mockup-sandbox/` — Phase 1 web mockups (canvas prototypes)
 
-## Architecture decisions
+## Architecture Decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Supabase used for everything: auth, DB, storage, realtime, and edge functions — no separate backend needed for core app functionality
+- Resume parsing via Edge Function keeps OpenAI API key out of the mobile bundle
+- Zustand chosen over React Context for cross-screen state (profile, auth, portfolio build status)
+- `isSupabaseConfigured` guard in `lib/supabase.ts` — app renders with placeholder credentials until user sets real Supabase env vars
+- Portfolio generation delegates to n8n webhook; build status synced via Supabase Realtime subscription
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+- **Auth**: Phone OTP + Google OAuth (no email/password)
+- **Onboarding**: Claim handle → Upload resume (AI-parsed) → Profile photo → Fill cards (headline, bio, skills) → Portfolio generation
+- **Dashboard**: Live portfolio banner, profile card, analytics (views/clicks/shares), updates feed
+- **Portfolio tab**: Full profile viewer (education, experience, projects, skills), rebuild trigger
+- **Post Update**: Post achievements, projects, new roles, or education updates to keep portfolio fresh
+- **Portfolio URL**: `handle.mybixo.com` format
 
-## User preferences
+## User Preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- No emojis in UI (icons only via @expo/vector-icons)
+- Dark-only theme: `#0A0A0F` bg, `#7C6AFA` accent (purple), `#FA6A6A` coral, `#6AFAD0` mint
+- Portfolio URL format: `handle.mybixo.com` (not `bexo.app/handle`)
+- Auth: phone OTP + Google only (NOT email)
+
+## Env Vars Needed (add to Replit secrets)
+
+```
+EXPO_PUBLIC_SUPABASE_URL       — Your Supabase project URL
+EXPO_PUBLIC_SUPABASE_ANON_KEY  — Your Supabase anon/public key
+EXPO_PUBLIC_N8N_WEBHOOK_URL    — n8n webhook URL for portfolio generation (optional)
+```
+
+Also set in **Supabase Edge Function secrets**:
+```
+OPENAI_API_KEY  — For resume parsing
+```
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Do NOT run `npx expo start` directly — use the workflow (`restart_workflow`)
+- After adding Supabase env vars, restart the Expo workflow for them to take effect
+- Run `supabase/migrations/001_initial_schema.sql` in Supabase SQL editor before using the app
+- The `(tabs)` folder still exists in `app/` as a legacy redirect — do not delete it (Expo Router needs it)
 
 ## Pointers
 
 - See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- See `.local/skills/expo/SKILL.md` for Expo-specific patterns and pitfalls

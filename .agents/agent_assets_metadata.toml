@@ -1,0 +1,8 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "kSFAd9ZsG7ucvizLa2j2_"
+uri = "file://artifacts/bexo/assets/images/icon.png"
+type = "image"
+title = "bexo app icon"
