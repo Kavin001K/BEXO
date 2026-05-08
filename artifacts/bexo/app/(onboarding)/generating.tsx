@@ -154,7 +154,7 @@ export default function GeneratingScreen() {
             Your portfolio URL
           </Text>
           <Text style={[styles.previewUrl, { color: colors.primary }]}>
-            {profile?.handle ?? "you"}.mybixo.com
+            {profile?.handle ?? "you"}.mybrexo.com
           </Text>
         </View>
       </View>

@@ -23,11 +23,13 @@ import { useProfileStore } from "@/stores/useProfileStore";
 export default function HandleScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const user = useAuthStore((s) => s.user);
+  const { user, collectedEmail, collectedPhone } = useAuthStore();
   const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
 
   const [handle, setHandle] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [fullName, setFullName] = useState(
+    user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? ""
+  );
   const [checking, setChecking] = useState(false);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,6 +84,8 @@ export default function HandleScreen() {
           full_name: fullName.trim(),
           headline: "",
           bio: "",
+          email: collectedEmail || user.email || null,
+          phone: collectedPhone || user.phone || null,
         })
         .select()
         .single();
@@ -192,7 +196,7 @@ export default function HandleScreen() {
             <View style={[styles.urlPreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Feather name="link" size={14} color={colors.mutedForeground} />
               <Text style={[styles.urlText, { color: colors.primary }]}>
-                {slug}.mybixo.com
+                {slug}.mybrexo.com
               </Text>
             </View>
           )}

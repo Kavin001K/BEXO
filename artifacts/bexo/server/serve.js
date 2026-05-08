@@ -15,6 +15,7 @@ const path = require("path");
 
 const STATIC_ROOT = path.resolve(__dirname, "..", "static-build");
 const TEMPLATE_PATH = path.resolve(__dirname, "templates", "landing-page.html");
+const FAVICON_PATH = path.resolve(__dirname, "..", "assets", "images", "icon.png");
 const basePath = (process.env.BASE_PATH || "/").replace(/\/+$/, "");
 
 const MIME_TYPES = {
@@ -104,6 +105,21 @@ function serveStaticFile(urlPath, res) {
   res.end(content);
 }
 
+function serveFavicon(res) {
+  if (!fs.existsSync(FAVICON_PATH)) {
+    res.writeHead(404);
+    res.end("Not Found");
+    return;
+  }
+
+  const content = fs.readFileSync(FAVICON_PATH);
+  res.writeHead(200, {
+    "content-type": "image/png",
+    "cache-control": "public, max-age=86400",
+  });
+  res.end(content);
+}
+
 const landingPageTemplate = fs.readFileSync(TEMPLATE_PATH, "utf-8");
 const appName = getAppName();
 
@@ -124,6 +140,10 @@ const server = http.createServer((req, res) => {
     if (pathname === "/") {
       return serveLandingPage(req, res, landingPageTemplate, appName);
     }
+  }
+
+  if (pathname === "/favicon.ico") {
+    return serveFavicon(res);
   }
 
   serveStaticFile(pathname, res);

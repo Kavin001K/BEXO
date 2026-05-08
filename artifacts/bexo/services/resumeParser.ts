@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { uploadToR2 } from "./upload";
 
 export interface ParsedResume {
   full_name?: string;
@@ -40,51 +41,50 @@ export interface ParsedResume {
   }>;
 }
 
+async function fileToBase64(fileUri: string): Promise<string> {
+  const response = await fetch(fileUri);
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function uploadAndParseResume(
   fileUri: string,
   fileName: string,
   userId: string
 ): Promise<{ resumeUrl: string; parsed: ParsedResume }> {
-  const response = await fetch(fileUri);
-  const blob = await response.blob();
+  // Upload to R2
+  const file = await fileToBase64(fileUri);
+  const { url: resumeUrl } = await uploadToR2(userId, "resume", file, fileName);
 
-  const path = `${userId}/${Date.now()}_${fileName}`;
-  const { data: uploadData, error: uploadError } = await supabase.storage
-    .from("resumes")
-    .upload(path, blob, { contentType: "application/pdf", upsert: true });
-
-  if (uploadError) throw new Error(uploadError.message);
-
-  const { data: urlData } = supabase.storage
-    .from("resumes")
-    .getPublicUrl(uploadData.path);
-
+  // Parse via edge function
   const { data, error } = await supabase.functions.invoke("parse-resume", {
-    body: { resumeUrl: urlData.publicUrl, userId },
+    body: { resumeUrl, userId },
   });
 
   if (error) throw new Error(error.message);
 
-  return { resumeUrl: urlData.publicUrl, parsed: data as ParsedResume };
+  return { resumeUrl, parsed: data as ParsedResume };
 }
 
 export async function uploadAvatar(
   imageUri: string,
   userId: string
 ): Promise<string> {
-  const response = await fetch(imageUri);
-  const blob = await response.blob();
+  const file = await fileToBase64(imageUri);
+  const { url } = await uploadToR2(userId, "avatar", file, "avatar.jpg");
+  return url;
+}
 
-  const path = `${userId}/avatar_${Date.now()}.jpg`;
-  const { data, error } = await supabase.storage
-    .from("avatars")
-    .upload(path, blob, { contentType: "image/jpeg", upsert: true });
-
-  if (error) throw new Error(error.message);
-
-  const { data: urlData } = supabase.storage
-    .from("avatars")
-    .getPublicUrl(data.path);
-
-  return urlData.publicUrl;
+export async function uploadProjectImage(
+  imageUri: string,
+  userId: string
+): Promise<string> {
+  const file = await fileToBase64(imageUri);
+  const { url } = await uploadToR2(userId, "projects", file, "project.jpg");
+  return url;
 }

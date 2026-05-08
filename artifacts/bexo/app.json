@@ -1,11 +1,11 @@
 {
   "expo": {
     "name": "BEXO",
-    "slug": "bexo",
+    "slug": "mybrexo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "bexo",
+    "scheme": "com.mybrexo",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -15,10 +15,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.bexo.app"
+      "bundleIdentifier": "com.mybrexo.app"
     },
     "android": {
-      "package": "com.bexo.app",
+      "package": "com.mybrexo.app",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0A0A0F"
@@ -31,7 +31,7 @@
       [
         "expo-router",
         {
-          "origin": "https://replit.com/"
+          "origin": "https://mybrexo.com/"
         }
       ],
       "expo-font",

@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Image,
@@ -56,16 +57,25 @@ export default function PortfolioScreen() {
         {/* Header */}
         <View style={styles.pageHeader}>
           <Text style={[styles.pageTitle, { color: colors.foreground }]}>Portfolio</Text>
-          <TouchableOpacity
-            style={[styles.rebuildBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
-            onPress={handleRebuild}
-            disabled={rebuilding || buildStatus === "building"}
-          >
-            <Feather name="refresh-cw" size={14} color={colors.primary} />
-            <Text style={[styles.rebuildLabel, { color: colors.primary }]}>
-              {rebuilding ? "Rebuilding..." : "Rebuild"}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.editBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => router.push("/(main)/edit-profile")}
+            >
+              <Feather name="edit-2" size={14} color={colors.foreground} />
+              <Text style={[styles.editLabel, { color: colors.foreground }]}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.rebuildBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
+              onPress={handleRebuild}
+              disabled={rebuilding || buildStatus === "building"}
+            >
+              <Feather name="refresh-cw" size={14} color={colors.primary} />
+              <Text style={[styles.rebuildLabel, { color: colors.primary }]}>
+                {rebuilding ? "Rebuilding..." : "Rebuild"}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Hero */}
@@ -101,7 +111,7 @@ export default function PortfolioScreen() {
             {profile?.headline ?? "Student"}
           </Text>
           <Text style={[styles.heroHandle, { color: colors.primary }]}>
-            {profile?.handle ?? "handle"}.mybixo.com
+            {profile?.handle ?? "handle"}.mybrexo.com
           </Text>
           {profile?.bio ? (
             <Text style={[styles.heroBio, { color: colors.mutedForeground }]}>
@@ -259,6 +269,17 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, gap: 16 },
   pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   pageTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
+  headerActions: { flexDirection: "row", gap: 8 },
+  editBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  editLabel: { fontSize: 13, fontWeight: "600" },
   rebuildBtn: {
     flexDirection: "row",
     alignItems: "center",

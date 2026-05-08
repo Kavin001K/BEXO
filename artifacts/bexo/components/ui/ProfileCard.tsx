@@ -41,7 +41,7 @@ export function ProfileCard({ profile, avatarUrl, skills = [] }: Props) {
             {profile.headline || "Student"}
           </Text>
           <Text style={[styles.handle, { color: colors.primary }]}>
-            {profile.handle || "handle"}.mybixo.com
+            {profile.handle || "handle"}.mybrexo.com
           </Text>
         </View>
       </View>

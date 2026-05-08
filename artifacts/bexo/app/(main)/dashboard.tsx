@@ -106,7 +106,7 @@ export default function DashboardScreen() {
             >
               <View style={styles.liveDot} />
               <Text style={styles.liveBannerText}>Portfolio Live</Text>
-              <Text style={styles.liveBannerUrl}>{profile?.handle}.mybixo.com</Text>
+              <Text style={styles.liveBannerUrl}>{profile?.handle}.mybrexo.com</Text>
               <Feather name="external-link" size={16} color="#fff" />
             </LinearGradient>
           </TouchableOpacity>

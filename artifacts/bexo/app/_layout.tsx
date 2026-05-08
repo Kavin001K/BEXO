@@ -1,11 +1,11 @@
 import {
-  DM_Sans_400Regular,
-  DM_Sans_500Medium,
-  DM_Sans_700Bold,
+  DMSans_400Regular,
+  DMSans_500Medium,
+  DMSans_700Bold,
   useFonts as useDMSansFonts,
 } from "@expo-google-fonts/dm-sans";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Redirect, Stack } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -20,17 +20,17 @@ SplashScreen.preventAutoHideAsync();
 const queryClient = new QueryClient();
 
 function RootLayoutNav() {
-  const { session, isLoading } = useAuthStore();
+  const isLoading = useAuthStore((s) => s.isLoading);
 
   if (isLoading) return null;
 
   return (
     <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
+      <Stack.Screen name="(intro)" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(main)" />
       <Stack.Screen name="+not-found" />
-      {!session && <Redirect href="/(auth)" />}
     </Stack>
   );
 }
@@ -39,9 +39,9 @@ export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
 
   const [fontsLoaded, fontError] = useDMSansFonts({
-    DM_Sans_400Regular,
-    DM_Sans_500Medium,
-    DM_Sans_700Bold,
+    DMSans_400Regular,
+    DMSans_500Medium,
+    DMSans_700Bold,
   });
 
   useEffect(() => {

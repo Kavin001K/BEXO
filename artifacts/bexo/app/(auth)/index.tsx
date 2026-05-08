@@ -1,20 +1,24 @@
-import { Feather } from "@expo/vector-icons";
+import { AntDesign, Feather } from "@expo/vector-icons";
+
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Linking from "expo-linking";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
@@ -24,28 +28,97 @@ import { useAuthStore } from "@/stores/useAuthStore";
 WebBrowser.maybeCompleteAuthSession();
 
 const COUNTRY_CODES = [
-  { code: "+1", flag: "US", label: "US +1" },
-  { code: "+44", flag: "GB", label: "UK +44" },
-  { code: "+91", flag: "IN", label: "IN +91" },
-  { code: "+61", flag: "AU", label: "AU +61" },
-  { code: "+49", flag: "DE", label: "DE +49" },
-  { code: "+33", flag: "FR", label: "FR +33" },
-  { code: "+81", flag: "JP", label: "JP +81" },
-  { code: "+86", flag: "CN", label: "CN +86" },
-  { code: "+55", flag: "BR", label: "BR +55" },
-  { code: "+234", flag: "NG", label: "NG +234" },
+  { code: "+91", flag: "IN", label: "India (+91)" },
+  { code: "+1", flag: "US", label: "US (+1)" },
+  { code: "+44", flag: "GB", label: "UK (+44)" },
+  { code: "+61", flag: "AU", label: "AU (+61)" },
+  { code: "+49", flag: "DE", label: "DE (+49)" },
+  { code: "+33", flag: "FR", label: "FR (+33)" },
+  { code: "+81", flag: "JP", label: "JP (+81)" },
+  { code: "+86", flag: "CN", label: "CN (+86)" },
+  { code: "+55", flag: "BR", label: "BR (+55)" },
+  { code: "+234", flag: "NG", label: "NG (+234)" },
 ];
+
+const GOOGLE_WEB_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ??
+  "680831158712-u8ncojq2dl3nreh28hddj6oac4e1b5v7.apps.googleusercontent.com";
+
+function firstQueryParam(value: string | string[] | null | undefined) {
+  return Array.isArray(value) ? value[0] : value ?? null;
+}
+
+function parseHashParams(url: string) {
+  const [, hash = ""] = url.split("#");
+  return new URLSearchParams(hash);
+}
+
+async function completeGoogleOAuth(url: string) {
+  const queryParams = Linking.parse(url).queryParams ?? {};
+  const hashParams = parseHashParams(url);
+
+  const errorDescription =
+    firstQueryParam(queryParams.error_description) ??
+    firstQueryParam(queryParams.error) ??
+    hashParams.get("error_description") ??
+    hashParams.get("error");
+
+  if (errorDescription) {
+    throw new Error(errorDescription);
+  }
+
+  const authCode = firstQueryParam(queryParams.code) ?? hashParams.get("code");
+  if (authCode) {
+    const { error } = await supabase.auth.exchangeCodeForSession(authCode);
+    if (error) throw error;
+    return;
+  }
+
+  const accessToken =
+    firstQueryParam(queryParams.access_token) ?? hashParams.get("access_token");
+  const refreshToken =
+    firstQueryParam(queryParams.refresh_token) ?? hashParams.get("refresh_token");
+
+  if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+    return;
+  }
+
+  throw new Error("Google sign-in did not return a Supabase session.");
+}
+
+
 
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const setPhoneNumber = useAuthStore((s) => s.setPhoneNumber);
-  const [countryCode, setCountryCode] = useState("+1");
+  const setOtpSentAt = useAuthStore((s) => s.setOtpSentAt);
+  const [countryCode, setCountryCode] = useState("+91");
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
   const [error, setError] = useState("");
+  const session = useAuthStore((s) => s.session);
+
+
+  // Watch for Google OAuth completion
+  useEffect(() => {
+    if (session?.user) {
+      const hasPhone = !!session.user.phone;
+      const isGoogleLogin = session.user.app_metadata?.provider === "google";
+      if (isGoogleLogin && !hasPhone) {
+        router.replace("/(auth)/collect-phone");
+      } else if (session) {
+        router.replace("/(onboarding)/handle");
+      }
+    }
+  }, [session]);
 
   const fullPhone = `${countryCode}${phone.replace(/\D/g, "")}`;
 
@@ -58,11 +131,21 @@ export default function LoginScreen() {
     setLoading(true);
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
-      const { error: err } = await supabase.auth.signInWithOtp({
-        phone: fullPhone,
-      });
-      if (err) throw err;
+      const resp = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/phone-auth`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ action: "send", phone: fullPhone }),
+        }
+      );
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error ?? "Failed to send OTP");
       setPhoneNumber(fullPhone);
+      setOtpSentAt(Date.now());
       router.push("/(auth)/verify");
     } catch (e: any) {
       setError(e.message ?? "Failed to send OTP");
@@ -73,16 +156,29 @@ export default function LoginScreen() {
 
   const handleGoogleSignIn = async () => {
     setGoogleLoading(true);
+    setError("");
     try {
+      const redirectUri = Linking.createURL("auth/callback");
+
       const { data, error: err } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: "bexo://auth/callback" },
+        options: {
+          redirectTo: redirectUri,
+          skipBrowserRedirect: true,
+        },
       });
+
       if (err) throw err;
-      if (data.url) {
-        await WebBrowser.openAuthSessionAsync(data.url, "bexo://");
+
+      if (data?.url) {
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUri);
+
+        if (result.type === "success" && result.url) {
+          await completeGoogleOAuth(result.url);
+        }
       }
     } catch (e: any) {
+      console.error("Google Sign-In Error:", e);
       setError(e.message ?? "Google sign-in failed");
     } finally {
       setGoogleLoading(false);
@@ -158,25 +254,42 @@ export default function LoginScreen() {
             </View>
 
             {/* Country picker */}
-            {showCountryPicker && (
-              <View style={[styles.picker, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                {COUNTRY_CODES.map((c) => (
-                  <TouchableOpacity
-                    key={c.code + c.flag}
-                    style={styles.pickerItem}
-                    onPress={() => {
-                      setCountryCode(c.code);
-                      setShowCountryPicker(false);
-                    }}
-                  >
-                    <Text style={[styles.pickerLabel, { color: colors.foreground }]}>{c.label}</Text>
-                    {countryCode === c.code && (
-                      <Feather name="check" size={14} color={colors.primary} />
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+            <Modal
+              visible={showCountryPicker}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setShowCountryPicker(false)}
+            >
+              <TouchableWithoutFeedback onPress={() => setShowCountryPicker(false)}>
+                <View style={styles.modalOverlay}>
+                  <TouchableWithoutFeedback>
+                    <View style={[styles.pickerModal, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                      <Text style={[styles.pickerTitle, { color: colors.foreground }]}>Select Country</Text>
+                      <ScrollView>
+                        {COUNTRY_CODES.map((c) => (
+                          <TouchableOpacity
+                            key={c.code + c.flag}
+                            style={[
+                              styles.pickerItem,
+                              countryCode === c.code && { backgroundColor: colors.surface }
+                            ]}
+                            onPress={() => {
+                              setCountryCode(c.code);
+                              setShowCountryPicker(false);
+                            }}
+                          >
+                            <Text style={[styles.pickerLabel, { color: colors.foreground }]}>{c.label}</Text>
+                            {countryCode === c.code && (
+                              <Feather name="check" size={16} color={colors.primary} />
+                            )}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  </TouchableWithoutFeedback>
+                </View>
+              </TouchableWithoutFeedback>
+            </Modal>
 
             {error ? (
               <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
@@ -201,7 +314,7 @@ export default function LoginScreen() {
                 <Text style={[styles.googleLabel, { color: colors.mutedForeground }]}>Signing in...</Text>
               ) : (
                 <>
-                  <Feather name="globe" size={18} color={colors.foreground} />
+                  <AntDesign name="google" size={18} color={colors.foreground} />
                   <Text style={[styles.googleLabel, { color: colors.foreground }]}>Continue with Google</Text>
                 </>
               )}
@@ -277,19 +390,46 @@ const styles = StyleSheet.create({
     height: "100%",
     ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
   },
-  picker: {
-    borderRadius: 14,
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  pickerModal: {
+    width: "100%",
+    maxHeight: "60%",
+    borderRadius: 24,
     borderWidth: 1,
-    overflow: "hidden",
+    paddingVertical: 12,
+    ...Platform.select({
+      web: { boxShadow: "0 10px 20px rgba(0,0,0,0.3)" },
+      default: {
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.3,
+        shadowRadius: 20,
+      },
+    }),
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    textAlign: "center",
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.05)",
   },
   pickerItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
-  pickerLabel: { fontSize: 14 },
+  pickerLabel: { fontSize: 16, fontWeight: "500" },
   error: { fontSize: 13, marginTop: -4 },
   divider: {
     flexDirection: "row",

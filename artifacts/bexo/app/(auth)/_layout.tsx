@@ -5,6 +5,8 @@ export default function AuthLayout() {
     <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="verify" />
+      <Stack.Screen name="collect-email" />
+      <Stack.Screen name="collect-phone" />
     </Stack>
   );
 }

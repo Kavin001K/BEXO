@@ -51,6 +51,8 @@ export interface Profile {
   linkedin_url?: string | null;
   github_url?: string | null;
   resume_url?: string | null;
+  email?: string | null;
+  phone?: string | null;
   is_published: boolean;
   portfolio_theme: string;
 }
@@ -86,6 +88,12 @@ interface ProfileState {
   setExperiences: (exp: Experience[]) => void;
   setProjects: (proj: Project[]) => void;
   setSkills: (skills: Skill[]) => void;
+  saveEducation: (edu: Education) => Promise<void>;
+  deleteEducation: (id: string) => Promise<void>;
+  saveExperience: (exp: Experience) => Promise<void>;
+  deleteExperience: (id: string) => Promise<void>;
+  saveProject: (proj: Project) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
@@ -115,6 +123,81 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     set((s) => ({ projects: [...s.projects, proj] })),
   addSkill: (skill) =>
     set((s) => ({ skills: [...s.skills, skill] })),
+
+  saveEducation: async (edu) => {
+    const profile = get().profile;
+    if (!profile) return;
+    if (edu.id) {
+      const { data } = await supabase
+        .from("education")
+        .update(edu)
+        .eq("id", edu.id)
+        .select()
+        .single();
+      if (data) set((s) => ({ education: s.education.map((e) => (e.id === edu.id ? data : e)) }));
+    } else {
+      const { data } = await supabase
+        .from("education")
+        .insert({ ...edu, profile_id: profile.id })
+        .select()
+        .single();
+      if (data) set((s) => ({ education: [...s.education, data] }));
+    }
+  },
+  deleteEducation: async (id) => {
+    await supabase.from("education").delete().eq("id", id);
+    set((s) => ({ education: s.education.filter((e) => e.id !== id) }));
+  },
+
+  saveExperience: async (exp) => {
+    const profile = get().profile;
+    if (!profile) return;
+    if (exp.id) {
+      const { data } = await supabase
+        .from("experiences")
+        .update(exp)
+        .eq("id", exp.id)
+        .select()
+        .single();
+      if (data) set((s) => ({ experiences: s.experiences.map((e) => (e.id === exp.id ? data : e)) }));
+    } else {
+      const { data } = await supabase
+        .from("experiences")
+        .insert({ ...exp, profile_id: profile.id })
+        .select()
+        .single();
+      if (data) set((s) => ({ experiences: [...s.experiences, data] }));
+    }
+  },
+  deleteExperience: async (id) => {
+    await supabase.from("experiences").delete().eq("id", id);
+    set((s) => ({ experiences: s.experiences.filter((e) => e.id !== id) }));
+  },
+
+  saveProject: async (proj) => {
+    const profile = get().profile;
+    if (!profile) return;
+    if (proj.id) {
+      const { data } = await supabase
+        .from("projects")
+        .update(proj)
+        .eq("id", proj.id)
+        .select()
+        .single();
+      if (data) set((s) => ({ projects: s.projects.map((p) => (p.id === proj.id ? data : p)) }));
+    } else {
+      const { data } = await supabase
+        .from("projects")
+        .insert({ ...proj, profile_id: profile.id })
+        .select()
+        .single();
+      if (data) set((s) => ({ projects: [...s.projects, data] }));
+    }
+  },
+  deleteProject: async (id) => {
+    await supabase.from("projects").delete().eq("id", id);
+    set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
+  },
 
   fetchProfile: async (userId) => {
     set({ isLoading: true });
