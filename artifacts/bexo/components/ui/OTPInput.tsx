@@ -95,6 +95,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     fontSize: 22,
     fontWeight: "700",
-    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
+    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
 });

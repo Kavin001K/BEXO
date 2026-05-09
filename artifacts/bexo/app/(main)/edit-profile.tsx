@@ -904,7 +904,7 @@ const styles = StyleSheet.create({
   fieldLabel: { fontSize: 11, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
   input: {
     borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15,
-    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
+    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
   textarea: { minHeight: 100, textAlignVertical: "top" },
   inputDisabled: { opacity: 0.4 },

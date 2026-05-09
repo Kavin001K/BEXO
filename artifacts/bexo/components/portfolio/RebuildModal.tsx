@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minHeight: 130,
     lineHeight: 21,
-    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
+    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
   fileCard: {
     flexDirection: "row",

@@ -78,7 +78,7 @@ export default function HandleScreen() {
     try {
       const { data, error: err } = await supabase
         .from("profiles")
-        .insert({
+        .upsert({
           user_id: user.id,
           handle: slug,
           full_name: fullName.trim(),
@@ -86,7 +86,7 @@ export default function HandleScreen() {
           bio: "",
           email: collectedEmail || user.email || null,
           phone: collectedPhone || user.phone || null,
-        })
+        }, { onConflict: "user_id" })
         .select()
         .single();
       if (err) throw err;
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 16,
     fontSize: 15,
-    ...(Platform.OS === "web" ? { outlineStyle: "none" } : {}),
+    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
   handleRow: { position: "relative" },
   handleInput: { paddingRight: 48 },
