@@ -1,14 +1,12 @@
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import React from "react";
-import {
-  ActivityIndicator,
-  Animated,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-} from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, TouchableOpacity } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
 
@@ -32,20 +30,18 @@ export function BexoButton({
   fullWidth = true,
 }: Props) {
   const colors = useColors();
-  const scale = React.useRef(new Animated.Value(1)).current;
+  const scale  = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
 
   const handlePressIn = () => {
-    Animated.spring(scale, {
-      toValue: 0.96,
-      useNativeDriver: true,
-    }).start();
+    scale.value = withSpring(0.95, { stiffness: 400, damping: 20 });
   };
 
   const handlePressOut = () => {
-    Animated.spring(scale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
+    scale.value = withSpring(1, { stiffness: 400, damping: 20 });
   };
 
   const handlePress = () => {
@@ -60,9 +56,10 @@ export function BexoButton({
   return (
     <Animated.View
       style={[
+        animStyle,
         styles.wrapper,
         fullWidth && styles.fullWidth,
-        { transform: [{ scale }] },
+        (disabled || loading) && styles.dimmed,
       ]}
     >
       <TouchableOpacity
@@ -78,7 +75,7 @@ export function BexoButton({
             colors={["#7C6AFA", "#A06AFA"]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={[styles.btn, disabled && styles.disabled]}
+            style={styles.btn}
           >
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
@@ -91,45 +88,30 @@ export function BexoButton({
           </LinearGradient>
         ) : variant === "secondary" ? (
           <Animated.View
-            style={[
-              styles.btn,
-              styles.secondary,
-              { borderColor: colors.border },
-              disabled && styles.disabled,
-            ]}
+            style={[styles.btn, styles.secondary, { borderColor: colors.border }]}
           >
             {loading ? (
               <ActivityIndicator color={colors.primary} size="small" />
             ) : (
               <>
                 {icon}
-                <Text style={[styles.label, { color: colors.foreground }]}>
-                  {label}
-                </Text>
+                <Text style={[styles.label, { color: colors.foreground }]}>{label}</Text>
               </>
             )}
           </Animated.View>
         ) : variant === "ghost" ? (
-          <Animated.View style={[styles.btn, disabled && styles.disabled]}>
+          <Animated.View style={styles.btn}>
             {loading ? (
               <ActivityIndicator color={colors.mutedForeground} size="small" />
             ) : (
               <>
                 {icon}
-                <Text style={[styles.label, { color: colors.mutedForeground }]}>
-                  {label}
-                </Text>
+                <Text style={[styles.label, { color: colors.mutedForeground }]}>{label}</Text>
               </>
             )}
           </Animated.View>
         ) : (
-          <Animated.View
-            style={[
-              styles.btn,
-              styles.danger,
-              disabled && styles.disabled,
-            ]}
-          >
+          <Animated.View style={[styles.btn, styles.danger]}>
             {loading ? (
               <ActivityIndicator color="#fff" size="small" />
             ) : (
@@ -146,11 +128,12 @@ export function BexoButton({
 }
 
 const styles = StyleSheet.create({
-  wrapper: { borderRadius: 14 },
+  wrapper: { borderRadius: 14, overflow: "hidden" },
   fullWidth: { width: "100%" },
   touchable: {},
+  dimmed: { opacity: 0.5 },
   btn: {
-    height: 52,
+    height: 54,
     borderRadius: 14,
     flexDirection: "row",
     alignItems: "center",
@@ -158,22 +141,8 @@ const styles = StyleSheet.create({
     gap: 8,
     paddingHorizontal: 24,
   },
-  secondary: {
-    borderWidth: 1,
-    backgroundColor: "transparent",
-  },
-  danger: {
-    backgroundColor: "#FA6A6A",
-  },
-  label: {
-    fontSize: 15,
-    fontWeight: "600",
-    letterSpacing: 0.2,
-  },
-  primaryLabel: {
-    color: "#FFFFFF",
-  },
-  disabled: {
-    opacity: 0.4,
-  },
+  secondary: { borderWidth: 1, backgroundColor: "transparent" },
+  danger: { backgroundColor: "#FA6A6A" },
+  label: { fontSize: 15, fontWeight: "600", letterSpacing: 0.2 },
+  primaryLabel: { color: "#FFFFFF" },
 });

@@ -1,18 +1,31 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  Alert,
+  Platform,
   RefreshControl,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Platform,
 } from "react-native";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ProfileCompletenessBanner } from "@/components/home/ProfileCompletenessBanner";
+import { MissingInfoFlow } from "@/components/home/MissingInfoFlow";
 import { ProfileCard } from "@/components/ui/ProfileCard";
 import { UpdateCard } from "@/components/ui/UpdateCard";
 import { useColors } from "@/hooks/useColors";
@@ -20,29 +33,44 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
+function PulsingDot({ color }: { color: string }) {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(withTiming(0.3, { duration: 700 }), withTiming(1, { duration: 700 })),
+      -1,
+      true
+    );
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return (
+    <Animated.View style={[style, { width: 8, height: 8, borderRadius: 4, backgroundColor: color }]} />
+  );
+}
+
 export default function DashboardScreen() {
-  const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const user = useAuthStore((s) => s.user);
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const user    = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
-  const { profile, skills, isLoading, fetchProfile } = useProfileStore();
+  const { profile, skills, fetchProfile, getCompletionResult } = useProfileStore();
   const { updates, analytics, buildStatus, portfolioUrl, fetchUpdates, fetchBuildStatus, subscribeToBuilds } =
     usePortfolioStore();
 
-  const [refreshing, setRefreshing] = React.useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [showMissingFlow, setShowMissingFlow] = useState(false);
+
+  const completionResult = getCompletionResult();
 
   const load = async () => {
     if (!user) return;
     await fetchProfile(user.id);
     if (profile?.id) {
-      await fetchUpdates(profile.id);
-      await fetchBuildStatus(profile.id);
+      await Promise.all([fetchUpdates(profile.id), fetchBuildStatus(profile.id)]);
     }
   };
 
-  useEffect(() => {
-    load();
-  }, [user?.id]);
+  useEffect(() => { load(); }, [user?.id]);
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -58,117 +86,188 @@ export default function DashboardScreen() {
     setRefreshing(false);
   };
 
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const handleShare = async () => {
+    if (!profile?.handle) {
+      Alert.alert("Not ready", "Complete your profile setup first.");
+      return;
+    }
+    const url  = `https://${profile.handle}.mybrexo.com`;
+    const name = profile.full_name ?? profile.handle;
+    try {
+      await Share.share(
+        { message: `Check out ${name}'s portfolio: ${url}`, url, title: `${name}'s Portfolio` },
+        { dialogTitle: "Share your portfolio" }
+      );
+    } catch {}
+  };
+
+  const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: topPad + 16, paddingBottom: bottomPad },
-        ]}
+        contentContainerStyle={[styles.scroll, { paddingTop: topPad + 20, paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.primary}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         {/* Header */}
-        <View style={styles.header}>
+        <Animated.View entering={FadeIn.duration(500)} style={styles.header}>
           <View>
-            <Text style={[styles.greeting, { color: colors.mutedForeground }]}>
-              Welcome back
-            </Text>
+            <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Welcome back</Text>
             <Text style={[styles.name, { color: colors.foreground }]}>
-              {profile?.full_name?.split(" ")[0] ?? "Student"}
+              {profile?.full_name?.split(" ")[0] ?? "Student"} 👋
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.signOutBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={signOut}
-          >
-            <Feather name="log-out" size={18} color={colors.mutedForeground} />
-          </TouchableOpacity>
-        </View>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={handleShare}
+            >
+              <Feather name="share-2" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={signOut}
+            >
+              <Feather name="log-out" size={18} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* Profile completeness banner (shown when < 80%) */}
+        {!completionResult.isPassing && (
+          <Animated.View entering={FadeInDown.delay(60).springify()}>
+            <ProfileCompletenessBanner
+              result={completionResult}
+              onCompletePress={() => setShowMissingFlow(true)}
+            />
+          </Animated.View>
+        )}
 
         {/* Portfolio status banner */}
-        {buildStatus === "done" && portfolioUrl ? (
-          <TouchableOpacity activeOpacity={0.9}>
-            <LinearGradient
-              colors={["#7C6AFA", "#A06AFA"]}
-              style={styles.liveBanner}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <View style={styles.liveDot} />
-              <Text style={styles.liveBannerText}>Portfolio Live</Text>
-              <Text style={styles.liveBannerUrl}>{profile?.handle}.mybrexo.com</Text>
-              <Feather name="external-link" size={16} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
-        ) : buildStatus === "building" || buildStatus === "queued" ? (
-          <View style={[styles.buildingBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Feather name="loader" size={16} color={colors.primary} />
-            <Text style={[styles.buildingText, { color: colors.mutedForeground }]}>
-              Building your portfolio...
-            </Text>
-          </View>
-        ) : null}
+        <Animated.View entering={FadeInDown.delay(80).springify()}>
+          {buildStatus === "done" && portfolioUrl ? (
+            <TouchableOpacity activeOpacity={0.88} onPress={handleShare}>
+              <LinearGradient
+                colors={["#7C6AFA", "#A06AFA"]}
+                style={styles.liveBanner}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <View style={styles.liveDot} />
+                <Text style={styles.liveBannerText}>Portfolio Live</Text>
+                <Text style={styles.liveBannerUrl}>{profile?.handle}.mybrexo.com</Text>
+                <Feather name="external-link" size={15} color="rgba(255,255,255,0.8)" />
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : buildStatus === "building" || buildStatus === "queued" ? (
+            <View style={[styles.buildingBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <PulsingDot color={colors.primary} />
+              <Text style={[styles.buildingText, { color: colors.mutedForeground }]}>
+                Building your portfolio…
+              </Text>
+            </View>
+          ) : null}
+        </Animated.View>
 
         {/* Profile card */}
         {profile && (
-          <ProfileCard
-            profile={profile}
-            avatarUrl={profile.avatar_url}
-            skills={skills.map((s) => s.name)}
-          />
+          <Animated.View entering={FadeInDown.delay(160).springify()}>
+            <ProfileCard profile={profile} avatarUrl={profile.avatar_url} skills={skills.map((s) => s.name)} />
+          </Animated.View>
         )}
 
         {/* Stats */}
-        <View style={styles.statsRow}>
+        <Animated.View entering={FadeInDown.delay(240).springify()} style={styles.statsRow}>
           {[
-            { label: "Views", value: analytics.views, icon: "eye" },
-            { label: "Clicks", value: analytics.clicks, icon: "mouse-pointer" },
-            { label: "Shares", value: analytics.shares, icon: "share-2" },
-          ].map((stat) => (
-            <View key={stat.label} style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Feather name={stat.icon as any} size={16} color={colors.primary} />
+            { label: "Views",  value: analytics.views,  icon: "eye"           as const },
+            { label: "Clicks", value: analytics.clicks, icon: "mouse-pointer" as const },
+            { label: "Shares", value: analytics.shares, icon: "share-2"       as const },
+          ].map((stat, i) => (
+            <Animated.View
+              key={stat.label}
+              entering={FadeInDown.delay(240 + i * 60).springify()}
+              style={[styles.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              <Feather name={stat.icon} size={15} color={colors.primary} />
               <Text style={[styles.statValue, { color: colors.foreground }]}>{stat.value}</Text>
               <Text style={[styles.statLabel, { color: colors.mutedForeground }]}>{stat.label}</Text>
-            </View>
+            </Animated.View>
           ))}
-        </View>
+        </Animated.View>
+
+        {/* Quick actions */}
+        <Animated.View entering={FadeInDown.delay(360).springify()} style={styles.quickActions}>
+          {[
+            { label: "Edit Profile",    icon: "edit-3" as const, route: "/(main)/edit-profile" },
+            { label: "View Portfolio",  icon: "globe"  as const, route: "/(main)/portfolio"    },
+          ].map((action) => (
+            <TouchableOpacity
+              key={action.label}
+              style={[styles.quickBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push(action.route as any)}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.quickIcon, { backgroundColor: colors.primary + "22" }]}>
+                <Feather name={action.icon} size={16} color={colors.primary} />
+              </View>
+              <Text style={[styles.quickLabel, { color: colors.foreground }]}>{action.label}</Text>
+              <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
 
         {/* Updates section */}
-        <View style={styles.section}>
+        <Animated.View entering={FadeInDown.delay(440).springify()} style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Updates</Text>
-            <TouchableOpacity onPress={() => router.push("/(main)/update")}>
-              <Text style={[styles.sectionAction, { color: colors.primary }]}>+ Add</Text>
+            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Activity</Text>
+            <TouchableOpacity
+              style={[styles.addBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
+              onPress={() => router.push("/(main)/update")}
+            >
+              <Feather name="plus" size={13} color={colors.primary} />
+              <Text style={[styles.addBtnText, { color: colors.primary }]}>Add</Text>
             </TouchableOpacity>
           </View>
 
           {updates.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Feather name="activity" size={28} color={colors.mutedForeground} />
+              <View style={[styles.emptyIconWrap, { backgroundColor: colors.card }]}>
+                <Feather name="activity" size={24} color={colors.mutedForeground} />
+              </View>
               <Text style={[styles.emptyTitle, { color: colors.foreground }]}>No updates yet</Text>
               <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
                 Post achievements, projects, or new roles to keep your portfolio fresh
               </Text>
+              <TouchableOpacity
+                style={[styles.emptyAction, { backgroundColor: colors.primary }]}
+                onPress={() => router.push("/(main)/update")}
+              >
+                <Text style={styles.emptyActionText}>Post your first update</Text>
+              </TouchableOpacity>
             </View>
           ) : (
             <View style={styles.updateList}>
-              {updates.map((u) => (
-                <UpdateCard key={u.id} update={u} />
+              {updates.map((u, i) => (
+                <Animated.View key={u.id} entering={FadeInDown.delay(i * 50).springify()}>
+                  <UpdateCard update={u} />
+                </Animated.View>
               ))}
             </View>
           )}
-        </View>
+        </Animated.View>
       </ScrollView>
+
+      {/* Missing info flow modal */}
+      <MissingInfoFlow
+        visible={showMissingFlow}
+        missingFields={completionResult.missingFields}
+        onClose={() => setShowMissingFlow(false)}
+        onDone={() => setShowMissingFlow(false)}
+      />
     </View>
   );
 }
@@ -179,61 +278,60 @@ const styles = StyleSheet.create({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   greeting: { fontSize: 13, fontWeight: "500" },
   name: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
-  signOutBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
+  headerActions: { flexDirection: "row", gap: 8 },
+  iconBtn: {
+    width: 40, height: 40, borderRadius: 12, borderWidth: 1,
+    alignItems: "center", justifyContent: "center",
   },
   liveBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 14,
-    borderRadius: 14,
+    flexDirection: "row", alignItems: "center", gap: 8,
+    padding: 16, borderRadius: 16,
+    ...Platform.select({
+      ios:     { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12 },
+      android: { elevation: 6 },
+      web:     { boxShadow: "0 6px 20px rgba(124,106,250,0.3)" },
+    }),
   },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#6AFAD0",
-  },
+  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#6AFAD0" },
   liveBannerText: { color: "#fff", fontWeight: "700", fontSize: 14 },
   liveBannerUrl: { color: "rgba(255,255,255,0.75)", fontSize: 12, flex: 1 },
   buildingBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 14, borderRadius: 14, borderWidth: 1,
   },
   buildingText: { fontSize: 14 },
   statsRow: { flexDirection: "row", gap: 10 },
   statCard: {
-    flex: 1,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
-    alignItems: "center",
-    gap: 4,
+    flex: 1, borderRadius: 16, borderWidth: 1, padding: 16, alignItems: "center", gap: 4,
   },
-  statValue: { fontSize: 22, fontWeight: "800" },
-  statLabel: { fontSize: 11 },
+  statValue: { fontSize: 24, fontWeight: "800" },
+  statLabel: { fontSize: 11, fontWeight: "500" },
+  quickActions: { gap: 8 },
+  quickBtn: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 14, borderRadius: 14, borderWidth: 1,
+  },
+  quickIcon: {
+    width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center",
+  },
+  quickLabel: { flex: 1, fontSize: 14, fontWeight: "600" },
   section: { gap: 12 },
   sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   sectionTitle: { fontSize: 18, fontWeight: "700" },
-  sectionAction: { fontSize: 14, fontWeight: "600" },
-  emptyState: {
-    alignItems: "center",
-    padding: 28,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 8,
+  addBtn: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1,
   },
-  emptyTitle: { fontSize: 15, fontWeight: "700" },
-  emptyText: { fontSize: 13, textAlign: "center", lineHeight: 19 },
+  addBtnText: { fontSize: 13, fontWeight: "600" },
+  emptyState: {
+    alignItems: "center", padding: 32, borderRadius: 20, borderWidth: 1, gap: 10,
+  },
+  emptyIconWrap: {
+    width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", marginBottom: 4,
+  },
+  emptyTitle: { fontSize: 16, fontWeight: "700" },
+  emptyText: { fontSize: 13, textAlign: "center", lineHeight: 20, maxWidth: 260 },
+  emptyAction: { marginTop: 4, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
+  emptyActionText: { color: "#fff", fontSize: 13, fontWeight: "600" },
   updateList: { gap: 10 },
 });

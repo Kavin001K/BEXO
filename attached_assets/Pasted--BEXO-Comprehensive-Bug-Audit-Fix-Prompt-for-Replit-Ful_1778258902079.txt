@@ -1,0 +1,1423 @@
+# BEXO — Comprehensive Bug Audit & Fix Prompt for Replit
+## Full-Stack: Critical Bugs, Missing Features, Supabase Setup, Performance
+
+> **How to use this:** Paste this entire document into Replit AI. Work through each section in order.
+> Each section ends with a verification step. **Do not skip ahead.**
+
+---
+
+# SECTION 0 — CRITICAL: READ BEFORE ANYTHING ELSE
+
+The app currently has **1 blocking crash** that prevents it from loading at all. Fix this first before touching anything else.
+
+---
+
+# SECTION 1 — BLOCKING BUG: GOOGLE AUTH MODULE NOT INSTALLED
+
+## Error
+```
+Unable to resolve module expo-auth-session/providers/google
+from app/(auth)/index.tsx
+```
+
+## Root Cause
+`expo-auth-session` is imported but **not installed** in node_modules. The package was specified in the Phase 2 build prompt but was never actually installed in the project.
+
+## Fix — Run these commands in the terminal:
+
+```bash
+npx expo install expo-auth-session expo-web-browser expo-crypto
+```
+
+Then in `app/(auth)/index.tsx`, verify the import is exactly this — no path variations:
+
+```typescript
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+
+WebBrowser.maybeCompleteAuthSession();
+```
+
+Then inside the component, wire it properly:
+
+```typescript
+const [request, response, promptAsync] = Google.useAuthRequest({
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+});
+
+useEffect(() => {
+  if (response?.type === 'success') {
+    const { id_token } = response.params;
+    supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: id_token,
+    });
+  }
+}, [response]);
+```
+
+Add to `.env.local`:
+```bash
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your_ios_client_id_from_google_cloud_console
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your_android_client_id_from_google_cloud_console
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your_web_client_id_from_google_cloud_console
+```
+
+**Google Cloud Console setup** (required for Google OAuth to work):
+1. Go to https://console.cloud.google.com → APIs & Services → Credentials
+2. Create OAuth 2.0 Client IDs for iOS, Android, and Web
+3. For iOS: Bundle ID must match `app.json` `ios.bundleIdentifier`
+4. For Android: Package name must match `app.json` `android.package`
+5. In Supabase Dashboard → Authentication → Providers → Google:
+   - Paste your Web Client ID and Web Client Secret
+   - Redirect URL from Supabase must be added to Google Console's "Authorized redirect URIs"
+
+**Supabase URL scheme** — Add to `app.json`:
+```json
+{
+  "expo": {
+    "scheme": "bexo",
+    "ios": {
+      "bundleIdentifier": "com.bexo.app"
+    },
+    "android": {
+      "package": "com.bexo.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "bexo",
+              "host": "login-callback"
+            }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    }
+  }
+}
+```
+
+✅ **Verification:** App loads without compile error. Google button press opens browser.
+
+---
+
+# SECTION 2 — CRITICAL: DEPRECATED STYLE PROPS
+
+## Error
+```
+"shadow*" style props are deprecated. Use "boxShadow".
+```
+
+## Root Cause
+Multiple components use the old React Native shadow API which is deprecated for web targets.
+
+## Fix — Search the entire codebase for these patterns and replace:
+
+**Find and replace ALL instances of:**
+```typescript
+// OLD — deprecated
+shadowColor: '#000',
+shadowOffset: { width: 0, height: 8 },
+shadowOpacity: 0.3,
+shadowRadius: 16,
+elevation: 8,
+```
+
+**Replace with the unified cross-platform helper:**
+
+Create `src/utils/shadow.ts`:
+```typescript
+import { Platform, StyleSheet } from 'react-native';
+
+export const createShadow = (
+  color: string = '#000',
+  offsetY: number = 8,
+  blur: number = 16,
+  opacity: number = 0.3,
+  elevation: number = 8
+) => {
+  if (Platform.OS === 'web') {
+    return {
+      boxShadow: `0 ${offsetY}px ${blur}px ${colorWithOpacity(color, opacity)}`,
+    };
+  }
+  return {
+    shadowColor: color,
+    shadowOffset: { width: 0, height: offsetY },
+    shadowOpacity: opacity,
+    shadowRadius: blur / 2,
+    elevation,
+  };
+};
+
+const colorWithOpacity = (hex: string, opacity: number): string => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${opacity})`;
+};
+
+// Pre-built shadows for common use cases
+export const shadows = {
+  card: createShadow('#000', 8, 24, 0.25, 6),
+  button: createShadow('#7C6AFA', 8, 32, 0.35, 8),
+  modal: createShadow('#000', 16, 48, 0.5, 16),
+  subtle: createShadow('#000', 2, 8, 0.15, 2),
+};
+```
+
+Then replace all shadow props in every component file with:
+```typescript
+import { shadows } from '../../src/utils/shadow';
+
+// In StyleSheet:
+card: {
+  ...shadows.card,
+  // rest of styles
+}
+```
+
+✅ **Verification:** Zero shadow deprecation warnings in console.
+
+---
+
+# SECTION 3 — SUPABASE: CREATE ALL REQUIRED TABLES
+
+Run this SQL in Supabase SQL Editor (Dashboard → SQL Editor → New query).
+**Run the entire block at once:**
+
+```sql
+-- Enable UUID extension
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ─────────────────────────────────────────
+-- TABLE: users
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.users (
+  id            UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email         TEXT UNIQUE NOT NULL,
+  handle        TEXT UNIQUE NOT NULL CHECK (handle ~ '^[a-z0-9_-]{3,20}$'),
+  plan          TEXT NOT NULL DEFAULT 'free' CHECK (plan IN ('free', 'pro', 'university')),
+  university_id UUID,
+  push_token    TEXT,
+  onboarding_completed BOOLEAN DEFAULT FALSE,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own record" ON public.users
+  FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can update own record" ON public.users
+  FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert own record" ON public.users
+  FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- ─────────────────────────────────────────
+-- TABLE: profiles
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID UNIQUE NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  full_name       TEXT,
+  tagline         TEXT,
+  bio             TEXT,
+  location        TEXT,
+  avatar_url      TEXT,
+  resume_url      TEXT,
+  theme           TEXT DEFAULT 'minimal-dark',
+  accent_color    TEXT DEFAULT '#7C6AFA',
+  visibility      TEXT DEFAULT 'public' CHECK (visibility IN ('public', 'private', 'unlisted')),
+  social_github   TEXT,
+  social_linkedin TEXT,
+  social_twitter  TEXT,
+  social_website  TEXT,
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Public profiles viewable by everyone" ON public.profiles
+  FOR SELECT USING (visibility = 'public' OR auth.uid() = user_id);
+CREATE POLICY "Users manage own profile" ON public.profiles
+  FOR ALL USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- TABLE: education
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.education (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id       UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  institution   TEXT NOT NULL,
+  degree        TEXT,
+  field         TEXT,
+  start_year    INT,
+  end_year      INT,
+  gpa           NUMERIC(3,2),
+  description   TEXT,
+  is_current    BOOLEAN DEFAULT FALSE,
+  display_order INT DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.education ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Education viewable if profile public" ON public.education
+  FOR SELECT USING (
+    auth.uid() = user_id OR
+    EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = education.user_id AND p.visibility = 'public')
+  );
+CREATE POLICY "Users manage own education" ON public.education
+  FOR ALL USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- TABLE: experiences
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.experiences (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id       UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  company       TEXT NOT NULL,
+  role          TEXT NOT NULL,
+  start_date    DATE,
+  end_date      DATE,
+  description   TEXT,
+  location      TEXT,
+  is_current    BOOLEAN DEFAULT FALSE,
+  display_order INT DEFAULT 0,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.experiences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Experiences viewable if profile public" ON public.experiences
+  FOR SELECT USING (
+    auth.uid() = user_id OR
+    EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = experiences.user_id AND p.visibility = 'public')
+  );
+CREATE POLICY "Users manage own experiences" ON public.experiences
+  FOR ALL USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- TABLE: projects
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.projects (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  title           TEXT NOT NULL,
+  description     TEXT,
+  tech_stack      TEXT[] DEFAULT '{}',
+  live_url        TEXT,
+  github_url      TEXT,
+  image_url       TEXT,
+  pdf_url         TEXT,
+  featured        BOOLEAN DEFAULT FALSE,
+  display_order   INT DEFAULT 0,
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Projects viewable if profile public" ON public.projects
+  FOR SELECT USING (
+    auth.uid() = user_id OR
+    EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = projects.user_id AND p.visibility = 'public')
+  );
+CREATE POLICY "Users manage own projects" ON public.projects
+  FOR ALL USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- TABLE: skills
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.skills (
+  id        UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id   UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  name      TEXT NOT NULL,
+  category  TEXT CHECK (category IN ('language', 'framework', 'tool', 'soft', 'cloud', 'custom')),
+  level     TEXT DEFAULT 'intermediate' CHECK (level IN ('beginner', 'intermediate', 'expert'))
+);
+
+ALTER TABLE public.skills ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Skills viewable if profile public" ON public.skills
+  FOR SELECT USING (
+    auth.uid() = user_id OR
+    EXISTS (SELECT 1 FROM public.profiles p WHERE p.user_id = skills.user_id AND p.visibility = 'public')
+  );
+CREATE POLICY "Users manage own skills" ON public.skills
+  FOR ALL USING (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- TABLE: site_builds
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.site_builds (
+  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id           UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  status            TEXT NOT NULL DEFAULT 'queued'
+                    CHECK (status IN ('queued', 'building', 'testing', 'deployed', 'failed')),
+  site_url          TEXT,
+  rating            NUMERIC(3,1),
+  lighthouse_perf   INT,
+  lighthouse_a11y   INT,
+  lighthouse_seo    INT,
+  build_time_ms     INT,
+  ai_tokens_used    INT,
+  error_log         TEXT,
+  manifest          JSONB,
+  triggered_by      TEXT DEFAULT 'onboarding'
+                    CHECK (triggered_by IN ('onboarding', 'update', 'manual', 'scheduled')),
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  completed_at      TIMESTAMPTZ
+);
+
+ALTER TABLE public.site_builds ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can see own builds" ON public.site_builds
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own builds" ON public.site_builds
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- ─────────────────────────────────────────
+-- TABLE: site_analytics
+-- ─────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.site_analytics (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id         UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  visitor_ip_hash TEXT,
+  referrer        TEXT,
+  company_domain  TEXT,
+  country_code    TEXT,
+  section_viewed  TEXT,
+  viewed_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE public.site_analytics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read own analytics" ON public.site_analytics
+  FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Service role can insert analytics" ON public.site_analytics
+  FOR INSERT WITH CHECK (TRUE);
+
+-- ─────────────────────────────────────────
+-- UPDATED_AT TRIGGER FUNCTION
+-- ─────────────────────────────────────────
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
+CREATE TRIGGER update_profiles_updated_at
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_users_updated_at ON public.users;
+CREATE TRIGGER update_users_updated_at
+  BEFORE UPDATE ON public.users
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_projects_updated_at ON public.projects;
+CREATE TRIGGER update_projects_updated_at
+  BEFORE UPDATE ON public.projects
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+**Then create Storage Buckets** (Supabase Dashboard → Storage → New bucket):
+
+Run this SQL for buckets:
+```sql
+-- Only run if buckets don't already exist
+INSERT INTO storage.buckets (id, name, public)
+VALUES 
+  ('avatars', 'avatars', true),
+  ('projects', 'projects', true),
+  ('resumes', 'resumes', false)
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage policies
+CREATE POLICY "Avatar images publicly readable" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+CREATE POLICY "Users upload own avatar" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Users update own avatar" ON storage.objects
+  FOR UPDATE USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Users delete own avatar" ON storage.objects
+  FOR DELETE USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Project files publicly readable" ON storage.objects
+  FOR SELECT USING (bucket_id = 'projects');
+CREATE POLICY "Users upload own project files" ON storage.objects
+  FOR INSERT WITH CHECK (bucket_id = 'projects' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+CREATE POLICY "Users access own resumes only" ON storage.objects
+  FOR ALL USING (bucket_id = 'resumes' AND auth.uid()::text = (storage.foldername(name))[1]);
+```
+
+**Enable Realtime** for `site_builds` table:
+- Supabase Dashboard → Database → Replication → Tables
+- Toggle ON the `site_builds` table
+
+✅ **Verification:** Supabase Dashboard → Table Editor shows all 7 tables. Storage shows 3 buckets.
+
+---
+
+# SECTION 4 — LOGICAL BUGS (App breaks silently)
+
+## Bug 4.1 — Auth user creation race condition
+
+**Problem:** When a new Google OAuth user signs in, the `onAuthStateChange` listener fires before the user's record can be created in `public.users`. The app tries to route them to `/handle` but there's no guard to prevent multiple rapid fires.
+
+**Fix** — Add debounce and idempotency check in `app/_layout.tsx`:
+
+```typescript
+// Add at the top of the auth state change handler:
+let isHandlingAuth = false;
+
+const { data: { subscription } } = supabase.auth.onAuthStateChange(
+  async (event, session) => {
+    if (isHandlingAuth) return; // prevent re-entry
+    isHandlingAuth = true;
+
+    try {
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        const { data: userRecord } = await supabase
+          .from('users')
+          .select('id, handle, plan, onboarding_completed, push_token')
+          .eq('id', session.user.id)
+          .maybeSingle(); // use maybeSingle() not single() — won't throw on no record
+
+        if (userRecord) {
+          setUserRecord(userRecord);
+          if (userRecord.onboarding_completed) {
+            router.replace('/(main)');
+          } else {
+            router.replace('/(onboarding)/resume');
+          }
+        } else {
+          router.replace('/(auth)/handle');
+        }
+      } else {
+        setUserRecord(null);
+        router.replace('/(auth)');
+      }
+    } finally {
+      isHandlingAuth = false;
+      setLoading(false);
+    }
+  }
+);
+```
+
+## Bug 4.2 — Handle creation doesn't create a profile row
+
+**Problem:** `app/(auth)/handle.tsx` inserts into `public.users` but does NOT create the corresponding `public.profiles` row. Every downstream query (`profiles.avatar_url`, `profiles.theme`, etc.) will return null and potentially crash the dashboard.
+
+**Fix** — In the handle claim handler, always create the profile atomically:
+
+```typescript
+const handleClaimHandle = async () => {
+  setIsLoading(true);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // Use a transaction-like approach: insert both or fail
+  const { error: userError } = await supabase
+    .from('users')
+    .insert({
+      id: user.id,
+      email: user.email!,
+      handle: handle.toLowerCase().trim(),
+      plan: 'free',
+      onboarding_completed: false,
+    });
+
+  if (userError) {
+    // Check if it's a uniqueness violation
+    if (userError.code === '23505') {
+      setError('That handle is already taken. Try another.');
+    } else {
+      setError('Something went wrong. Please try again.');
+    }
+    setIsLoading(false);
+    return;
+  }
+
+  // CRITICAL: create the profiles row too
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .insert({
+      user_id: user.id,
+      theme: 'minimal-dark',
+      accent_color: '#7C6AFA',
+      visibility: 'public',
+    });
+
+  if (profileError) {
+    console.error('Profile creation failed:', profileError);
+    // Non-fatal: profile can be created later. Continue.
+  }
+
+  setIsLoading(false);
+  router.replace('/(onboarding)/resume');
+};
+```
+
+## Bug 4.3 — Onboarding store persists stale data after logout
+
+**Problem:** If a user logs out and a new user logs in on the same device, the Zustand `onboardingStore` (persisted to AsyncStorage) still has the previous user's data. The new user would see someone else's resume data pre-filled.
+
+**Fix** — Clear the onboarding store on logout. In `src/store/authStore.ts`, update the `clear` function:
+
+```typescript
+import { useOnboardingStore } from './onboardingStore';
+import { useBuildStore } from './buildStore';
+
+// Update clear():
+clear: () => {
+  set({ session: null, user: null, userRecord: null });
+  useOnboardingStore.getState().reset();
+  useBuildStore.getState().reset();
+  // Also clear persisted AsyncStorage keys
+  AsyncStorage.multiRemove(['bexo-auth', 'bexo-onboarding']).catch(console.error);
+},
+```
+
+## Bug 4.4 — OTP verification screen has no error recovery
+
+**Problem:** If `supabase.auth.verifyOtp()` fails, the current code clears the OTP and shows an error. But if the user has already used their one valid OTP (expired or used), there's no way to go back and re-enter their email.
+
+**Fix** — Add a "Use a different email" button that appears after 2 failed attempts:
+
+```typescript
+const [failCount, setFailCount] = useState(0);
+
+const handleOtpComplete = async (otp: string) => {
+  setIsVerifying(true);
+
+  const { error } = await supabase.auth.verifyOtp({
+    email: params.email,
+    token: otp,
+    type: 'email',
+  });
+
+  setIsVerifying(false);
+
+  if (error) {
+    triggerShakeAnimation();
+    clearOtp();
+    setFailCount(prev => prev + 1);
+
+    if (failCount >= 1) {
+      setError('Code expired or invalid. Request a new one or use a different email.');
+      setShowAlternativeOptions(true); // renders "← Different email" and "Resend" buttons
+    } else {
+      setError('Invalid code. Please try again.');
+    }
+  }
+};
+```
+
+## Bug 4.5 — Resume upload to edge function exposes anon key in error logs
+
+**Problem:** The `resumeParser.ts` service passes the `EXPO_PUBLIC_SUPABASE_ANON_KEY` directly in the Authorization header. While this is technically correct, the full PDF base64 string is also being sent in a single POST. For large PDFs (>5MB), this will timeout at most edge function providers (50MB limit but 10s timeout).
+
+**Fix** — Upload the PDF to Supabase Storage first, then pass the storage path to the edge function:
+
+```typescript
+// In resumeParser.ts, change the approach:
+export const parseResume = async (
+  storagePath: string, // pass the storage path, not local URI
+  userId: string,
+): Promise<ParsedResume | null> => {
+  const response = await fetch(
+    `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/parse-resume`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({
+        storage_path: storagePath, // edge function fetches from storage directly
+        user_id: userId,
+        provider: 'anthropic', // use anthropic as primary (better PDF support)
+      }),
+    }
+  );
+  // ...
+};
+```
+
+---
+
+# SECTION 5 — TECHNICAL BUGS (Runtime errors)
+
+## Bug 5.1 — Missing package: `base64-arraybuffer`
+
+The `imageService.ts` uses `import { decode } from 'base64-arraybuffer'` but this is not in `package.json`. Run:
+```bash
+npm install base64-arraybuffer
+```
+
+## Bug 5.2 — expo-document-picker not installed
+
+Used in resume upload screen but missing:
+```bash
+npx expo install expo-document-picker
+```
+
+## Bug 5.3 — expo-image-manipulator not installed
+
+Used in imageService.ts but missing:
+```bash
+npx expo install expo-image-manipulator
+```
+
+## Bug 5.4 — expo-notifications not installed
+
+Used in useNotifications hook but missing:
+```bash
+npx expo install expo-notifications
+```
+
+## Bug 5.5 — Run all missing package installs at once
+
+```bash
+npx expo install \
+  expo-auth-session \
+  expo-web-browser \
+  expo-crypto \
+  expo-document-picker \
+  expo-image-manipulator \
+  expo-file-system \
+  expo-notifications \
+  expo-image-picker \
+  @react-native-community/netinfo \
+  @react-native-async-storage/async-storage \
+  @supabase/supabase-js \
+  expo-constants
+
+npm install \
+  zustand \
+  base64-arraybuffer
+```
+
+## Bug 5.6 — Supabase client reads env vars incorrectly
+
+**Problem:** The supabase client in `src/lib/supabase.ts` reads from `Constants.expoConfig?.extra` but `app.json` currently stores literal strings `"process.env.EXPO_PUBLIC_SUPABASE_URL"` instead of actual values.
+
+**Fix** — Update `app.json` to use the correct format:
+
+```json
+{
+  "expo": {
+    "extra": {
+      "supabaseUrl": "EXPO_PUBLIC_SUPABASE_URL_PLACEHOLDER",
+      "supabaseAnonKey": "EXPO_PUBLIC_SUPABASE_ANON_KEY_PLACEHOLDER"
+    }
+  }
+}
+```
+
+Then update `src/lib/supabase.ts` to read directly from `process.env` first (works with Expo SDK 49+):
+
+```typescript
+import { createClient } from '@supabase/supabase-js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Missing Supabase environment variables.\n' +
+    'Ensure EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY are set in .env.local'
+  );
+}
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    storage: AsyncStorage,
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
+```
+
+## Bug 5.7 — Missing `.env.local` — app will crash on startup
+
+Create `.env.local` in the project root:
+
+```bash
+# Supabase — get these from Supabase Dashboard → Settings → API
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key_here
+
+# Google OAuth Client IDs — from Google Cloud Console
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID=your_ios_client_id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=your_android_client_id.apps.googleusercontent.com
+EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID=your_web_client_id.apps.googleusercontent.com
+
+# OpenAI — for resume parsing edge function
+OPENAI_API_KEY=sk-your_openai_key
+
+# Anthropic — fallback resume parsing
+ANTHROPIC_API_KEY=sk-ant-your_anthropic_key
+
+# n8n — portfolio generation webhook
+N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/bexo
+N8N_WEBHOOK_SECRET=generate_a_random_secret_here
+
+# App URLs
+EXPO_PUBLIC_APP_URL=https://bexo.app
+EXPO_PUBLIC_PORTFOLIO_BASE_URL=https://bexo.app
+```
+
+Add `.env.local` to `.gitignore` if not already there:
+```
+.env.local
+.env*.local
+```
+
+---
+
+# SECTION 6 — UI / UX BUGS
+
+## Bug 6.1 — Cross-Origin-Opener-Policy warnings flood the console
+
+**Problem:** The `window.closed` calls in the OAuth flow produce repeated COOP warnings on web. These don't break the app but pollute the console.
+
+**Fix** — Add this to `app/(auth)/index.tsx` before the component:
+
+```typescript
+// Suppress COOP warnings in development on web
+if (typeof window !== 'undefined' && __DEV__) {
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    if (args[0]?.includes?.('Cross-Origin-Opener-Policy')) return;
+    originalWarn(...args);
+  };
+}
+```
+
+## Bug 6.2 — No loading skeleton on Dashboard
+
+**Problem:** The dashboard fetches data after mount, leaving a blank/white flash before content renders.
+
+**Fix** — Add shimmer skeletons. Create `src/components/SkeletonLoader.tsx`:
+
+```typescript
+import { View, Animated, StyleSheet } from 'react-native';
+import { useEffect, useRef } from 'react';
+
+interface SkeletonProps {
+  width?: number | string;
+  height?: number;
+  borderRadius?: number;
+}
+
+export const Skeleton = ({ width = '100%', height = 16, borderRadius = 8 }: SkeletonProps) => {
+  const opacity = useRef(new Animated.Value(0.3)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(opacity, { toValue: 0.7, duration: 800, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        width: width as any,
+        height,
+        borderRadius,
+        backgroundColor: '#7C6AFA',
+        opacity,
+      }}
+    />
+  );
+};
+```
+
+Use in dashboard:
+```typescript
+if (dashboardData.isLoading) {
+  return (
+    <View style={{ gap: 16, padding: 24 }}>
+      <Skeleton height={80} borderRadius={16} />
+      <Skeleton height={80} borderRadius={16} />
+      <Skeleton width="60%" height={24} />
+      <Skeleton height={120} borderRadius={16} />
+    </View>
+  );
+}
+```
+
+## Bug 6.3 — Handle input allows uppercase which then fails the DB constraint
+
+**Problem:** The handle input in `app/(auth)/handle.tsx` doesn't auto-lowercase. A user types "KavinBalaji" → DB `CHECK (handle ~ '^[a-z0-9_-]{3,20}$')` rejects it. The error message shown is a raw Postgres error, not friendly text.
+
+**Fix:**
+```typescript
+// In the TextInput onChange:
+onChangeText={(text) => {
+  const sanitized = text
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '') // strip invalid chars in real-time
+    .slice(0, 20); // enforce max length
+  setHandle(sanitized);
+}}
+```
+
+## Bug 6.4 — No empty state on Dashboard analytics section
+
+**Problem:** When a new user has zero portfolio views, the analytics section renders an empty list with no message, which looks broken.
+
+**Fix** — Add empty state:
+```typescript
+{dashboardData.recentActivity.length === 0 ? (
+  <View style={styles.emptyState}>
+    <Text style={styles.emptyEmoji}>👀</Text>
+    <Text style={styles.emptyTitle}>No views yet</Text>
+    <Text style={styles.emptySubtitle}>Share your portfolio to start tracking who's checking you out</Text>
+    <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+      <Text style={styles.shareButtonText}>Share portfolio</Text>
+    </TouchableOpacity>
+  </View>
+) : (
+  // activity list
+)}
+```
+
+## Bug 6.5 — OTP boxes don't handle paste
+
+**Problem:** On most devices, tapping "Paste" after copying an OTP from a notification doesn't work — each box only accepts single keystrokes.
+
+**Fix** — Add paste handler to the first OTP box:
+
+```typescript
+// In the first OTP TextInput:
+onChangeText={(text) => {
+  // Handle paste of full 6-digit code
+  if (text.length === 6 && /^\d{6}$/.test(text)) {
+    const digits = text.split('');
+    setOtpValues(digits);
+    // Auto-verify immediately on paste
+    handleOtpComplete(text);
+    return;
+  }
+  // Normal single digit entry
+  handleSingleDigit(0, text);
+}},
+```
+
+---
+
+# SECTION 7 — PERFORMANCE OPTIMIZATIONS
+
+## Optimization 7.1 — Memoize heavy list renders
+
+In `app/(onboarding)/cards.tsx` and `app/(main)/index.tsx`, wrap list item components with `React.memo`:
+
+```typescript
+const ActivityItem = React.memo(({ item }: { item: ActivityEvent }) => (
+  <View style={styles.activityItem}>
+    {/* ... */}
+  </View>
+));
+```
+
+## Optimization 7.2 — Debounce handle availability check
+
+The current handle check likely fires on every keystroke — that's a Supabase query on every character.
+
+**Fix:**
+```typescript
+import { useCallback, useEffect, useState } from 'react';
+
+// Debounce helper
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const handler = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(handler);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
+// In handle screen:
+const debouncedHandle = useDebounce(handle, 500);
+
+useEffect(() => {
+  if (debouncedHandle.length >= 3) {
+    checkHandleAvailability(debouncedHandle);
+  }
+}, [debouncedHandle]);
+```
+
+## Optimization 7.3 — Parallel data fetching in Dashboard
+
+Replace sequential awaits with `Promise.all`:
+
+```typescript
+// BAD — sequential, slow:
+const analytics = await supabase.from('site_analytics').select(...)...;
+const build = await supabase.from('site_builds').select(...)...;
+
+// GOOD — parallel, 2x faster:
+const [analyticsResult, buildResult] = await Promise.all([
+  supabase.from('site_analytics').select(...).eq('user_id', user.id).order('viewed_at', { ascending: false }).limit(20),
+  supabase.from('site_builds').select('site_url, rating, status, created_at').eq('user_id', user.id).eq('status', 'deployed').order('created_at', { ascending: false }).limit(1).maybeSingle(),
+]);
+```
+
+## Optimization 7.4 — Compress images before upload
+
+Ensure `imageService.ts` is actually compressing before upload (review the manipulator call):
+
+```typescript
+const compressed = await ImageManipulator.manipulateAsync(
+  localUri,
+  [{ resize: { width: bucket === 'avatars' ? 400 : 1200 } }],
+  {
+    compress: 0.80,           // 80% quality — good balance
+    format: ImageManipulator.SaveFormat.JPEG,
+    base64: false,             // don't base64 here, read separately
+  }
+);
+// Target: avatar < 100KB, project image < 300KB
+```
+
+## Optimization 7.5 — Cancel Supabase realtime subscriptions on unmount
+
+Every screen that subscribes to Supabase Realtime MUST clean up:
+
+```typescript
+useEffect(() => {
+  const channel = supabase.channel('...').on(...).subscribe();
+  
+  return () => {
+    // CRITICAL: Always remove channel on unmount
+    supabase.removeChannel(channel);
+  };
+}, []);
+```
+
+Audit every file that uses `.channel()` and verify it has this cleanup.
+
+---
+
+# SECTION 8 — MISSING FEATURES FROM THE ORIGINAL PLAN
+
+The following features were specified in the Phase 2 build prompt but are **not yet implemented**:
+
+## Missing 8.1 — Onboarding progress resume
+
+If a user closes the app mid-onboarding, they should land back on the card they were on, not Card 1.
+
+**Implement in `app/(onboarding)/cards.tsx`:**
+
+```typescript
+// Determine start card from persisted store
+const getResumedCardIndex = (store: OnboardingState): number => {
+  if (store.skills.length > 0) return 10;         // stopped at theme card
+  if (store.projects.length > 0) return 8;         // stopped at skills card
+  if (store.experiences.length > 0 || store.isFresher) return 6;
+  if (store.gradYear) return 4;
+  if (store.university) return 3;
+  if (store.roles.length > 0) return 2;
+  if (store.fullName) return 1;
+  return 0;
+};
+
+// In component init:
+const savedProgress = useOnboardingStore.getState();
+const [currentCard, setCurrentCard] = useState(
+  savedProgress.resumeExtracted || savedProgress.fullName
+    ? getResumedCardIndex(savedProgress)
+    : 0
+);
+```
+
+## Missing 8.2 — Build timeout handler
+
+After 3 minutes on the generating screen, show a delay message:
+
+```typescript
+// In app/generating.tsx:
+const [showDelayMessage, setShowDelayMessage] = useState(false);
+
+useEffect(() => {
+  const threeMin = setTimeout(() => {
+    if (buildStore.status !== 'deployed' && buildStore.status !== 'failed') {
+      setShowDelayMessage(true);
+    }
+  }, 3 * 60 * 1000);
+
+  const fiveMin = setTimeout(() => {
+    if (buildStore.status !== 'deployed') {
+      buildStore.setStatus('failed', 'Build timed out. Tap to retry.');
+    }
+  }, 5 * 60 * 1000);
+
+  return () => {
+    clearTimeout(threeMin);
+    clearTimeout(fiveMin);
+  };
+}, []);
+
+// In JSX, show this when showDelayMessage is true:
+// "This is taking a bit longer than usual — your portfolio is being perfected ✨"
+```
+
+## Missing 8.3 — Offline detection toast
+
+```typescript
+// In app/_layout.tsx, add:
+import NetInfo from '@react-native-community/netinfo';
+import { useState, useEffect } from 'react';
+
+const [isOnline, setIsOnline] = useState(true);
+
+useEffect(() => {
+  const unsubscribe = NetInfo.addEventListener(state => {
+    const online = state.isConnected && state.isInternetReachable;
+    setIsOnline(!!online);
+  });
+  return () => unsubscribe();
+}, []);
+
+// Show a persistent bottom toast when !isOnline:
+// "No internet connection — changes saved locally"
+// Styled using the BEXO design system: #1A1A24 bg, coral accent border
+```
+
+## Missing 8.4 — Portfolio share sheet
+
+The Success screen and Dashboard both need a native share sheet:
+
+```typescript
+import { Share } from 'react-native';
+
+const handleShare = async (siteUrl: string, handle: string) => {
+  await Share.share({
+    message: `Check out my portfolio: ${siteUrl}`,
+    url: siteUrl,
+    title: `${handle}'s Portfolio — BEXO`,
+  });
+};
+```
+
+## Missing 8.5 — Error boundary
+
+Wrap `app/_layout.tsx` content in an error boundary to prevent white-screen crashes:
+
+```typescript
+import React from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
+import * as Updates from 'expo-updates';
+
+class AppErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null }
+> {
+  state = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: '#0A0A0F', alignItems: 'center', justifyContent: 'center', padding: 32 }}>
+          <Text style={{ color: '#F0EFFF', fontSize: 24, fontFamily: 'Syne-Bold', marginBottom: 12 }}>
+            Something broke
+          </Text>
+          <Text style={{ color: '#8888AA', fontSize: 14, textAlign: 'center', marginBottom: 32 }}>
+            {this.state.error?.message ?? 'An unexpected error occurred'}
+          </Text>
+          <TouchableOpacity
+            style={{ backgroundColor: '#7C6AFA', paddingHorizontal: 32, paddingVertical: 16, borderRadius: 16 }}
+            onPress={() => Updates.reloadAsync()}
+          >
+            <Text style={{ color: '#F0EFFF', fontFamily: 'DMSans-SemiBold', fontSize: 15 }}>
+              Restart app
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+// Wrap root layout:
+export default function RootLayout() {
+  return (
+    <AppErrorBoundary>
+      {/* ... rest of layout */}
+    </AppErrorBoundary>
+  );
+}
+```
+
+---
+
+# SECTION 9 — SUPABASE EDGE FUNCTION: parse-resume
+
+Deploy the resume parser edge function. Create the file at `supabase/functions/parse-resume/index.ts`:
+
+```typescript
+import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+const EXTRACTION_PROMPT = `You are a precise resume data extractor. Extract structured data from the provided resume PDF.
+Return ONLY a valid JSON object — no markdown, no code fences, no explanation.
+Omit any field you cannot find (do not return null).
+
+Extract:
+{
+  "fullName": "string",
+  "roles": ["string - 1 or 2 job titles"],
+  "bio": "string - 2-3 sentence professional summary",
+  "location": "string - City, Country",
+  "university": "string",
+  "degree": "string - e.g. B.Tech",
+  "field": "string - e.g. Computer Science",
+  "gradYear": "string - 4-digit year",
+  "socialGithub": "string - username only",
+  "socialLinkedin": "string - slug only",
+  "experiences": [{"company":"","role":"","startDate":"YYYY-MM","endDate":"YYYY-MM or null","isCurrent":false,"description":""}],
+  "projects": [{"title":"","description":"","techStack":[],"githubUrl":"","liveUrl":""}],
+  "skills": [{"name":"","category":"language|framework|tool|soft|cloud|custom"}]
+}
+
+Rules: max 4 experiences, 4 projects, 20 skills. Never invent information.`;
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { storage_path, user_id, provider = 'anthropic' } = await req.json();
+
+    if (!storage_path || !user_id) {
+      return new Response(JSON.stringify({ error: 'Missing storage_path or user_id' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Fetch PDF from Supabase Storage using service role
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    );
+
+    const { data: fileData, error: downloadError } = await supabase.storage
+      .from('resumes')
+      .download(storage_path);
+
+    if (downloadError || !fileData) {
+      throw new Error(`Failed to download resume: ${downloadError?.message}`);
+    }
+
+    const arrayBuffer = await fileData.arrayBuffer();
+    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+
+    let result: string;
+
+    if (provider === 'openai') {
+      const openaiKey = Deno.env.get('OPENAI_API_KEY')!;
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
+        body: JSON.stringify({
+          model: 'gpt-4o',
+          max_tokens: 2000,
+          messages: [
+            { role: 'system', content: EXTRACTION_PROMPT },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Extract all data from this resume PDF.' },
+                { type: 'image_url', image_url: { url: `data:application/pdf;base64,${base64Pdf}`, detail: 'high' } },
+              ],
+            },
+          ],
+        }),
+      });
+      const data = await response.json();
+      result = data.choices?.[0]?.message?.content;
+      if (!result) throw new Error('OpenAI returned empty response');
+    } else {
+      // Anthropic Claude (primary)
+      const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')!;
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': anthropicKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          system: EXTRACTION_PROMPT,
+          messages: [{
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: { type: 'base64', media_type: 'application/pdf', data: base64Pdf },
+              },
+              { type: 'text', text: 'Extract all resume data from this document.' },
+            ],
+          }],
+        }),
+      });
+      const data = await response.json();
+      result = data.content?.[0]?.text;
+      if (!result) throw new Error('Anthropic returned empty response');
+    }
+
+    // Validate parseable JSON
+    const parsed = JSON.parse(result);
+
+    return new Response(JSON.stringify({ result: JSON.stringify(parsed) }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+
+  } catch (err) {
+    console.error('parse-resume error:', err);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
+  }
+});
+```
+
+**Deploy:**
+```bash
+# Install Supabase CLI if not installed
+npm install -g supabase
+
+# Login and link project
+supabase login
+supabase link --project-ref YOUR_PROJECT_REF
+
+# Deploy edge function
+supabase functions deploy parse-resume
+
+# Set secrets (replace with real values)
+supabase secrets set \
+  OPENAI_API_KEY=sk-your_key \
+  ANTHROPIC_API_KEY=sk-ant-your_key \
+  SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+```
+
+✅ **Verification:** Go to Supabase Dashboard → Edge Functions → `parse-resume` shows as "Active"
+
+---
+
+# SECTION 10 — FINAL VERIFICATION CHECKLIST
+
+Run through every item before considering the fix complete:
+
+### Blocking Issues
+- [ ] App compiles without errors (no red screen)
+- [ ] All packages installed (run `npx expo install --check`)
+- [ ] `.env.local` present with real Supabase URL and anon key
+- [ ] Zero `shadow*` deprecation warnings in console
+- [ ] Zero `expo-auth-session` module resolution errors
+
+### Supabase
+- [ ] All 7 tables visible in Supabase Dashboard → Table Editor
+- [ ] RLS enabled (green shield icon) on all tables
+- [ ] 3 storage buckets created (avatars, projects, resumes)
+- [ ] `site_builds` table has Realtime toggled ON
+- [ ] `parse-resume` edge function shows as Active
+- [ ] Edge function secrets set (OPENAI_API_KEY, ANTHROPIC_API_KEY)
+
+### Authentication
+- [ ] Email OTP: enter email → 6-digit code arrives in inbox
+- [ ] OTP: correct code → session created → navigated to Handle screen
+- [ ] OTP: wrong code → shake animation → error shown
+- [ ] Google: button press → browser opens → after login → back to app
+- [ ] Handle: typing auto-lowercases and strips invalid characters
+- [ ] Handle: availability check fires after 500ms pause (not every keystroke)
+- [ ] After handle claimed: row in `public.users` AND `public.profiles` both created
+- [ ] Logout: onboarding store cleared, navigated back to login
+
+### Onboarding
+- [ ] Resume picker opens (PDF and DOCX)
+- [ ] Upload shows progress
+- [ ] AI extraction fills cards with "From resume" badges
+- [ ] If extraction fails: manual mode continues normally
+- [ ] Close app mid-onboarding → reopen → resumes on correct card
+- [ ] Final submit → all 6 tables populated in Supabase
+
+### Dashboard
+- [ ] No blank flash on load (skeleton shows)
+- [ ] Zero views: empty state shown with "Share portfolio" button
+- [ ] Analytics counter updates in real-time when portfolio is viewed
+
+### General
+- [ ] Turn off WiFi → offline toast appears
+- [ ] Force-close app during any screen → no data loss
+- [ ] Build timeout: delay message after 3 minutes
+- [ ] All error states have a "Try again" button
+
+---
+
+# SECTION 11 — PRIORITY ORDER (Do in this exact sequence)
+
+1. **Section 1** — Install `expo-auth-session` and fix the blocking crash
+2. **Section 3** — Run the Supabase SQL to create all tables
+3. **Section 7, Bug 5.7** — Create `.env.local` with real credentials
+4. **Section 5, Bug 5.5** — Install all missing packages in one command
+5. **Section 5, Bug 5.6** — Fix supabase client env var reading
+6. **Section 4, Bug 4.2** — Fix handle creation to also create profile row
+7. **Section 4, Bug 4.1** — Fix auth race condition with debounce
+8. **Section 9** — Deploy `parse-resume` edge function
+9. **Section 4, Bug 4.3** — Fix onboarding store clearing on logout
+10. **Section 6** — Fix all UI bugs (shadow warnings, handle lowercase, OTP paste)
+11. **Section 8** — Implement missing features (timeout, offline, share, error boundary)
+12. **Section 7** — Apply performance optimizations
+13. **Section 10** — Run full verification checklist
+
+---
+
+*Generated by comprehensive audit of BEXO codebase against Phase 1 design spec and Phase 2 build spec.*
+*Repository: https://github.com/Kavin001K/BEXO*

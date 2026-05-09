@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { RebuildModal } from "@/components/portfolio/RebuildModal";
 import { SkillTag } from "@/components/ui/SkillTag";
 import { useColors } from "@/hooks/useColors";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
@@ -24,25 +25,18 @@ export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { profile, education, experiences, projects, skills } = useProfileStore();
-  const { buildStatus, portfolioUrl, triggerBuild } = usePortfolioStore();
+  const { buildStatus, portfolioUrl } = usePortfolioStore();
   const [activeTab, setActiveTab] = useState<TabId>("overview");
-  const [rebuilding, setRebuilding] = useState(false);
+  const [showRebuild, setShowRebuild] = useState(false);
 
   const TABS: { id: TabId; label: string }[] = [
-    { id: "overview", label: "Overview" },
+    { id: "overview",   label: "Overview"   },
     { id: "experience", label: "Experience" },
-    { id: "projects", label: "Projects" },
-    { id: "skills", label: "Skills" },
+    { id: "projects",   label: "Projects"   },
+    { id: "skills",     label: "Skills"     },
   ];
 
-  const handleRebuild = async () => {
-    if (!profile?.id) return;
-    setRebuilding(true);
-    await triggerBuild(profile.id);
-    setRebuilding(false);
-  };
-
-  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
 
   return (
@@ -59,26 +53,26 @@ export default function PortfolioScreen() {
           <Text style={[styles.pageTitle, { color: colors.foreground }]}>Portfolio</Text>
           <View style={styles.headerActions}>
             <TouchableOpacity
-              style={[styles.editBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => router.push("/(main)/edit-profile")}
             >
               <Feather name="edit-2" size={14} color={colors.foreground} />
-              <Text style={[styles.editLabel, { color: colors.foreground }]}>Edit</Text>
+              <Text style={[styles.actionLabel, { color: colors.foreground }]}>Edit</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.rebuildBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
-              onPress={handleRebuild}
-              disabled={rebuilding || buildStatus === "building"}
+              style={[styles.actionBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
+              onPress={() => setShowRebuild(true)}
+              disabled={buildStatus === "building"}
             >
               <Feather name="refresh-cw" size={14} color={colors.primary} />
-              <Text style={[styles.rebuildLabel, { color: colors.primary }]}>
-                {rebuilding ? "Rebuilding..." : "Rebuild"}
+              <Text style={[styles.actionLabel, { color: colors.primary }]}>
+                {buildStatus === "building" ? "Building…" : "Rebuild"}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Hero */}
+        {/* Hero card */}
         <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <LinearGradient
             colors={["#7C6AFA22", "#FA6A6A11"]}
@@ -86,7 +80,6 @@ export default function PortfolioScreen() {
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-          {/* Avatar */}
           <View style={styles.heroTop}>
             <View style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
               {profile?.avatar_url ? (
@@ -107,9 +100,11 @@ export default function PortfolioScreen() {
           <Text style={[styles.heroName, { color: colors.foreground }]}>
             {profile?.full_name ?? "Your Name"}
           </Text>
-          <Text style={[styles.heroHeadline, { color: colors.mutedForeground }]}>
-            {profile?.headline ?? "Student"}
-          </Text>
+          {profile?.headline ? (
+            <Text style={[styles.heroHeadline, { color: colors.mutedForeground }]}>
+              {profile.headline}
+            </Text>
+          ) : null}
           <Text style={[styles.heroHandle, { color: colors.primary }]}>
             {profile?.handle ?? "handle"}.mybrexo.com
           </Text>
@@ -118,14 +113,33 @@ export default function PortfolioScreen() {
               {profile.bio}
             </Text>
           ) : null}
+          {/* Social links */}
+          {(profile?.github_url || profile?.linkedin_url || profile?.website) && (
+            <View style={styles.socialRow}>
+              {profile.github_url && (
+                <View style={[styles.socialChip, { backgroundColor: colors.surface }]}>
+                  <Feather name="github" size={12} color={colors.mutedForeground} />
+                  <Text style={[styles.socialLabel, { color: colors.mutedForeground }]}>GitHub</Text>
+                </View>
+              )}
+              {profile.linkedin_url && (
+                <View style={[styles.socialChip, { backgroundColor: colors.surface }]}>
+                  <Feather name="linkedin" size={12} color={colors.primary} />
+                  <Text style={[styles.socialLabel, { color: colors.primary }]}>LinkedIn</Text>
+                </View>
+              )}
+              {profile.website && (
+                <View style={[styles.socialChip, { backgroundColor: colors.surface }]}>
+                  <Feather name="globe" size={12} color={colors.mutedForeground} />
+                  <Text style={[styles.socialLabel, { color: colors.mutedForeground }]}>Website</Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
 
         {/* Tabs */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabs}
-        >
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
           {TABS.map((tab) => (
             <TouchableOpacity
               key={tab.id}
@@ -133,17 +147,12 @@ export default function PortfolioScreen() {
                 styles.tab,
                 {
                   backgroundColor: activeTab === tab.id ? colors.primary : colors.surface,
-                  borderColor: activeTab === tab.id ? colors.primary : colors.border,
+                  borderColor:     activeTab === tab.id ? colors.primary : colors.border,
                 },
               ]}
               onPress={() => setActiveTab(tab.id)}
             >
-              <Text
-                style={[
-                  styles.tabLabel,
-                  { color: activeTab === tab.id ? "#fff" : colors.mutedForeground },
-                ]}
-              >
+              <Text style={[styles.tabLabel, { color: activeTab === tab.id ? "#fff" : colors.mutedForeground }]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
@@ -153,21 +162,14 @@ export default function PortfolioScreen() {
         {/* Tab content */}
         {activeTab === "overview" && (
           <View style={styles.section}>
-            {/* Education */}
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Education</Text>
             {education.length === 0 ? (
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No education added yet
-              </Text>
+              <EmptySection label="No education added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
             ) : (
               education.map((edu, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.itemTitle, { color: colors.foreground }]}>
-                    {edu.institution}
-                  </Text>
-                  <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>
-                    {edu.degree} in {edu.field}
-                  </Text>
+                  <Text style={[styles.itemTitle, { color: colors.foreground }]}>{edu.institution}</Text>
+                  <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{edu.degree} in {edu.field}</Text>
                   <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
                     {edu.start_year} — {edu.end_year ?? "Present"}
                   </Text>
@@ -180,9 +182,7 @@ export default function PortfolioScreen() {
         {activeTab === "experience" && (
           <View style={styles.section}>
             {experiences.length === 0 ? (
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No experience added yet
-              </Text>
+              <EmptySection label="No experience added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
             ) : (
               experiences.map((exp, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -192,9 +192,7 @@ export default function PortfolioScreen() {
                     {exp.start_date} — {exp.is_current ? "Present" : exp.end_date ?? ""}
                   </Text>
                   {exp.description ? (
-                    <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>
-                      {exp.description}
-                    </Text>
+                    <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>{exp.description}</Text>
                   ) : null}
                 </View>
               ))
@@ -205,23 +203,17 @@ export default function PortfolioScreen() {
         {activeTab === "projects" && (
           <View style={styles.section}>
             {projects.length === 0 ? (
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No projects added yet
-              </Text>
+              <EmptySection label="No projects added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
             ) : (
               projects.map((proj, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{proj.title}</Text>
                   {proj.description ? (
-                    <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>
-                      {proj.description}
-                    </Text>
+                    <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>{proj.description}</Text>
                   ) : null}
                   {proj.tech_stack?.length > 0 && (
                     <View style={styles.techRow}>
-                      {proj.tech_stack.map((t) => (
-                        <SkillTag key={t} label={t} size="sm" />
-                      ))}
+                      {proj.tech_stack.map((t) => <SkillTag key={t} label={t} size="sm" />)}
                     </View>
                   )}
                   <View style={styles.linkRow}>
@@ -247,22 +239,47 @@ export default function PortfolioScreen() {
         {activeTab === "skills" && (
           <View style={styles.section}>
             {skills.length === 0 ? (
-              <Text style={[styles.emptyText, { color: colors.mutedForeground }]}>
-                No skills added yet
-              </Text>
+              <EmptySection label="No skills added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
             ) : (
               <View style={styles.tagRow}>
-                {skills.map((s, i) => (
-                  <SkillTag key={i} label={s.name} />
-                ))}
+                {skills.map((s, i) => <SkillTag key={i} label={s.name} />)}
               </View>
             )}
           </View>
         )}
       </ScrollView>
+
+      <RebuildModal visible={showRebuild} onClose={() => setShowRebuild(false)} />
     </View>
   );
 }
+
+function EmptySection({
+  label, onAdd, colors,
+}: { label: string; onAdd: () => void; colors: any }) {
+  return (
+    <View style={emptyStyles.wrap}>
+      <Text style={[emptyStyles.text, { color: colors.mutedForeground }]}>{label}</Text>
+      <TouchableOpacity
+        style={[emptyStyles.btn, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
+        onPress={onAdd}
+      >
+        <Feather name="plus" size={13} color={colors.primary} />
+        <Text style={[emptyStyles.btnLabel, { color: colors.primary }]}>Add now</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const emptyStyles = StyleSheet.create({
+  wrap: { alignItems: "center", padding: 24, gap: 12 },
+  text: { fontSize: 13 },
+  btn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1,
+  },
+  btnLabel: { fontSize: 13, fontWeight: "600" },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -270,58 +287,26 @@ const styles = StyleSheet.create({
   pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   pageTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
   headerActions: { flexDirection: "row", gap: 8 },
-  editBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
+  actionBtn: {
+    flexDirection: "row", alignItems: "center", gap: 6,
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1,
   },
-  editLabel: { fontSize: 13, fontWeight: "600" },
-  rebuildBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  rebuildLabel: { fontSize: 13, fontWeight: "600" },
+  actionLabel: { fontSize: 13, fontWeight: "600" },
   heroCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 20,
-    gap: 6,
-    overflow: "hidden",
+    borderRadius: 20, borderWidth: 1, padding: 20, gap: 6, overflow: "hidden",
   },
   heroTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 8,
+    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8,
   },
   avatar: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-    overflow: "hidden",
+    width: 70, height: 70, borderRadius: 35, borderWidth: 2,
+    alignItems: "center", justifyContent: "center", overflow: "hidden",
   },
   avatarImg: { width: 70, height: 70, borderRadius: 35 },
   avatarInitial: { fontSize: 30, fontWeight: "800" },
   liveChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    backgroundColor: "#6AFAD022",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    backgroundColor: "#6AFAD022", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
   },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#6AFAD0" },
   liveChipText: { color: "#6AFAD0", fontSize: 12, fontWeight: "600" },
@@ -329,17 +314,17 @@ const styles = StyleSheet.create({
   heroHeadline: { fontSize: 14 },
   heroHandle: { fontSize: 13, fontWeight: "600" },
   heroBio: { fontSize: 13, lineHeight: 20, marginTop: 4 },
-  tabs: { gap: 8, paddingRight: 20 },
-  tab: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
+  socialRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  socialChip: {
+    flexDirection: "row", alignItems: "center", gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
   },
+  socialLabel: { fontSize: 11, fontWeight: "500" },
+  tabs: { gap: 8, paddingRight: 20 },
+  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
   tabLabel: { fontSize: 13, fontWeight: "600" },
   section: { gap: 10 },
   sectionTitle: { fontSize: 16, fontWeight: "700" },
-  emptyText: { fontSize: 13 },
   itemCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 4 },
   itemTitle: { fontSize: 15, fontWeight: "600" },
   itemSub: { fontSize: 13 },

@@ -1,0 +1,132 @@
+ACTIVATE FULL UI TRANSFORMATION PROTOCOL
+
+ROLE: You are now the Lead UX Director coordinating a team of elite design specialists. Execute a complete, ground-up redesign of my entire web application using ALL available skills in a coordinated multi-agent workflow.
+
+PRIMARY OBJECTIVE: Transform my web app into an experience that feels not just usable, but addictive, emotionally resonant, and psychologically satisfying. Surprise me with innovations I haven't seen before. Make every interaction feel like magic.
+
+MANDATORY SKILL WORKFLOW - Execute in this exact sequence:
+
+PHASE 1: DISCOVERY & AUDIT (Use: impeccable)
+- Run complete /audit on every major screen and component
+- Identify all UX violations, accessibility issues, performance bottlenecks
+- Document cognitive load points and friction areas
+- Flag all generic "AI-looking" design patterns
+- Save findings to AUDIT_REPORT.md
+
+PHASE 2: DESIGN DIRECTION (Use: design-taste-frontend + gpt-taste)
+- Set DESIGN_VARIANCE to maximum (8-10)
+- Apply unconventional layouts that break expectations
+- Use bento grids, asymmetrical compositions, diagonal flows
+- Implement AIDA structure with unexpected visual hierarchy
+- Document design system to DESIGN_SYSTEM.md
+
+PHASE 3: VISUAL PERSONALITY (Choose based on app type - apply elements from ALL)
+- From high-end-visual-design: Add agency-level shadows, precise spacing, luxury typography
+- From minimalist-ui: Implement clean editorial sections with breathing room
+- From industrial-brutalist-ui: Add mechanical accents, Swiss grid moments, terminal-inspired details
+- From gpt-taste: Integrate GSAP motion flourishes and random layout variance
+
+PHASE 4: MOTION & MICRO-INTERACTIONS (Use: emil-design-eng)
+- Every button press: Spring animation (stiffness 300-500, damping 20-30)
+- Page transitions: Orchestrated sequential reveals
+- Hover states: Magnetic, reactive, predictive
+- Scroll effects: Parallax, progressive blur, sticky elements
+- Loading states: Skeleton screens with shimmer to spring-loaded reveals
+- Form inputs: Floating labels that react to focus with elastic motion
+
+PHASE 5: VISUAL GENERATION (Use: imagegen-frontend-web + brandkit)
+- Generate premium hero imagery for each section
+- Create consistent brand identity board
+- Design custom illustrations that match the emotional tone
+- Generate icon system that feels cohesive and bespoke
+
+PHASE 6: PSYCHOLOGICAL DESIGN PRINCIPLES - Apply ALL:
+
+COGNITIVE EASE:
+- Predictable patterns where users expect them (Hick's Law)
+- Progressive disclosure of complex features
+- Chunk information into digestible micro-interactions
+- Autocomplete and intelligent defaults everywhere
+
+EMOTIONAL DESIGN (Visceral, Behavioral, Reflective):
+- Visceral: Stunning visuals within 50ms of page load
+- Behavioral: Delightful micro-feedback on every action
+- Reflective: Personalization that makes users feel understood
+
+DOPAMINE TRIGGERS:
+- Surprise animations on task completion
+- Subtle celebratory effects for achievements
+- Variable rewards (unpredictable but pleasant surprises)
+- Progress indicators that feel like leveling up
+
+FOGG BEHAVIOR MODEL (B=MAP):
+- Increase Motivation: Show progress, social proof, personal impact
+- Increase Ability: Reduce clicks, smart defaults, predictive UI
+- Add Prompts: Contextual nudges at perfect moments
+
+HICK'S LAW:
+- Never more than 5-7 choices at once
+- Progressive disclosure for complex features
+- Smart defaults based on user behavior
+
+VON RESTORFF EFFECT:
+- Make key actions visually distinct (but not jarring)
+- Use isolation, color, motion, or scale
+
+AESTHETIC-USABILITY EFFECT:
+- Beautiful design = perceived ease of use
+- Invest heavily in visual polish
+
+PEAK-END RULE:
+- Make the peak moment of each task satisfying
+- Each interaction should end on a positive micro-moment
+
+PHASE 7: IMPLEMENTATION (Use: image-to-code + frontend-design)
+- Generate production-ready React/Next.js code
+- No generic AI patterns - custom, bespoke implementation
+- Responsive on all devices (mobile-first)
+- Performance: Lighthouse scores 95+
+- Accessibility: WCAG 2.1 AA minimum
+
+PHASE 8: POLISH & CRITIQUE (Use: impeccable AGAIN)
+- /critique the complete redesign
+- /normalize all spacing and alignment
+- /polish every animation curve
+- Fix any issues discovered
+
+PHASE 9: DESIGN SYSTEM DOCUMENTATION (Use: stitch-design-taste)
+- Generate COMPLETE_DESIGN_SYSTEM.md
+- Include: Colors, typography, spacing, animation curves, component library
+- Anti-generic standards enforcement
+
+DELIVERABLES - Provide me with:
+
+1. COMPLETE_REDESIGN_CODE/ - All updated components and pages
+2. DESIGN_SYSTEM.md - Full design token documentation
+3. ANIMATION_SPRING_VALUES.md - All emil-design-eng spring configurations
+4. UX_AUDIT_BEFORE_AFTER.md - Side-by-side comparison with improvements
+5. PSYCHOLOGY_PRINCIPLES_APPLIED.md - Map of which principles where
+6. PERFORMANCE_REPORT.md - Lighthouse and Core Web Vitals
+7. SURPRISE_ELEMENTS.md - Documentation of unexpected delightful features
+
+SPECIAL INSTRUCTIONS:
+
+- Surprise me: Include 3-5 unexpected features I haven't asked for (micro-interactions, easter eggs, innovative patterns)
+- Break conventions: Don't just recreate a typical dashboard - reimagine what a web app could be
+- Emotion mapping: Each screen should evoke a specific feeling (calm dashboard, exciting actions, secure forms)
+- Context awareness: If the app has data, use it to personalize the experience
+- Multi-agent coordination: Explicitly state which skill is handling which part
+
+CRITICAL CONSTRAINTS:
+- Must maintain ALL existing functionality
+- Must improve performance, not degrade it
+- Mobile responsive as priority
+- Dark mode optional but preferred
+- Accessibility baked in, not bolted on
+
+FINAL OUTPUT FORMAT:
+Start with a section "🎯 TRANSFORMATION STRATEGY" explaining your multi-skill approach
+Then present code files grouped by feature
+End with "✨ SURPRISE ME" section revealing unexpected delights
+
+Execute now. I want to be impressed.

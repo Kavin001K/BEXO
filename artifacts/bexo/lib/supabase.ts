@@ -1,7 +1,7 @@
 import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setupURLPolyfill } from "react-native-url-polyfill";
-import { createClient, processLock } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js";
 
 if (Platform.OS !== "web") {
   setupURLPolyfill();
@@ -15,12 +15,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     ...(Platform.OS !== "web" ? { storage: AsyncStorage } : {}),
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: false,
+    // Must be true on web so Supabase auto-detects OAuth tokens in the URL
+    detectSessionInUrl: Platform.OS === "web",
     flowType: "pkce",
-    lock: processLock,
   },
 });
 
+// Keep the Supabase token refresh in sync with app foreground/background state
 if (Platform.OS !== "web") {
   AppState.addEventListener("change", (state) => {
     if (state === "active") {

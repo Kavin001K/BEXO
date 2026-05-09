@@ -17,30 +17,32 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { OTPInput } from "@/components/ui/OTPInput";
 import { useColors } from "@/hooks/useColors";
+import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-const OTP_LENGTH = 4;
-const OTP_EXPIRY_SECS = 10 * 60; // 10 minutes
+const OTP_LENGTH = 6;
+const OTP_EXPIRY_SECS = 10 * 60;
 
 export default function VerifyScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { phoneNumber, otpSentAt, setOtpSentAt, isOtpExpired, getOtpRemainingSeconds } = useAuthStore();
-  const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
+  const { phoneNumber, otpSentAt, setOtpSentAt, isOtpExpired, getOtpRemainingSeconds } =
+    useAuthStore();
+
+  const [code, setCode]         = useState("");
+  const [loading, setLoading]   = useState(false);
   const [resending, setResending] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError]       = useState("");
   const [remaining, setRemaining] = useState(OTP_EXPIRY_SECS);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Countdown timer
   useEffect(() => {
     const tick = () => {
       const secs = getOtpRemainingSeconds();
       setRemaining(secs);
-      if (secs <= 0) {
-        if (timerRef.current) clearInterval(timerRef.current);
+      if (secs <= 0 && timerRef.current) {
+        clearInterval(timerRef.current);
         timerRef.current = null;
       }
     };
@@ -61,7 +63,7 @@ export default function VerifyScreen() {
 
   const handleVerify = async () => {
     if (code.length < OTP_LENGTH) {
-      setError("Enter the 4-digit code");
+      setError(`Enter the ${OTP_LENGTH}-digit code`);
       return;
     }
     if (isOtpExpired()) {
@@ -71,29 +73,23 @@ export default function VerifyScreen() {
     setError("");
     setLoading(true);
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
     try {
-      // Verify OTP via edge function
-      const resp = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/phone-auth`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ action: "verify", phone: phoneNumber, code }),
-        }
-      );
-      const result = await resp.json();
-      if (!resp.ok) throw new Error(result.error ?? "Verification failed");
-
-      // Sign in with phone + OTP as password
-      const { error: signInErr } = await supabase.auth.signInWithPassword({
-        phone: phoneNumber,
-        password: code,
+      const resp = await apiFetch("/auth/verify-otp", {
+        method: "POST",
+        body: JSON.stringify({ phone: phoneNumber, code }),
       });
-      if (signInErr) throw signInErr;
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
+      const { access_token, refresh_token } = result;
+      const { error: sessionErr } = await supabase.auth.setSession({
+        access_token,
+        refresh_token,
+      });
+      if (sessionErr) throw sessionErr;
+
+      // Auth state listener in useAuthStore handles navigation
       router.replace("/(auth)/collect-email");
     } catch (e: any) {
       setError(e.message ?? "Invalid code. Try again.");
@@ -107,23 +103,16 @@ export default function VerifyScreen() {
     setError("");
     setCode("");
     try {
-      const resp = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/phone-auth`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY}`,
-          },
-          body: JSON.stringify({ action: "send", phone: phoneNumber }),
-        }
-      );
+      const resp = await apiFetch("/auth/send-otp", {
+        method: "POST",
+        body: JSON.stringify({ phone: phoneNumber }),
+      });
       const result = await resp.json();
-      if (!resp.ok) throw new Error(result.error ?? "Could not resend");
+      if (!resp.ok) throw new Error(result.error ?? "Could not resend OTP");
       setOtpSentAt(Date.now());
       setRemaining(OTP_EXPIRY_SECS);
     } catch (e: any) {
-      setError(e.message ?? "Could not resend");
+      setError(e.message ?? "Could not resend OTP");
     } finally {
       setResending(false);
     }
@@ -131,7 +120,10 @@ export default function VerifyScreen() {
 
   const maskedPhone = phoneNumber
     ? phoneNumber.slice(0, 4) + "••••" + phoneNumber.slice(-3)
-    : "your phone";
+    : "your number";
+
+  const topPad    = insets.top + (Platform.OS === "web" ? 67 : 20);
+  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -148,34 +140,37 @@ export default function VerifyScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            {
-              paddingTop: insets.top + (Platform.OS === "web" ? 67 : 20),
-              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-            },
+            { paddingTop: topPad, paddingBottom: bottomPad + 20 },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <TouchableOpacity onPress={() => router.back()} style={styles.back}>
-            <Text style={[styles.backText, { color: colors.primary }]}>Back</Text>
+            <Feather name="arrow-left" size={20} color={colors.primary} />
           </TouchableOpacity>
 
+          {/* WhatsApp icon badge */}
           <View style={[styles.iconBadge, { backgroundColor: "#25D36622" }]}>
             <Feather name="message-circle" size={32} color="#25D366" />
           </View>
 
           <Text style={[styles.headline, { color: colors.foreground }]}>
-            Check your WhatsApp
+            WhatsApp OTP
           </Text>
           <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            We sent a 4-digit code via WhatsApp to{" "}
+            We sent a {OTP_LENGTH}-digit code to your WhatsApp at{" "}
             <Text style={{ color: colors.foreground, fontWeight: "600" }}>
               {maskedPhone}
             </Text>
           </Text>
 
-          {/* Timer */}
-          <View style={[styles.timerRow, { backgroundColor: expired ? "#FA6A6A18" : "#25D36618" }]}>
+          {/* Countdown */}
+          <View
+            style={[
+              styles.timerRow,
+              { backgroundColor: expired ? "#FA6A6A18" : "#25D36618" },
+            ]}
+          >
             <Feather
               name={expired ? "alert-circle" : "clock"}
               size={14}
@@ -184,7 +179,7 @@ export default function VerifyScreen() {
             <Text
               style={[styles.timerText, { color: expired ? "#FA6A6A" : "#25D366" }]}
             >
-              {expired ? "OTP expired" : `Expires in ${formatTime(remaining)}`}
+              {expired ? "Code expired" : `Expires in ${formatTime(remaining)}`}
             </Text>
           </View>
 
@@ -195,19 +190,25 @@ export default function VerifyScreen() {
           />
 
           {error ? (
-            <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
+            <Text style={[styles.error, { color: "#FA6A6A" }]}>{error}</Text>
           ) : null}
 
           <BexoButton
-            label={loading ? "Verifying..." : "Verify & Continue"}
+            label={loading ? "Verifying…" : "Verify & Continue"}
             onPress={handleVerify}
             loading={loading}
-            disabled={code.length < OTP_LENGTH}
+            disabled={code.length < OTP_LENGTH || expired}
           />
 
-          <TouchableOpacity onPress={handleResend} disabled={resending} style={styles.resend}>
+          <TouchableOpacity
+            onPress={handleResend}
+            disabled={resending}
+            style={styles.resend}
+          >
             <Text style={[styles.resendText, { color: colors.mutedForeground }]}>
-              {resending ? "Sending..." : "Didn't get it? "}
+              {resending
+                ? "Sending…"
+                : "Didn't receive it? "}
               {!resending && (
                 <Text style={{ color: colors.primary, fontWeight: "600" }}>
                   Resend via WhatsApp
@@ -223,20 +224,9 @@ export default function VerifyScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  glow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 250,
-  },
-  scroll: {
-    paddingHorizontal: 28,
-    gap: 20,
-    alignItems: "stretch",
-  },
-  back: { alignSelf: "flex-start", marginBottom: 8 },
-  backText: { fontSize: 16, fontWeight: "500" },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 250 },
+  scroll: { paddingHorizontal: 28, gap: 20, alignItems: "stretch" },
+  back: { alignSelf: "flex-start" },
   iconBadge: {
     width: 72,
     height: 72,

@@ -2,18 +2,19 @@ import {
   DMSans_400Regular,
   DMSans_500Medium,
   DMSans_700Bold,
-  useFonts as useDMSansFonts,
 } from "@expo-google-fonts/dm-sans";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import * as Font from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { Feather, AntDesign } from "@expo/vector-icons";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +27,7 @@ function RootLayoutNav() {
 
   return (
     <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
+      <Stack.Screen name="index" />
       <Stack.Screen name="(intro)" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(onboarding)" />
@@ -37,24 +39,46 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
-
-  const [fontsLoaded, fontError] = useDMSansFonts({
-    DMSans_400Regular,
-    DMSans_500Medium,
-    DMSans_700Bold,
-  });
+  const [fontsReady, setFontsReady] = useState(false);
 
   useEffect(() => {
     initialize();
   }, []);
 
   useEffect(() => {
-    if (fontsLoaded || fontError) {
+    let cancelled = false;
+
+    Font.loadAsync({
+      DMSans_400Regular,
+      DMSans_500Medium,
+      DMSans_700Bold,
+      ...Feather.font,
+      ...AntDesign.font,
+    })
+      .catch(() => {
+        // Font loading failed (e.g. no network). Continue with system fonts.
+      })
+      .finally(() => {
+        if (!cancelled) setFontsReady(true);
+      });
+
+    const timeout = setTimeout(() => {
+      if (!cancelled) setFontsReady(true);
+    }, 4000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (fontsReady) {
       SplashScreen.hideAsync();
     }
-  }, [fontsLoaded, fontError]);
+  }, [fontsReady]);
 
-  if (!fontsLoaded && !fontError) return null;
+  if (!fontsReady) return null;
 
   return (
     <SafeAreaProvider>

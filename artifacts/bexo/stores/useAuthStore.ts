@@ -1,8 +1,9 @@
 import { Session, User } from "@supabase/supabase-js";
+import { router } from "expo-router";
 import { create } from "zustand";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
-const OTP_EXPIRY_MS = 10 * 60 * 1000; // 10 minutes
+const OTP_EXPIRY_MS = 10 * 60 * 1000;
 
 interface AuthState {
   session: Session | null;
@@ -22,6 +23,16 @@ interface AuthState {
   signOut: () => Promise<void>;
   initialize: () => Promise<void>;
 }
+
+const RESET_STATE = {
+  session: null,
+  user: null,
+  isLoading: false,
+  phoneNumber: "",
+  collectedEmail: "",
+  collectedPhone: "",
+  otpSentAt: null,
+};
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
@@ -57,7 +68,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
-    set({ session: null, user: null });
+    set(RESET_STATE);
+    router.replace("/(auth)");
   },
 
   initialize: async () => {

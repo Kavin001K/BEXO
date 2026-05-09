@@ -6,6 +6,7 @@ import {
   Platform,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +23,9 @@ const STEPS = [
   "Your portfolio is almost ready!",
 ];
 
+const THREE_MINUTES = 3 * 60 * 1000;
+const FIVE_MINUTES = 5 * 60 * 1000;
+
 export default function GeneratingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -30,11 +34,11 @@ export default function GeneratingScreen() {
     usePortfolioStore();
 
   const [stepIdx, setStepIdx] = useState(0);
+  const [showDelayMessage, setShowDelayMessage] = useState(false);
   const pulseAnim = useRef(new Animated.Value(0.6)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Pulse animation
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
@@ -43,21 +47,29 @@ export default function GeneratingScreen() {
     );
     pulse.start();
 
-    // Step ticker
     const interval = setInterval(() => {
       setStepIdx((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev));
     }, 1800);
 
-    // Progress bar
     Animated.timing(progressAnim, {
       toValue: 1,
       duration: STEPS.length * 1800,
       useNativeDriver: false,
     }).start();
 
+    const delayTimer = setTimeout(() => {
+      setShowDelayMessage(true);
+    }, THREE_MINUTES);
+
+    const failTimer = setTimeout(() => {
+      router.replace("/(main)/dashboard");
+    }, FIVE_MINUTES);
+
     return () => {
       pulse.stop();
       clearInterval(interval);
+      clearTimeout(delayTimer);
+      clearTimeout(failTimer);
     };
   }, []);
 
@@ -99,7 +111,6 @@ export default function GeneratingScreen() {
           },
         ]}
       >
-        {/* Orbiting logo */}
         <View style={styles.logoWrap}>
           <Animated.View style={{ opacity: pulseAnim }}>
             <LinearGradient
@@ -120,14 +131,8 @@ export default function GeneratingScreen() {
           Sit back — we're assembling something amazing for you
         </Text>
 
-        {/* Progress bar */}
         <View style={[styles.progressTrack, { backgroundColor: colors.surface }]}>
-          <Animated.View
-            style={[
-              styles.progressFill,
-              { width: progressWidth },
-            ]}
-          >
+          <Animated.View style={[styles.progressFill, { width: progressWidth }]}>
             <LinearGradient
               colors={["#7C6AFA", "#FA6A6A"]}
               start={{ x: 0, y: 0 }}
@@ -137,12 +142,23 @@ export default function GeneratingScreen() {
           </Animated.View>
         </View>
 
-        {/* Step */}
         <Text style={[styles.step, { color: colors.mutedForeground }]}>
           {STEPS[stepIdx]}
         </Text>
 
-        {/* Preview of what they'll get */}
+        {showDelayMessage && (
+          <View style={[styles.delayBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.delayText, { color: colors.mutedForeground }]}>
+              This is taking longer than expected. Hang tight — we'll take you to your dashboard in a moment.
+            </Text>
+            <TouchableOpacity onPress={() => router.replace("/(main)/dashboard")}>
+              <Text style={[styles.delayAction, { color: colors.primary }]}>
+                Go to dashboard now →
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <LinearGradient
             colors={["#7C6AFA15", "transparent"]}
@@ -199,6 +215,16 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   step: { fontSize: 13, textAlign: "center", minHeight: 18 },
+  delayBanner: {
+    width: "100%",
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 8,
+    alignItems: "center",
+  },
+  delayText: { fontSize: 13, textAlign: "center", lineHeight: 19 },
+  delayAction: { fontSize: 14, fontWeight: "600" },
   previewCard: {
     width: "100%",
     padding: 20,

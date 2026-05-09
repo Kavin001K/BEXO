@@ -1,22 +1,27 @@
-const EDGE_FN = `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/upload`;
-const ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+import { supabase } from "@/lib/supabase";
 
-export async function uploadToR2(
-  userId: string,
-  folder: "avatar" | "resume" | "projects",
-  file: string, // base64 data URL or raw base64
-  fileName?: string
-): Promise<{ url: string; key: string }> {
-  const resp = await fetch(EDGE_FN, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${ANON_KEY}`,
-    },
-    body: JSON.stringify({ userId, folder, file, fileName }),
-  });
+async function uriToBlob(uri: string): Promise<Blob> {
+  const response = await fetch(uri);
+  return response.blob();
+}
 
-  const result = await resp.json();
-  if (!resp.ok) throw new Error(result.error ?? "Upload failed");
-  return result;
+export async function uploadFile(
+  bucket: "avatars" | "resumes" | "projects",
+  storagePath: string,
+  uri: string,
+  contentType: string = "application/octet-stream"
+): Promise<{ url: string; storagePath: string }> {
+  const blob = await uriToBlob(uri);
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(storagePath, blob, { contentType, upsert: true });
+
+  if (error) throw new Error(error.message);
+
+  const {
+    data: { publicUrl },
+  } = supabase.storage.from(bucket).getPublicUrl(data.path);
+
+  return { url: publicUrl, storagePath: data.path };
 }
