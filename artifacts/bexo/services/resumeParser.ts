@@ -1,3 +1,5 @@
+import { readAsStringAsync, EncodingType } from "expo-file-system/legacy";
+import { Platform } from "react-native";
 import { uploadResume } from "./upload";
 
 export interface ParsedResume {
@@ -99,20 +101,30 @@ Extract as much detail as possible. If a field is missing from the resume, use n
 
 /**
  * Convert a file URI to a base64-encoded string.
- * Works on both React Native and web.
+ * Uses expo-file-system for native and fetch for web.
  */
 async function fileUriToBase64(uri: string): Promise<string> {
-  const response = await fetch(uri);
-  const arrayBuffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-
-  // Build binary string in chunks to avoid call-stack overflow on large files
-  let binary = "";
-  const CHUNK = 8192;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  if (Platform.OS === "web") {
+    const response = await fetch(uri);
+    const arrayBuffer = await response.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const CHUNK = 8192;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
   }
-  return btoa(binary);
+
+  // Native: Ensure URI is formatted correctly for FileSystem
+  let processedUri = uri;
+  if (uri.startsWith("/") && !uri.startsWith("file://")) {
+    processedUri = `file://${uri}`;
+  }
+
+  return await readAsStringAsync(processedUri, {
+    encoding: EncodingType.Base64,
+  });
 }
 
 /**

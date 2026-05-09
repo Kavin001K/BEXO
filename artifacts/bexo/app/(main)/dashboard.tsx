@@ -176,9 +176,9 @@ export default function DashboardScreen() {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.iconBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={signOut}
+              onPress={() => router.push("/portfolio")}
             >
-              <Feather name="log-out" size={18} color={colors.mutedForeground} />
+              <Feather name="user" size={18} color={colors.primary} />
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -196,7 +196,10 @@ export default function DashboardScreen() {
         {/* Portfolio status banner */}
         <Animated.View entering={FadeInDown.delay(80).springify()}>
           {buildStatus === "done" && portfolioUrl ? (
-            <TouchableOpacity activeOpacity={0.88} onPress={handleShare}>
+            <TouchableOpacity
+              onPress={() => router.push("/portfolio")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
               <LinearGradient
                 colors={["#7C6AFA", "#A06AFA"]}
                 style={styles.liveBanner}
@@ -222,7 +225,12 @@ export default function DashboardScreen() {
         {/* Profile card */}
         {profile && (
           <Animated.View entering={FadeInDown.delay(160).springify()}>
-            <ProfileCard profile={profile} avatarUrl={profile.avatar_url} skills={skills.map((s) => s.name)} />
+            <ProfileCard
+              profile={profile}
+              avatarUrl={profile.avatar_url}
+              skills={skills.map((s) => s.name)}
+              onEdit={() => router.push("/edit-profile")}
+            />
           </Animated.View>
         )}
 
@@ -248,17 +256,18 @@ export default function DashboardScreen() {
         {/* Quick actions */}
         <Animated.View entering={FadeInDown.delay(360).springify()} style={styles.quickActions}>
           {[
-            { label: "Edit Profile",    icon: "edit-3" as const, route: "/(main)/edit-profile" },
-            { label: "View Portfolio",  icon: "globe"  as const, route: "/(main)/portfolio"    },
+            { label: "Edit Profile",    icon: "edit-3" as const, route: "/edit-profile" },
+            { label: "View Portfolio",  icon: "globe"  as const, route: "/portfolio"    },
           ].map((action) => (
             <TouchableOpacity
               key={action.label}
               style={[styles.quickBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
               onPress={() => router.push(action.route as any)}
               activeOpacity={0.8}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <View style={[styles.quickIcon, { backgroundColor: colors.primary + "22" }]}>
-                <Feather name={action.icon} size={16} color={colors.primary} />
+                <Feather name="edit-3" size={16} color={colors.primary} />
               </View>
               <Text style={[styles.quickLabel, { color: colors.foreground }]}>{action.label}</Text>
               <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
@@ -272,7 +281,8 @@ export default function DashboardScreen() {
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Activity</Text>
             <TouchableOpacity
               style={[styles.addBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
-              onPress={() => router.push("/(main)/update")}
+              onPress={() => router.push("/update")}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             >
               <Feather name="plus" size={13} color={colors.primary} />
               <Text style={[styles.addBtnText, { color: colors.primary }]}>Add</Text>

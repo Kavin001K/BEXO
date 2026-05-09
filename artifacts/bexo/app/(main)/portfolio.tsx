@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { ActivityIndicator } from "react-native";
+console.log("[Portfolio] Rendering...");
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RebuildModal } from "@/components/portfolio/RebuildModal";
@@ -77,8 +79,8 @@ export default function PortfolioScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => router.push("/(main)/edit-profile")}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              onPress={() => router.push("/edit-profile")}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             >
               <Feather name="edit-2" size={14} color={colors.foreground} />
               <Text style={[styles.actionLabel, { color: colors.foreground }]}>Edit</Text>
@@ -87,11 +89,19 @@ export default function PortfolioScreen() {
               style={[styles.actionBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
               onPress={() => setShowRebuild(true)}
               disabled={buildStatus === "building"}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
             >
               <Feather name="refresh-cw" size={14} color={colors.primary} />
               <Text style={[styles.actionLabel, { color: colors.primary }]}>
                 {buildStatus === "building" ? "Building…" : "Rebuild"}
               </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => router.push("/settings")}
+              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+            >
+              <Feather name="settings" size={14} color={colors.foreground} />
             </TouchableOpacity>
           </View>
         </View>
@@ -105,7 +115,11 @@ export default function PortfolioScreen() {
             end={{ x: 1, y: 1 }}
           />
           <View style={styles.heroTop}>
-            <View style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.primary }]}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => router.push("/edit-profile")}
+              style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.primary }]}
+            >
               {profile?.avatar_url ? (
                 <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
               ) : (
@@ -113,11 +127,17 @@ export default function PortfolioScreen() {
                   {profile?.full_name?.[0]?.toUpperCase() ?? "B"}
                 </Text>
               )}
-            </View>
+            </TouchableOpacity>
             {buildStatus === "done" && (
               <View style={styles.liveChip}>
                 <View style={styles.liveDot} />
                 <Text style={styles.liveChipText}>Live</Text>
+              </View>
+            )}
+            {(buildStatus === "building" || buildStatus === "queued") && (
+              <View style={[styles.liveChip, { backgroundColor: colors.primary + "33" }]}>
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4, transform: [{ scale: 0.7 }] }} />
+                <Text style={[styles.liveChipText, { color: colors.primary }]}>Building</Text>
               </View>
             )}
           </View>
@@ -188,7 +208,7 @@ export default function PortfolioScreen() {
           <View style={styles.section}>
             <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Education</Text>
             {education.length === 0 ? (
-              <EmptySection label="No education added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
+              <EmptySection label="No education added yet" onAdd={() => router.push("/edit-profile?tab=education")} colors={colors} />
             ) : (
               education.map((edu, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -206,7 +226,7 @@ export default function PortfolioScreen() {
         {activeTab === "experience" && (
           <View style={styles.section}>
             {experiences.length === 0 ? (
-              <EmptySection label="No experience added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
+              <EmptySection label="No experience added yet" onAdd={() => router.push("/edit-profile?tab=experience")} colors={colors} />
             ) : (
               experiences.map((exp, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -227,7 +247,7 @@ export default function PortfolioScreen() {
         {activeTab === "projects" && (
           <View style={styles.section}>
             {projects.length === 0 ? (
-              <EmptySection label="No projects added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
+              <EmptySection label="No projects added yet" onAdd={() => router.push("/edit-profile?tab=projects")} colors={colors} />
             ) : (
               projects.map((proj, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -263,7 +283,7 @@ export default function PortfolioScreen() {
         {activeTab === "skills" && (
           <View style={styles.section}>
             {skills.length === 0 ? (
-              <EmptySection label="No skills added yet" onAdd={() => router.push("/(main)/edit-profile")} colors={colors} />
+              <EmptySection label="No skills added yet" onAdd={() => router.push("/edit-profile")} colors={colors} />
             ) : (
               <View style={styles.tagRow}>
                 {skills.map((s, i) => <SkillTag key={i} label={s.name} />)}
@@ -304,6 +324,7 @@ function EmptySection({
       <TouchableOpacity
         style={[emptyStyles.btn, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
         onPress={onAdd}
+        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
       >
         <Feather name="plus" size={13} color={colors.primary} />
         <Text style={[emptyStyles.btnLabel, { color: colors.primary }]}>Add now</Text>

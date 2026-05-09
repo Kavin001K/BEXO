@@ -2,8 +2,8 @@ import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
-import React, { useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useState, useEffect } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -137,6 +137,8 @@ export default function EditProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
+  const params = useLocalSearchParams<{ tab?: string }>();
+  
   const {
     profile, education, experiences, projects, skills,
     updateProfile, saveEducation, deleteEducation,
@@ -146,6 +148,13 @@ export default function EditProfileScreen() {
   } = useProfileStore();
 
   const [activeTab, setActiveTab] = useState<TabId>("profile");
+
+  // Handle initial tab from params
+  useEffect(() => {
+    if (params.tab && ["profile", "education", "experience", "projects", "skills"].includes(params.tab)) {
+      setActiveTab(params.tab as TabId);
+    }
+  }, [params.tab]);
   const [saving, setSaving] = useState(false);
 
   // Profile form

@@ -61,7 +61,7 @@ export default function UpdateScreen() {
       });
       setTitle("");
       setDescription("");
-      router.push("/(main)/dashboard");
+      router.push("/dashboard");
     } catch (e: any) {
       setError(e.message ?? "Could not post update");
     } finally {

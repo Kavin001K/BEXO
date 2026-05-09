@@ -11,7 +11,7 @@ export default function RootIndex() {
   useEffect(() => {
     if (!isLoading) {
       if (session) {
-        router.replace("/(main)/dashboard");
+        router.replace("/dashboard");
       } else {
         router.replace("/(intro)");
       }

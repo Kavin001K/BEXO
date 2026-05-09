@@ -63,7 +63,7 @@ export default function GeneratingScreen() {
     }, THREE_MINUTES);
 
     const failTimer = setTimeout(() => {
-      router.replace("/(main)/dashboard");
+      router.replace("/dashboard");
     }, FIVE_MINUTES);
 
     return () => {
@@ -84,7 +84,7 @@ export default function GeneratingScreen() {
   useEffect(() => {
     if (buildStatus === "done" && portfolioUrl) {
       setTimeout(() => {
-        router.replace("/(main)/dashboard");
+        router.replace("/dashboard");
       }, 1200);
     }
   }, [buildStatus, portfolioUrl]);
@@ -148,7 +148,7 @@ export default function GeneratingScreen() {
             <Text style={[styles.delayText, { color: colors.mutedForeground }]}>
               This is taking longer than expected. Hang tight — we'll take you to your dashboard in a moment.
             </Text>
-            <TouchableOpacity onPress={() => router.replace("/(main)/dashboard")}>
+            <TouchableOpacity onPress={() => router.replace("/dashboard")}>
               <Text style={[styles.delayAction, { color: colors.primary }]}>
                 Go to dashboard now →
               </Text>

@@ -109,8 +109,9 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   },
 
   subscribeToBuilds: (profileId) => {
+    const channelId = `builds:${profileId}:${Date.now()}`;
     const channel = supabase
-      .channel(`builds:${profileId}`)
+      .channel(channelId)
       .on(
         "postgres_changes",
         {

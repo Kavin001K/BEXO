@@ -70,7 +70,7 @@ export default function LoginScreen() {
   // Navigate when session arrives — dashboard handles all routing decisions
   useEffect(() => {
     if (session?.user) {
-      router.replace("/(main)/dashboard");
+      router.replace("/dashboard");
     }
   }, [session]);
 

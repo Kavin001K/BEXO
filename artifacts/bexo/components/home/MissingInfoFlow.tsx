@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
+import { router } from "expo-router";
 import {
   Alert,
   Image,
@@ -185,7 +186,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* No actionable direct fields - just section redirects */}
+            {/* No actionable direct fields - show sections to add */}
             {actionableFields.length === 0 ? (
               <Animated.View entering={FadeInRight} style={styles.card}>
                 <View
@@ -196,14 +197,65 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
                   Add missing sections
                 </Text>
-                <Text style={[styles.fieldSub, { color: colors.mutedForeground }]}>
-                  {sectionFields.map((f) => f.label).join(", ")} — these need at
-                  least one entry each. Go to Edit Profile to add them.
+                <Text style={[styles.fieldSub, { color: colors.mutedForeground, marginBottom: 8 }]}>
+                  These sections need at least one entry to complete your profile. Click a section to add it.
                 </Text>
+
+                <View style={{ width: "100%", gap: 10 }}>
+                  {sectionFields.map((field) => (
+                    <TouchableOpacity
+                      key={field.key}
+                      style={[
+                        styles.sectionItem,
+                        { backgroundColor: colors.surface, borderColor: colors.border },
+                      ]}
+                      onPress={() => {
+                        finish();
+                        // Navigate to edit profile with specific tab
+                        router.push({
+                          pathname: "/edit-profile",
+                          params: { tab: field.key === "experience" ? "experience" : field.key },
+                        });
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.sectionItemIcon,
+                          { backgroundColor: colors.primary + "11" },
+                        ]}
+                      >
+                        <Feather
+                          name={
+                            field.key === "education"
+                              ? "book"
+                              : field.key === "experience"
+                              ? "briefcase"
+                              : field.key === "projects"
+                              ? "code"
+                              : "zap"
+                          }
+                          size={16}
+                          color={colors.primary}
+                        />
+                      </View>
+                      <Text style={[styles.sectionItemLabel, { color: colors.foreground }]}>
+                        {field.label}
+                      </Text>
+                      <Feather
+                        name="chevron-right"
+                        size={16}
+                        color={colors.mutedForeground}
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
                 <BexoButton
                   label="Go to Edit Profile"
+                  variant="secondary"
                   onPress={() => {
                     finish();
+                    router.push("/edit-profile");
                   }}
                 />
               </Animated.View>
@@ -313,7 +365,11 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
 
             {/* Section fields notice */}
             {sectionFields.length > 0 && (
-              <View
+              <TouchableOpacity
+                onPress={() => {
+                  finish();
+                  router.push("/edit-profile");
+                }}
                 style={[
                   styles.sectionNotice,
                   { backgroundColor: colors.surface, borderColor: colors.border },
@@ -324,10 +380,10 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
                   style={[styles.sectionNoticeText, { color: colors.mutedForeground }]}
                 >
                   You also need to add:{" "}
-                  {sectionFields.map((f) => f.label).join(", ")}. Use Edit
-                  Profile to add entries.
+                  {sectionFields.map((f) => f.label).join(", ")}. Tap to go to Edit
+                  Profile.
                 </Text>
-              </View>
+              </TouchableOpacity>
             )}
           </ScrollView>
         </KeyboardAvoidingView>
@@ -396,4 +452,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   sectionNoticeText: { flex: 1, fontSize: 12, lineHeight: 18 },
+  sectionItem: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  sectionItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionItemLabel: { flex: 1, fontSize: 16, fontWeight: "600" },
 });

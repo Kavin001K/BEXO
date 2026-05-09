@@ -50,7 +50,7 @@ export default function CollectPhoneScreen() {
       return;
     }
     setCollectedPhone(fullPhone);
-    router.replace("/(main)/dashboard");
+    router.replace("/dashboard");
   };
 
   return (
@@ -153,7 +153,7 @@ export default function CollectPhoneScreen() {
 
           <BexoButton label="Continue" onPress={handleContinue} icon={<Feather name="arrow-right" size={16} color="#fff" />} />
 
-          <TouchableOpacity onPress={() => router.replace("/(main)/dashboard")}>
+          <TouchableOpacity onPress={() => router.replace("/dashboard")}>
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>Skip for now</Text>
           </TouchableOpacity>
         </ScrollView>
