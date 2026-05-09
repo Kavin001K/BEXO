@@ -10,9 +10,14 @@ import Constants from "expo-constants";
  * 3. Auto-detect: use Expo's debuggerHost IP for native, localhost for web
  */
 function getApiBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+  // If we have an explicit override that isn't localhost, use it
+  if (
+    process.env.EXPO_PUBLIC_API_BASE_URL &&
+    !process.env.EXPO_PUBLIC_API_BASE_URL.includes("localhost")
+  ) {
     return process.env.EXPO_PUBLIC_API_BASE_URL;
   }
+
   if (process.env.EXPO_PUBLIC_DOMAIN) {
     return `https://${process.env.EXPO_PUBLIC_DOMAIN}/api-server`;
   }

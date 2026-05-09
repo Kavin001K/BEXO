@@ -1,6 +1,10 @@
 {
   "expo": {
-    "platforms": ["ios", "android", "web"],
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
     "name": "BEXO",
     "slug": "mybexo",
     "version": "1.0.0",
@@ -23,7 +27,10 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0A0A0F"
-      }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -44,6 +51,11 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "6c1ecc80-1e4f-4aa7-9f6f-6d6b4c4973fe"
+      }
     }
   }
 }
