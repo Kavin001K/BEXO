@@ -132,20 +132,19 @@ export default function LoginScreen() {
         // session change triggers routing via useEffect above
         setGoogleLoading(false);
       } else {
-        // Web: redirect the browser tab to Google OAuth
-        // Supabase → Google → Supabase callback → redirects back here
-        // Requires adding your web URL to Supabase Auth → URL Configuration → Redirect URLs
-        const redirectTo =
-          typeof window !== "undefined" ? window.location.origin + "/" : undefined;
-        const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
+        // Web: let Supabase do a full-page redirect (simplest, most reliable)
+        // Do NOT use skipBrowserRedirect: true on web — it causes COOP issues
+        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo, skipBrowserRedirect: true },
+          options: {
+            redirectTo:
+              typeof window !== "undefined"
+                ? window.location.origin + "/"
+                : undefined,
+          },
         });
         if (oauthErr) throw oauthErr;
-        if (data?.url && typeof window !== "undefined") {
-          window.location.href = data.url;
-        }
-        // Page will reload after Google auth — session detected by Supabase client
+        // Page will navigate away — session is picked up by detectSessionInUrl: true
       }
     } catch (e: any) {
       setError(e.message ?? "Google sign-in failed. Try again.");

@@ -27,8 +27,10 @@ interface PortfolioState {
   portfolioUrl: string | null;
   updates: Update[];
   analytics: { views: number; clicks: number; shares: number };
+  activePortfolioTab: string;
   setBuildStatus: (status: BuildStatus) => void;
   setPortfolioUrl: (url: string) => void;
+  setActivePortfolioTab: (tab: string) => void;
   fetchBuildStatus: (profileId: string) => Promise<void>;
   fetchUpdates: (profileId: string) => Promise<void>;
   addUpdate: (update: Omit<Update, "id" | "created_at">) => Promise<void>;
@@ -44,9 +46,11 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   portfolioUrl: null,
   updates: [],
   analytics: { views: 0, clicks: 0, shares: 0 },
+  activePortfolioTab: "overview",
 
   setBuildStatus: (status) => set({ buildStatus: status }),
   setPortfolioUrl: (url) => set({ portfolioUrl: url }),
+  setActivePortfolioTab: (tab) => set({ activePortfolioTab: tab }),
 
   fetchBuildStatus: async (profileId) => {
     const { data } = await supabase

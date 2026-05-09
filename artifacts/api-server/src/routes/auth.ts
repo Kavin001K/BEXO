@@ -16,19 +16,13 @@ if (typeof globalThis.WebSocket === "undefined") {
 
 const router = Router();
 
-// ---------------------------------------------------------------------------
-// In-memory OTP store  (phone → { hash, expiresAt })
-// OTPs are valid for 10 minutes. On server restart users must re-request.
-// ---------------------------------------------------------------------------
-const otpStore = new Map<string, { hash: string; expiresAt: number }>();
-
 const SUPABASE_URL =
   process.env.SUPABASE_URL ?? "https://gtjbnvpvqzddkbatyqtr.supabase.co";
 const OTP_TTL_MS = 10 * 60 * 1000;
 
 function generateOTP(): string {
-  // 4 digits: 1000 to 9999
-  return String(1000 + (crypto.randomInt(9000)));
+  // 6 digits: 100000 to 999999
+  return String(100000 + crypto.randomInt(900000));
 }
 
 function hashOTP(otp: string): string {
@@ -116,14 +110,32 @@ router.post("/send-otp", async (req, res) => {
   const otp = generateOTP();
   const hash = hashOTP(otp);
 
-  otpStore.set(normalised, { hash, expiresAt: Date.now() + OTP_TTL_MS });
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    res.status(500).json({ error: "SUPABASE_SERVICE_ROLE_KEY not configured" });
+    return;
+  }
+  const admin = createClient(SUPABASE_URL, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 
   try {
+    // Delete any existing unused OTPs for this phone
+    await admin.from("otp_codes").delete().eq("phone", normalised).eq("verified", false);
+
+    // Insert new OTP
+    await admin.from("otp_codes").insert({
+      phone: normalised,
+      code_hash: hash,
+      expires_at: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+    });
+
     await sendWhatsAppOTP(msg91Phone, otp);
     res.json({ success: true, message: "OTP sent via WhatsApp" });
   } catch (err: any) {
     console.error("MSG91 OTP Error:", err.message);
-    otpStore.delete(normalised);
+    // Clean up failed OTP
+    admin.from("otp_codes").delete().eq("phone", normalised).eq("code_hash", hash);
     res.status(500).json({ error: err.message ?? "Failed to send OTP" });
   }
 });
@@ -142,38 +154,15 @@ router.post("/verify-otp", async (req, res) => {
   }
 
   const normalised = phone.replace(/\s/g, "");
-  const entry = otpStore.get(normalised);
 
-  if (!entry) {
-    res.status(400).json({ error: "No OTP found for this number. Please request a new one." });
-    return;
-  }
-  if (Date.now() > entry.expiresAt) {
-    otpStore.delete(normalised);
-    res.status(400).json({ error: "OTP has expired. Please request a new one." });
-    return;
-  }
-
-  const expectedHash = hashOTP(code.trim());
-  if (expectedHash !== entry.hash) {
-    res.status(400).json({ error: "Invalid OTP. Please check and try again." });
-    return;
-  }
-
-  // OTP is correct — delete it so it cannot be reused
-  otpStore.delete(normalised);
-
-  // Create / find Supabase user and return a session
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!serviceRoleKey) {
-    res
-      .status(500)
-      .json({
-        error:
-          "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not set. " +
-          "Add it to Replit Secrets → SUPABASE_SERVICE_ROLE_KEY " +
-          "(find it in Supabase Dashboard → Project Settings → API → service_role key).",
-      });
+    res.status(500).json({
+      error:
+        "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not set. " +
+        "Add it to Replit Secrets → SUPABASE_SERVICE_ROLE_KEY " +
+        "(find it in Supabase Dashboard → Project Settings → API → service_role key).",
+    });
     return;
   }
 
@@ -181,6 +170,37 @@ router.post("/verify-otp", async (req, res) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
+  // Look up OTP from Supabase otp_codes table
+  const { data: otpRow, error: otpErr } = await admin
+    .from("otp_codes")
+    .select("*")
+    .eq("phone", normalised)
+    .eq("verified", false)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (otpErr || !otpRow) {
+    res.status(400).json({ error: "No valid OTP found. Please request a new one." });
+    return;
+  }
+
+  const expectedHash = hashOTP(code.trim());
+  if (expectedHash !== otpRow.code_hash) {
+    // Increment attempt counter
+    admin
+      .from("otp_codes")
+      .update({ attempts: (otpRow.attempts ?? 0) + 1 })
+      .eq("id", otpRow.id);
+    res.status(400).json({ error: "Invalid OTP. Please check and try again." });
+    return;
+  }
+
+  // OTP is correct — mark as verified
+  await admin.from("otp_codes").update({ verified: true }).eq("id", otpRow.id);
+
+  // Create / find Supabase user and return a session
   try {
     // 1. Generate a secure, random temporary password and a deterministic fake email
     const tempPassword = crypto.randomBytes(32).toString("hex");

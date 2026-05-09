@@ -62,11 +62,13 @@
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/syne": "^0.4.2",
     "@supabase/supabase-js": "^2.105.3",
+    "base64-arraybuffer": "^1.0.2",
     "expo-auth-session": "^7.0.11",
     "expo-crypto": "^15.0.9",
-    "expo-keep-awake": "~13.0.2",
     "expo-document-picker": "^14.0.8",
+    "expo-file-system": "^55.0.19",
     "expo-image-manipulator": "^14.0.8",
+    "expo-keep-awake": "~13.0.2",
     "react-native-url-polyfill": "^3.0.0",
     "zustand": "^5.0.13"
   }

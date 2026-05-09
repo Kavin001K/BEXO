@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Image,
@@ -54,46 +54,75 @@ export default function DashboardScreen() {
   const insets  = useSafeAreaInsets();
   const user    = useAuthStore((s) => s.user);
   const signOut = useAuthStore((s) => s.signOut);
-  const { profile, skills, fetchProfile, getCompletionResult } = useProfileStore();
+  const { profile, education, experiences, projects, skills, fetchProfile, getCompletionResult } = useProfileStore();
   const { updates, analytics, buildStatus, portfolioUrl, fetchUpdates, fetchBuildStatus, subscribeToBuilds } =
     usePortfolioStore();
 
   const [refreshing, setRefreshing] = useState(false);
   const [showMissingFlow, setShowMissingFlow] = useState(false);
 
-  const completionResult = getCompletionResult();
+  const [isDashboardLoading, setIsDashboardLoading] = useState(true);
 
-  const load = async () => {
-    if (!user) return;
-    await fetchProfile(user.id);
-    const { profile: currentProfile } = useProfileStore.getState();
+  // Memoize completion result to prevent jank on every render
+  const completionResult = useMemo(
+    () => getCompletionResult(),
+    [profile, education, experiences, projects, skills]
+  );
 
-    // No profile or no handle → send to onboarding to claim handle
-    if (!currentProfile || !currentProfile.handle) {
-      router.replace("/(onboarding)/handle");
-      return;
-    }
-
-    // Profile is complete — load dashboard data
-    await Promise.all([
-      fetchUpdates(currentProfile.id),
-      fetchBuildStatus(currentProfile.id),
-    ]);
-  };
-
-  useEffect(() => { load(); }, [user?.id]);
-
+  // Single effect: runs when user is available, avoids duplicate fetches
   useEffect(() => {
-    if (!profile?.id) return;
-    fetchUpdates(profile.id);
-    fetchBuildStatus(profile.id);
-    const unsub = subscribeToBuilds(profile.id);
-    return unsub;
-  }, [profile?.id]);
+    if (!user?.id) return;
+
+    let unsubBuilds: (() => void) | null = null;
+
+    const init = async () => {
+      setIsDashboardLoading(true);
+      await fetchProfile(user.id);
+      const { profile: p } = useProfileStore.getState();
+
+      if (!p || !p.handle) {
+        router.replace("/(onboarding)/handle");
+        return;
+      }
+
+      await Promise.all([
+        fetchUpdates(p.id),
+        fetchBuildStatus(p.id),
+      ]);
+
+      unsubBuilds = subscribeToBuilds(p.id);
+      setIsDashboardLoading(false);
+    };
+
+    init();
+
+    return () => {
+      unsubBuilds?.();
+    };
+  }, [user?.id]);
+
+  // Show loading spinner until dashboard data is ready
+  if (isDashboardLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: "center", justifyContent: "center" }}>
+        <Animated.View entering={FadeIn.duration(400)}>
+          <Image
+            source={require("../../assets/images/icon.png")}
+            style={{ width: 64, height: 64, borderRadius: 16, marginBottom: 16 }}
+          />
+        </Animated.View>
+      </View>
+    );
+  }
 
   const onRefresh = async () => {
+    if (!user?.id || !profile?.id) return;
     setRefreshing(true);
-    await load();
+    await Promise.all([
+      fetchProfile(user.id),
+      fetchUpdates(profile.id),
+      fetchBuildStatus(profile.id),
+    ]);
     setRefreshing(false);
   };
 

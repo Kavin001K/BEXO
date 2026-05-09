@@ -271,20 +271,99 @@ BEGIN
 END $$;
 -- ============================================================
 -- STORAGE BUCKETS
--- Run these separately if buckets don't exist yet
 -- ============================================================
--- INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('resumes', 'resumes', false) ON CONFLICT DO NOTHING;
--- INSERT INTO storage.buckets (id, name, public) VALUES ('projects', 'projects', true) ON CONFLICT DO NOTHING;
 
--- Storage RLS for avatars (public read, owner write)
--- CREATE POLICY "Avatar public read" ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
--- CREATE POLICY "Avatar owner upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
--- CREATE POLICY "Avatar owner delete" ON storage.objects FOR DELETE USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+-- Create storage buckets (run these if buckets don't exist yet)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('avatars',  'avatars',  true,  5242880,
+   ARRAY['image/jpeg','image/png','image/webp','image/heic']),
+  ('resumes',  'resumes',  false, 10485760,
+   ARRAY['application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+  ('projects', 'projects', true,  20971520,
+   ARRAY['image/jpeg','image/png','image/webp','image/heic','application/pdf'])
+ON CONFLICT (id) DO NOTHING;
 
--- Storage RLS for resumes (owner only)
--- CREATE POLICY "Resume owner read" ON storage.objects FOR SELECT USING (bucket_id = 'resumes' AND auth.uid()::text = (storage.foldername(name))[1]);
--- CREATE POLICY "Resume owner upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'resumes' AND auth.uid()::text = (storage.foldername(name))[1]);
+-- Avatar policies (public read, owner write)
+DROP POLICY IF EXISTS "Avatar public read"   ON storage.objects;
+DROP POLICY IF EXISTS "Avatar owner upload"  ON storage.objects;
+DROP POLICY IF EXISTS "Avatar owner update"  ON storage.objects;
+DROP POLICY IF EXISTS "Avatar owner delete"  ON storage.objects;
+
+CREATE POLICY "Avatar public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'avatars');
+CREATE POLICY "Avatar owner upload" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'avatars' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Avatar owner update" ON storage.objects
+  FOR UPDATE USING (
+    bucket_id = 'avatars' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Avatar owner delete" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'avatars' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Resume policies (owner only — private)
+DROP POLICY IF EXISTS "Resume owner read"   ON storage.objects;
+DROP POLICY IF EXISTS "Resume owner upload" ON storage.objects;
+DROP POLICY IF EXISTS "Resume owner delete" ON storage.objects;
+
+CREATE POLICY "Resume owner read" ON storage.objects
+  FOR SELECT USING (
+    bucket_id = 'resumes' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Resume owner upload" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'resumes' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Resume owner delete" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'resumes' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- Project image policies (public read, owner write)
+DROP POLICY IF EXISTS "Projects public read"   ON storage.objects;
+DROP POLICY IF EXISTS "Projects owner upload"  ON storage.objects;
+DROP POLICY IF EXISTS "Projects owner delete"  ON storage.objects;
+
+CREATE POLICY "Projects public read" ON storage.objects
+  FOR SELECT USING (bucket_id = 'projects');
+CREATE POLICY "Projects owner upload" ON storage.objects
+  FOR INSERT WITH CHECK (
+    bucket_id = 'projects' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+CREATE POLICY "Projects owner delete" ON storage.objects
+  FOR DELETE USING (
+    bucket_id = 'projects' AND
+    auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+-- ============================================================
+-- OTP VERIFICATION TABLE (replaces in-memory store)
+-- ============================================================
+
+-- The otp_codes table is created by supabase/migrations/003_otp_codes.sql
+-- If it doesn't exist, run this:
+-- CREATE TABLE IF NOT EXISTS public.otp_codes (
+--   id          UUID        DEFAULT uuid_generate_v4() PRIMARY KEY,
+--   phone       TEXT        NOT NULL,
+--   code_hash   TEXT        NOT NULL,
+--   expires_at  TIMESTAMPTZ NOT NULL,
+--   verified    BOOLEAN     DEFAULT FALSE,
+--   attempts    INT         DEFAULT 0,
+--   created_at  TIMESTAMPTZ DEFAULT NOW()
+-- );
+-- CREATE INDEX IF NOT EXISTS idx_otp_codes_phone ON public.otp_codes(phone);
+-- CREATE INDEX IF NOT EXISTS idx_otp_codes_expires ON public.otp_codes(expires_at);
 
 -- ============================================================
 -- NOTE: Web OAuth redirect

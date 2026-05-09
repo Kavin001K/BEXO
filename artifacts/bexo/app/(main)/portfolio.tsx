@@ -24,10 +24,12 @@ type TabId = "overview" | "experience" | "projects" | "skills";
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { profile, education, experiences, projects, skills } = useProfileStore();
-  const { buildStatus, portfolioUrl } = usePortfolioStore();
-  const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const { profile, education, experiences, projects, skills, isLoading } = useProfileStore();
+  const { buildStatus, portfolioUrl, activePortfolioTab, setActivePortfolioTab } = usePortfolioStore();
   const [showRebuild, setShowRebuild] = useState(false);
+
+  const activeTab = activePortfolioTab as TabId;
+  const setActiveTab = (tab: TabId) => setActivePortfolioTab(tab);
 
   const TABS: { id: TabId; label: string }[] = [
     { id: "overview",   label: "Overview"   },
@@ -38,6 +40,27 @@ export default function PortfolioScreen() {
 
   const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
+
+  // Skeleton loading state while profile data is loading
+  if (isLoading || !profile) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={[styles.scroll, { paddingTop: topPad + 16 }]}>
+          <View style={styles.pageHeader}>
+            <SkeletonBlock width={120} height={32} borderRadius={12} />
+            <View style={styles.headerActions}>
+              <SkeletonBlock width={64} height={32} borderRadius={10} />
+              <SkeletonBlock width={80} height={32} borderRadius={10} />
+            </View>
+          </View>
+          <SkeletonBlock height={200} borderRadius={20} />
+          <SkeletonBlock height={40} borderRadius={10} />
+          <SkeletonBlock height={120} borderRadius={14} />
+          <SkeletonBlock height={120} borderRadius={14} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -251,6 +274,23 @@ export default function PortfolioScreen() {
       </ScrollView>
 
       <RebuildModal visible={showRebuild} onClose={() => setShowRebuild(false)} />
+    </View>
+  );
+}
+
+function SkeletonBlock({ height, width, borderRadius = 14 }: { height: number; width?: number; borderRadius?: number }) {
+  const colors = useColors();
+  return (
+    <View style={{
+      height, width, borderRadius, marginBottom: 10,
+      backgroundColor: colors.surface, overflow: "hidden",
+    }}>
+      <LinearGradient
+        colors={["transparent", colors.card, "transparent"]}
+        style={{ width: "100%", height: "100%" }}
+        start={{ x: -1, y: 0 }}
+        end={{ x: 2, y: 0 }}
+      />
     </View>
   );
 }

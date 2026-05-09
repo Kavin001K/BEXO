@@ -32,7 +32,7 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function UpdateCard({ update }: { update: Update }) {
+export const UpdateCard = React.memo(function UpdateCard({ update }: { update: Update }) {
   const colors = useColors();
   const meta   = TYPE_META[update.type];
 
@@ -65,7 +65,7 @@ export function UpdateCard({ update }: { update: Update }) {
       </View>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

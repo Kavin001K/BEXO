@@ -42,7 +42,7 @@ export interface ParsedResume {
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY ?? "";
 const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
 
 const EXTRACTION_PROMPT = `You are an expert resume parser. Extract all information from this PDF resume and return ONLY a valid JSON object matching this exact schema. Do NOT include markdown, code fences, or any explanation — only raw JSON.
 

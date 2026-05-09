@@ -34,7 +34,7 @@ export function RebuildModal({ visible, onClose }: RebuildModalProps) {
   const user = useAuthStore((s) => s.user);
   const { profile, updateProfile, setEducation, setExperiences, setProjects, setSkills } =
     useProfileStore();
-  const { triggerBuild } = usePortfolioStore();
+  const { buildStatus, triggerBuild } = usePortfolioStore();
 
   const [preferences, setPreferences] = useState(
     profile?.rebuild_preferences ?? ""
@@ -274,6 +274,36 @@ export function RebuildModal({ visible, onClose }: RebuildModalProps) {
               disabled={rebuilding}
             />
 
+            {/* Build status */}
+            {(buildStatus === "queued" || buildStatus === "building") && (
+              <View style={[styles.statusBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={styles.statusDot}>
+                  <View style={[styles.statusDotInner, {
+                    backgroundColor: buildStatus === "building" ? colors.primary : "#FAD06A"
+                  }]} />
+                </View>
+                <Text style={[styles.statusText, { color: colors.mutedForeground }]}>
+                  {buildStatus === "building" ? "Building your portfolio..." : "Build queued..."}
+                </Text>
+              </View>
+            )}
+            {buildStatus === "done" && (
+              <View style={[styles.statusBanner, { backgroundColor: "#6AFAD018", borderColor: "#6AFAD044" }]}>
+                <Feather name="check-circle" size={14} color="#6AFAD0" />
+                <Text style={[styles.statusText, { color: "#6AFAD0" }]}>
+                  Portfolio is live
+                </Text>
+              </View>
+            )}
+            {buildStatus === "failed" && (
+              <View style={[styles.statusBanner, { backgroundColor: "#FA6A6A18", borderColor: "#FA6A6A44" }]}>
+                <Feather name="alert-circle" size={14} color="#FA6A6A" />
+                <Text style={[styles.statusText, { color: "#FA6A6A" }]}>
+                  Last build failed. Try again with a new resume.
+                </Text>
+              </View>
+            )}
+
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               Your portfolio will be queued for rebuild. This usually takes 1-3 minutes.
             </Text>
@@ -357,5 +387,15 @@ const styles = StyleSheet.create({
   },
   parseBtnLabel: { fontSize: 13, fontWeight: "600" },
   error: { fontSize: 13, textAlign: "center" },
+  statusBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+  },
+  statusDot: {
+    width: 16, height: 16, borderRadius: 8,
+    alignItems: "center", justifyContent: "center",
+  },
+  statusDotInner: { width: 8, height: 8, borderRadius: 4 },
+  statusText: { fontSize: 13, fontWeight: "500" },
   note: { fontSize: 11, textAlign: "center", lineHeight: 16 },
 });

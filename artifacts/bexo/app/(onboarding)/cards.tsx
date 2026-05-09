@@ -107,8 +107,12 @@ export default function CardsScreen() {
     setSaving(true);
     try {
       await updateProfile({ headline, bio, location: location.trim() || undefined });
-      const profileId = profile?.id;
-      if (profileId && selectedSkills.length > 0) {
+      // Refresh profile from store in case it was just created
+      const { profile: latestProfile } = useProfileStore.getState();
+      const profileId = latestProfile?.id;
+      if (!profileId) {
+        console.warn("Cannot save skills — profile ID not available yet");
+      } else if (selectedSkills.length > 0) {
         const skillRows = selectedSkills.map((name) => ({
           profile_id: profileId,
           name,
@@ -180,10 +184,16 @@ export default function CardsScreen() {
           {CARDS.map((c, i) => (
             <View
               key={c.id}
-              style={[styles.dot, { backgroundColor: i <= cardIdx ? colors.primary : colors.border }]}
+              style={[styles.dot, {
+                backgroundColor: i < cardIdx
+                  ? colors.primary
+                  : i === cardIdx
+                  ? colors.primary
+                  : colors.border,
+                opacity: i < cardIdx ? 0.5 : 1,
+              }]}
             />
           ))}
-          <View style={[styles.dot, { backgroundColor: colors.border }]} />
         </View>
 
         <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>

@@ -1,5 +1,5 @@
 const colors = {
-  light: {
+  theme: {
     text: "#E8E8F0",
     tint: "#7C6AFA",
     background: "#0A0A0F",

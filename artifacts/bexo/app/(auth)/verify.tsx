@@ -21,7 +21,7 @@ import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-const OTP_LENGTH = 4;
+const OTP_LENGTH = 6;
 const OTP_EXPIRY_SECS = 10 * 60;
 
 export default function VerifyScreen() {

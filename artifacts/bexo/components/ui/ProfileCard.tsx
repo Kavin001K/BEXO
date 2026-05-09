@@ -15,7 +15,7 @@ interface Props {
   onEdit?: () => void;
 }
 
-export function ProfileCard({ profile, avatarUrl, skills = [], onEdit }: Props) {
+export const ProfileCard = React.memo(function ProfileCard({ profile, avatarUrl, skills = [], onEdit }: Props) {
   const colors = useColors();
 
   return (
@@ -130,7 +130,7 @@ export function ProfileCard({ profile, avatarUrl, skills = [], onEdit }: Props) 
       </View>
     </Animated.View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

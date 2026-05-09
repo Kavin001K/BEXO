@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert,
   Image,
@@ -43,6 +44,15 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Reset state when modal opens
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(0);
+      setValue("");
+      setAvatarUri(null);
+    }
+  }, [visible]);
+
   const sectionFields: MissingField[] = missingFields.filter(
     (f) => f.type === "section"
   );
@@ -79,6 +89,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
   };
 
   const handleSaveAndNext = async () => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!current) {
       finish();
       return;

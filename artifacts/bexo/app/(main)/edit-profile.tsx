@@ -65,6 +65,72 @@ const SKILL_CATEGORIES = [
   "Cloud", "Design", "Soft Skills", "Other",
 ];
 
+const TOP_UNIVERSITIES = [
+  "IIT Bombay", "IIT Delhi", "IIT Madras", "IIT Kanpur", "IIT Kharagpur",
+  "IIT Roorkee", "IIT Guwahati", "IIT Hyderabad", "NIT Trichy", "NIT Surathkal",
+  "BITS Pilani", "Anna University", "Delhi University", "Mumbai University",
+  "VIT Vellore", "SRM University", "Manipal University", "Amity University",
+  "PSG College of Technology", "Coimbatore Institute of Technology",
+];
+
+const DEGREES = [
+  "B.E.", "B.Tech.", "B.Sc.", "B.Com.", "B.A.", "B.B.A.",
+  "M.Tech.", "M.Sc.", "M.B.A.", "M.A.", "M.Com.",
+  "Ph.D.", "Diploma", "B.Arch.", "B.Pharm.", "B.C.A.",
+];
+
+const FIELDS = [
+  "Computer Science", "Information Technology", "Electronics and Communication",
+  "Electrical Engineering", "Mechanical Engineering", "Civil Engineering",
+  "Data Science", "Artificial Intelligence", "Cybersecurity",
+  "Business Administration", "Commerce", "Economics", "Psychology",
+  "Design", "Architecture", "Pharmacy",
+];
+
+function AutocompleteInput({
+  value, onChangeText, options, placeholder, inputStyle,
+}: {
+  value: string; onChangeText: (v: string) => void;
+  options: string[]; placeholder: string; inputStyle: any;
+}) {
+  const colors = useColors();
+  const [open, setOpen] = useState(false);
+  const filtered = options.filter((o) =>
+    o.toLowerCase().includes(value.toLowerCase()) && value.length > 0
+  ).slice(0, 5);
+
+  return (
+    <View style={{ zIndex: 999 }}>
+      <TextInput
+        style={[styles.input, inputStyle]}
+        placeholder={placeholder}
+        placeholderTextColor={colors.mutedForeground}
+        value={value}
+        onChangeText={(t) => { onChangeText(t); setOpen(true); }}
+        onBlur={() => setTimeout(() => setOpen(false), 200)}
+        onFocus={() => setOpen(true)}
+        selectionColor={colors.primary}
+      />
+      {open && filtered.length > 0 && (
+        <View style={[styles.dropdown, {
+          backgroundColor: colors.card, borderColor: colors.border,
+          zIndex: 1000,
+        }]}>
+          {filtered.map((opt) => (
+            <TouchableOpacity
+              key={opt}
+              onPress={() => { onChangeText(opt); setOpen(false); }}
+              style={[styles.dropdownItem, { borderBottomColor: colors.border }]}
+            >
+              <Text style={{ color: colors.foreground, fontSize: 14 }}>{opt}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function EditProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -309,37 +375,45 @@ export default function EditProfileScreen() {
           <View style={styles.backBtn} />
         </View>
 
-        {/* Tab bar */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={[styles.tabs, { borderBottomColor: colors.border }]}
-        >
-          {TABS.map((tab) => (
-            <TouchableOpacity
-              key={tab.id}
-              style={[
-                styles.tab,
-                activeTab === tab.id && { borderBottomColor: colors.primary },
-              ]}
-              onPress={() => setActiveTab(tab.id)}
-            >
-              <Feather
-                name={tab.icon as any}
-                size={14}
-                color={activeTab === tab.id ? colors.primary : colors.mutedForeground}
-              />
-              <Text
+        {/* Tab bar with fade edge on right to hint more tabs exist */}
+        <View style={{ position: "relative" }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.tabs, { borderBottomColor: colors.border }]}
+          >
+            {TABS.map((tab) => (
+              <TouchableOpacity
+                key={tab.id}
                 style={[
-                  styles.tabLabel,
-                  { color: activeTab === tab.id ? colors.primary : colors.mutedForeground },
+                  styles.tab,
+                  activeTab === tab.id && { borderBottomColor: colors.primary },
                 ]}
+                onPress={() => setActiveTab(tab.id)}
               >
-                {tab.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+                <Feather
+                  name={tab.icon as any}
+                  size={14}
+                  color={activeTab === tab.id ? colors.primary : colors.mutedForeground}
+                />
+                <Text
+                  style={[
+                    styles.tabLabel,
+                    { color: activeTab === tab.id ? colors.primary : colors.mutedForeground },
+                  ]}
+                >
+                  {tab.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <LinearGradient
+            colors={["transparent", colors.background]}
+            style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 32 }}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+            pointerEvents="none"
+          />
+        </View>
 
         {/* Content */}
         <ScrollView
@@ -648,18 +722,36 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
-            {([ { key: "institution", label: "Institution", placeholder: "University / School" },
-                 { key: "degree",      label: "Degree",      placeholder: "e.g. Bachelor of Science" },
-                 { key: "field",       label: "Field",       placeholder: "e.g. Computer Science" } ] as const
-            ).map(({ key, label, placeholder }) => (
-              <View style={styles.field} key={key}>
-                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>{label}</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder={placeholder}
-                  placeholderTextColor={colors.mutedForeground}
-                  value={eduForm[key] as string} onChangeText={(v) => setEduForm((f) => ({ ...f, [key]: v }))}
-                  selectionColor={colors.primary} />
-              </View>
-            ))}
+            <View style={[styles.field, { zIndex: 300 }]}>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Institution</Text>
+              <AutocompleteInput
+                value={eduForm.institution}
+                onChangeText={(v) => setEduForm((f) => ({ ...f, institution: v }))}
+                options={TOP_UNIVERSITIES}
+                placeholder="University / School"
+                inputStyle={inputStyle}
+              />
+            </View>
+            <View style={[styles.field, { zIndex: 200 }]}>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Degree</Text>
+              <AutocompleteInput
+                value={eduForm.degree}
+                onChangeText={(v) => setEduForm((f) => ({ ...f, degree: v }))}
+                options={DEGREES}
+                placeholder="e.g. Bachelor of Science"
+                inputStyle={inputStyle}
+              />
+            </View>
+            <View style={[styles.field, { zIndex: 100 }]}>
+              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Field</Text>
+              <AutocompleteInput
+                value={eduForm.field}
+                onChangeText={(v) => setEduForm((f) => ({ ...f, field: v }))}
+                options={FIELDS}
+                placeholder="e.g. Computer Science"
+                inputStyle={inputStyle}
+              />
+            </View>
             <View style={styles.rowFields}>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Start Year</Text>
@@ -993,4 +1085,13 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 16, fontWeight: "700" },
   modalSave: { fontSize: 15, fontWeight: "600" },
   modalContent: { padding: 20, gap: 14 },
+  dropdown: {
+    position: "absolute", top: "100%", left: 0, right: 0,
+    borderRadius: 12, borderWidth: 1, overflow: "hidden",
+    marginTop: 4,
+  },
+  dropdownItem: {
+    paddingHorizontal: 14, paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
 });
