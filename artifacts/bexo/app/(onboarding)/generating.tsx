@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
+  Image,
   Platform,
   StyleSheet,
   Text,
@@ -113,14 +114,10 @@ export default function GeneratingScreen() {
       >
         <View style={styles.logoWrap}>
           <Animated.View style={{ opacity: pulseAnim }}>
-            <LinearGradient
-              colors={["#7C6AFA", "#FA6A6A"]}
-              style={styles.logoBig}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Text style={styles.logoLetter}>B</Text>
-            </LinearGradient>
+            <Image
+              source={require("../../assets/images/icon.png")}
+              style={styles.logoImageBig}
+            />
           </Animated.View>
         </View>
 
@@ -188,14 +185,11 @@ const styles = StyleSheet.create({
     gap: 24,
   },
   logoWrap: { marginBottom: 8 },
-  logoBig: {
+  logoImageBig: {
     width: 100,
     height: 100,
-    borderRadius: 28,
-    alignItems: "center",
-    justifyContent: "center",
+    borderRadius: 24,
   },
-  logoLetter: { color: "#fff", fontSize: 52, fontWeight: "800" },
   headline: {
     fontSize: 28,
     fontWeight: "800",

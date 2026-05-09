@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Image,
   Platform,
   RefreshControl,
   ScrollView,
@@ -65,9 +66,19 @@ export default function DashboardScreen() {
   const load = async () => {
     if (!user) return;
     await fetchProfile(user.id);
-    if (profile?.id) {
-      await Promise.all([fetchUpdates(profile.id), fetchBuildStatus(profile.id)]);
+    const { profile: currentProfile } = useProfileStore.getState();
+
+    // No profile or no handle → send to onboarding to claim handle
+    if (!currentProfile || !currentProfile.handle) {
+      router.replace("/(onboarding)/handle");
+      return;
     }
+
+    // Profile is complete — load dashboard data
+    await Promise.all([
+      fetchUpdates(currentProfile.id),
+      fetchBuildStatus(currentProfile.id),
+    ]);
   };
 
   useEffect(() => { load(); }, [user?.id]);
@@ -115,11 +126,17 @@ export default function DashboardScreen() {
       >
         {/* Header */}
         <Animated.View entering={FadeIn.duration(500)} style={styles.header}>
-          <View>
-            <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Welcome back</Text>
-            <Text style={[styles.name, { color: colors.foreground }]}>
-              {profile?.full_name?.split(" ")[0] ?? "Student"} 👋
-            </Text>
+          <View style={styles.headerTitle}>
+            <Image
+              source={require("../../assets/images/icon.png")}
+              style={styles.headerLogo}
+            />
+            <View>
+              <Text style={[styles.greeting, { color: colors.mutedForeground }]}>Welcome back</Text>
+              <Text style={[styles.name, { color: colors.foreground }]}>
+                {profile?.full_name?.split(" ")[0] ?? "Student"} 👋
+              </Text>
+            </View>
           </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
@@ -275,7 +292,9 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { paddingHorizontal: 20, gap: 16 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  headerTitle: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerLogo: { width: 44, height: 44, borderRadius: 12 },
   greeting: { fontSize: 13, fontWeight: "500" },
   name: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
   headerActions: { flexDirection: "row", gap: 8 },

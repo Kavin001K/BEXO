@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import {
+  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -66,17 +67,10 @@ export default function LoginScreen() {
     transform: [{ scale: googleScale.value }],
   }));
 
-  // Navigate when session arrives
+  // Navigate when session arrives — dashboard handles all routing decisions
   useEffect(() => {
     if (session?.user) {
-      const hasPhone  = !!session.user.phone;
-      const provider  = session.user.app_metadata?.provider;
-      const isGoogle  = provider === "google";
-      if (isGoogle && !hasPhone) {
-        router.replace("/(auth)/collect-phone");
-      } else {
-        router.replace("/(onboarding)/handle");
-      }
+      router.replace("/(main)/dashboard");
     }
   }, [session]);
 
@@ -182,14 +176,10 @@ export default function LoginScreen() {
         >
           {/* Logo */}
           <Animated.View entering={FadeIn.duration(600)} style={styles.logoWrap}>
-            <LinearGradient
-              colors={["#7C6AFA", "#A06AFA"]}
-              style={styles.logoBadge}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <Text style={styles.logoLetter}>B</Text>
-            </LinearGradient>
+            <Image
+              source={require("../../assets/images/icon.png")}
+              style={styles.logoImage}
+            />
             <Text style={[styles.appName, { color: colors.foreground }]}>BEXO</Text>
           </Animated.View>
 
@@ -358,15 +348,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   glow: { position: "absolute", top: 0, left: 0, right: 0, height: 320 },
   scroll: { paddingHorizontal: 28, gap: 20 },
-  logoWrap: { flexDirection: "row", alignItems: "center", gap: 10 },
-  logoBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 13,
-    alignItems: "center",
-    justifyContent: "center",
+  logoWrap: { flexDirection: "row", alignItems: "center", gap: 12 },
+  logoImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
   },
-  logoLetter: { color: "#fff", fontSize: 22, fontWeight: "800" },
   appName: { fontSize: 22, fontWeight: "800", letterSpacing: 3 },
   headline: {
     fontSize: 36,

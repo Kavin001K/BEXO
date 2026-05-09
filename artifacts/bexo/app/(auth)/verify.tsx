@@ -90,7 +90,7 @@ export default function VerifyScreen() {
       if (sessionErr) throw sessionErr;
 
       // Auth state listener in useAuthStore handles navigation
-      router.replace("/(auth)/collect-email");
+      router.replace("/(main)/dashboard");
     } catch (e: any) {
       setError(e.message ?? "Invalid code. Try again.");
     } finally {

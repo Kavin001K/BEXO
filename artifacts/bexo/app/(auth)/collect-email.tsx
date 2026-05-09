@@ -32,7 +32,7 @@ export default function CollectEmailScreen() {
       return;
     }
     setCollectedEmail(trimmed);
-    router.replace("/(onboarding)/handle");
+    router.replace("/(main)/dashboard");
   };
 
   return (
@@ -94,7 +94,7 @@ export default function CollectEmailScreen() {
 
           <BexoButton label="Continue" onPress={handleContinue} icon={<Feather name="arrow-right" size={16} color="#fff" />} />
 
-          <TouchableOpacity onPress={() => router.replace("/(onboarding)/handle")}>
+          <TouchableOpacity onPress={() => router.replace("/(main)/dashboard")}>
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>Skip for now</Text>
           </TouchableOpacity>
         </ScrollView>

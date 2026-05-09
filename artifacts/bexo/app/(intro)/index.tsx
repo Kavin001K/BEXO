@@ -1,9 +1,8 @@
-import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
   Dimensions,
+  Image,
   NativeScrollEvent,
   NativeSyntheticEvent,
   Platform,
@@ -15,57 +14,44 @@ import {
 } from "react-native";
 import Animated, {
   FadeIn,
-  FadeInDown,
   FadeInUp,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 
-const { width: W } = Dimensions.get("window");
+const { width: W, height: H } = Dimensions.get("window");
 
-const CARDS = [
+const SCREENS = [
   {
-    icon: "zap" as const,
-    title: "Your portfolio,\nyour identity.",
-    subtitle: "Build a stunning student portfolio in minutes. Stand out with a professional online presence.",
-    gradient: ["#7C6AFA", "#A06AFA"] as [string, string],
-    glow: "#7C6AFA",
+    image: require("../../assets/images/Screen_1.png"),
   },
   {
-    icon: "upload-cloud" as const,
-    title: "AI-powered\nresume parsing.",
-    subtitle: "Upload your resume and let our AI extract education, experience, projects, and skills automatically.",
-    gradient: ["#6AFAD0", "#3EC8A0"] as [string, string],
-    glow: "#6AFAD0",
+    image: require("../../assets/images/Screen_2.png"),
   },
   {
-    icon: "share-2" as const,
-    title: "Share anywhere.\nTrack everything.",
-    subtitle: "Get a live portfolio site with real-time analytics. See who views, clicks, and shares your work.",
-    gradient: ["#FA6A6A", "#FAD06A"] as [string, string],
-    glow: "#FA6A6A",
+    image: require("../../assets/images/Screen_3.png"),
   },
 ];
 
 function AnimatedDot({ active }: { active: boolean }) {
-  const width = useSharedValue(active ? 24 : 8);
+  const dotWidth = useSharedValue(active ? 28 : 8);
   const colors = useColors();
 
   React.useEffect(() => {
-    width.value = withSpring(active ? 24 : 8, { stiffness: 300, damping: 20 });
+    dotWidth.value = withSpring(active ? 28 : 8, { stiffness: 300, damping: 22 });
   }, [active]);
 
   const style = useAnimatedStyle(() => ({
-    width: width.value,
+    width: dotWidth.value,
     height: 8,
     borderRadius: 4,
-    backgroundColor: active ? colors.primary : colors.border,
+    backgroundColor: active ? "#7C6AFA" : "rgba(255,255,255,0.2)",
   }));
 
   return <Animated.View style={style} />;
@@ -77,44 +63,29 @@ export default function IntroScreen() {
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
-  const isLast = activeIdx === CARDS.length - 1;
+  const isLast = activeIdx === SCREENS.length - 1;
 
-  const topPad    = insets.top + (Platform.OS === "web" ? 67 : 20);
-  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
+  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / W);
-    setActiveIdx(idx);
+    if (idx >= 0 && idx < SCREENS.length) {
+      setActiveIdx(idx);
+    }
   };
 
   const goNext = () => {
+    if (isLast) {
+      router.replace("/(auth)");
+      return;
+    }
     const next = activeIdx + 1;
     scrollRef.current?.scrollTo({ x: next * W, animated: true });
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Dynamic glow */}
-      <LinearGradient
-        colors={[CARDS[activeIdx].glow + "22", "transparent"]}
-        style={styles.glow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-
-      {/* Skip */}
-      {!isLast && (
-        <Animated.View entering={FadeIn.duration(400)} style={[styles.skipWrap, { top: topPad + 8 }]}>
-          <TouchableOpacity
-            style={[styles.skipBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-            onPress={() => router.replace("/(auth)")}
-          >
-            <Text style={[styles.skipText, { color: colors.mutedForeground }]}>Skip</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      )}
-
-      {/* Cards */}
+    <View style={[styles.container, { backgroundColor: "#08081A" }]}>
+      {/* Full-screen image carousel */}
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -122,61 +93,82 @@ export default function IntroScreen() {
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingTop: topPad + 48 }}
+        style={StyleSheet.absoluteFill}
+        bounces={false}
+        decelerationRate="fast"
       >
-        {CARDS.map((card, i) => (
-          <View key={i} style={[styles.card, { width: W }]}>
-            {/* Icon */}
-            <Animated.View entering={FadeInDown.delay(i === activeIdx ? 0 : 0).springify()}>
-              <LinearGradient
-                colors={card.gradient}
-                style={styles.iconCircle}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Feather name={card.icon} size={38} color="#fff" />
-              </LinearGradient>
-            </Animated.View>
-
-            <Text style={[styles.title, { color: colors.foreground }]}>{card.title}</Text>
-            <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-              {card.subtitle}
-            </Text>
+        {SCREENS.map((screen, i) => (
+          <View key={i} style={{ width: W, height: H }}>
+            <Image
+              source={screen.image}
+              style={styles.screenImage}
+              resizeMode="cover"
+            />
           </View>
         ))}
       </ScrollView>
 
+      {/* Bottom gradient overlay for controls */}
+      <LinearGradient
+        colors={["transparent", "rgba(8,8,26,0.7)", "rgba(8,8,26,0.95)"]}
+        style={styles.bottomGradient}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        pointerEvents="none"
+      />
+
+      {/* Skip button */}
+      {!isLast && (
+        <Animated.View
+          entering={FadeIn.duration(400)}
+          style={[styles.skipWrap, { top: insets.top + (Platform.OS === "web" ? 67 : 16) }]}
+        >
+          <TouchableOpacity
+            style={styles.skipBtn}
+            onPress={() => router.replace("/(auth)")}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.skipText}>Skip</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+
       {/* Bottom controls */}
       <Animated.View
-        entering={FadeInUp.delay(200).springify()}
-        style={[styles.bottom, { paddingBottom: bottomPad + 16 }]}
+        entering={FadeInUp.delay(300).springify()}
+        style={[styles.bottom, { paddingBottom: bottomPad + 12 }]}
       >
         {/* Dots */}
         <View style={styles.dots}>
-          {CARDS.map((_, i) => (
+          {SCREENS.map((_, i) => (
             <AnimatedDot key={i} active={i === activeIdx} />
           ))}
         </View>
 
-        {isLast ? (
-          <BexoButton
-            label="Get Started"
-            onPress={() => router.replace("/(auth)")}
-            icon={<Feather name="arrow-right" size={16} color="#fff" />}
-          />
-        ) : (
-          <TouchableOpacity onPress={goNext} activeOpacity={0.85}>
-            <LinearGradient
-              colors={CARDS[activeIdx].gradient}
-              style={styles.nextBtn}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+        {/* CTA */}
+        <View style={styles.ctaWrap}>
+          {isLast ? (
+            <BexoButton
+              label="Get Started"
+              onPress={() => router.replace("/(auth)")}
+            />
+          ) : (
+            <TouchableOpacity
+              onPress={goNext}
+              activeOpacity={0.85}
+              style={styles.nextBtnWrap}
             >
-              <Feather name="arrow-right" size={22} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
-        )}
+              <LinearGradient
+                colors={["#7C6AFA", "#9C6AFA"]}
+                style={styles.nextBtn}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.nextBtnText}>Next</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          )}
+        </View>
       </Animated.View>
     </View>
   );
@@ -184,64 +176,75 @@ export default function IntroScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 380 },
-  skipWrap: { position: "absolute", right: 20, zIndex: 10 },
+  screenImage: {
+    width: W,
+    height: H,
+  },
+  bottomGradient: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 200,
+  },
+  skipWrap: {
+    position: "absolute",
+    right: 20,
+    zIndex: 10,
+  },
   skipBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    backgroundColor: "rgba(255,255,255,0.1)",
     borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
   },
-  skipText: { fontSize: 14, fontWeight: "500" },
-  card: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 36,
-    gap: 22,
-    flex: 1,
-  },
-  iconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-    ...Platform.select({
-      ios:     { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.4, shadowRadius: 24 },
-      android: { elevation: 12 },
-      web:     { boxShadow: "0 12px 32px rgba(124,106,250,0.45)" },
-    }),
-  },
-  title: {
-    fontSize: 34,
-    fontWeight: "800",
-    textAlign: "center",
-    lineHeight: 42,
-    letterSpacing: -0.4,
-  },
-  subtitle: {
-    fontSize: 15,
-    textAlign: "center",
-    lineHeight: 24,
-    maxWidth: 300,
+  skipText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "rgba(255,255,255,0.7)",
   },
   bottom: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingHorizontal: 28,
     alignItems: "center",
     gap: 24,
   },
-  dots: { flexDirection: "row", gap: 6, alignItems: "center" },
+  dots: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+  ctaWrap: {
+    width: "100%",
+  },
+  nextBtnWrap: {
+    width: "100%",
+  },
   nextBtn: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    height: 56,
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     ...Platform.select({
-      ios:     { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.35, shadowRadius: 16 },
+      ios: {
+        shadowColor: "#7C6AFA",
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 16,
+      },
       android: { elevation: 8 },
-      web:     { boxShadow: "0 8px 24px rgba(124,106,250,0.4)" },
+      web: { boxShadow: "0 8px 24px rgba(124,106,250,0.4)" },
     }),
+  },
+  nextBtnText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
 });
