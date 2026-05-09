@@ -131,7 +131,7 @@ export default function DashboardScreen() {
       Alert.alert("Not ready", "Complete your profile setup first.");
       return;
     }
-    const url  = `https://${profile.handle}.mybrexo.com`;
+    const url  = `https://${profile.handle}.mybexo.com`;
     const name = profile.full_name ?? profile.handle;
     try {
       await Share.share(
@@ -205,7 +205,7 @@ export default function DashboardScreen() {
               >
                 <View style={styles.liveDot} />
                 <Text style={styles.liveBannerText}>Portfolio Live</Text>
-                <Text style={styles.liveBannerUrl}>{profile?.handle}.mybrexo.com</Text>
+                <Text style={styles.liveBannerUrl}>{profile?.handle}.mybexo.com</Text>
                 <Feather name="external-link" size={15} color="rgba(255,255,255,0.8)" />
               </LinearGradient>
             </TouchableOpacity>

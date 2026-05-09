@@ -130,7 +130,7 @@ export default function PortfolioScreen() {
             </Text>
           ) : null}
           <Text style={[styles.heroHandle, { color: colors.primary }]}>
-            {profile?.handle ?? "handle"}.mybrexo.com
+            {profile?.handle ?? "handle"}.mybexo.com
           </Text>
           {profile?.bio ? (
             <Text style={[styles.heroBio, { color: colors.mutedForeground }]}>

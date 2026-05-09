@@ -39,11 +39,20 @@ export async function apiFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   const url = `${API_BASE_URL}/api${path}`;
-  return fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {}),
-    },
-  });
+  console.log(`[API] Fetching: ${url}`, options.method ?? "GET");
+
+  try {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers ?? {}),
+      },
+    });
+    console.log(`[API] Response: ${res.status} from ${url}`);
+    return res;
+  } catch (error) {
+    console.error(`[API] Network Error for ${url}:`, error);
+    throw error;
+  }
 }

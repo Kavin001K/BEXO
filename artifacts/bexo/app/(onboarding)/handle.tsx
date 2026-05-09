@@ -210,7 +210,7 @@ export default function HandleScreen() {
             <View style={[styles.urlPreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Feather name="link" size={14} color={colors.mutedForeground} />
               <Text style={[styles.urlText, { color: colors.primary }]}>
-                {slug}.mybrexo.com
+                {slug}.mybexo.com
               </Text>
             </View>
           )}

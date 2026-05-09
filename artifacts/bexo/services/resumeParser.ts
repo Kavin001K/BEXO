@@ -1,4 +1,4 @@
-import { uploadFile } from "./upload";
+import { uploadResume } from "./upload";
 
 export interface ParsedResume {
   full_name?: string;
@@ -196,14 +196,8 @@ export async function uploadAndParseResume(
   // Read file as base64 BEFORE uploading (avoids an extra download round-trip)
   const pdfBase64 = await fileUriToBase64(fileUri);
 
-  // Upload to Supabase Storage
-  const storagePath = `${userId}/${Date.now()}_${fileName}`;
-  const { url: resumeUrl } = await uploadFile(
-    "resumes",
-    storagePath,
-    fileUri,
-    "application/pdf"
-  );
+  // Upload to R2 and update profile
+  const resumeUrl = await uploadResume(userId, fileUri);
 
   // Parse with Gemini
   const parsed = await callGeminiParsePdf(pdfBase64);
@@ -211,17 +205,6 @@ export async function uploadAndParseResume(
   return { resumeUrl, parsed };
 }
 
-export async function uploadAvatar(imageUri: string, userId: string): Promise<string> {
-  const storagePath = `${userId}/avatar.jpg`;
-  const { url } = await uploadFile("avatars", storagePath, imageUri, "image/jpeg");
-  return url;
-}
-
-export async function uploadProjectImage(imageUri: string, userId: string): Promise<string> {
-  const storagePath = `${userId}/${Date.now()}_project.jpg`;
-  const { url } = await uploadFile("projects", storagePath, imageUri, "image/jpeg");
-  return url;
-}
 
 /**
  * Generate a professional bio from profile data using Gemini.

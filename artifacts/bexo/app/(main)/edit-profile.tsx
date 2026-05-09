@@ -24,8 +24,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { LocationInput } from "@/components/ui/LocationInput";
 import { useColors } from "@/hooks/useColors";
-import { uploadAndParseResume, uploadAvatar } from "@/services/resumeParser";
+import { uploadAndParseResume } from "@/services/resumeParser";
+import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { ProfilePhotoCropper } from "@/components/ProfilePhotoCropper";
 import {
   useProfileStore,
   type Education,
@@ -161,6 +163,8 @@ export default function EditProfileScreen() {
   // Avatar state
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [cropperVisible, setCropperVisible] = useState(false);
+  const [pendingImageUri, setPendingImageUri] = useState<string | null>(null);
 
   // Resume state
   const [resumeFile, setResumeFile] = useState<{ name: string; uri: string } | null>(null);
@@ -224,20 +228,27 @@ export default function EditProfileScreen() {
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.85,
+      mediaTypes: ImagePicker.MediaType.Images,
+      allowsEditing: false, // We'll use our own "proper" cropper
+      quality: 0.9,
     });
     if (res.canceled || !res.assets[0]) return;
-    const uri = res.assets[0].uri;
+    setPendingImageUri(res.assets[0].uri);
+    setCropperVisible(true);
+  };
+
+  const handleCropComplete = async (croppedUri: string) => {
+    setCropperVisible(false);
     setUploadingAvatar(true);
     try {
       if (!user?.id) throw new Error("Not authenticated");
-      const url = await uploadAvatar(uri, user.id);
+      console.log("[EditProfile] Starting avatar upload...");
+      const url = await uploadAvatar(user.id, croppedUri);
       await updateProfile({ avatar_url: url });
-      setAvatarUri(uri);
+      setAvatarUri(croppedUri);
+      console.log("[EditProfile] Avatar update complete");
     } catch (e: any) {
+      console.error("[EditProfile] Upload error:", e);
       Alert.alert("Error", e.message ?? "Failed to upload photo");
     } finally {
       setUploadingAvatar(false);
@@ -706,6 +717,13 @@ export default function EditProfileScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ProfilePhotoCropper
+        visible={cropperVisible}
+        imageUri={pendingImageUri}
+        onClose={() => setCropperVisible(false)}
+        onCrop={handleCropComplete}
+      />
 
       {/* ---- EDUCATION MODAL ---- */}
       <Modal visible={eduModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEduModalVisible(false)}>

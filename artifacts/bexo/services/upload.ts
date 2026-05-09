@@ -1,4 +1,4 @@
-import { File } from "expo-file-system";
+import * as FileSystem from "expo-file-system";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
 import { apiFetch } from "@/lib/apiConfig";
@@ -6,45 +6,61 @@ import { supabase } from "@/lib/supabase";
 
 /**
  * File upload via Cloudflare R2 using presigned URLs from the API server.
- *
- * Folder structure in R2 (bucket: bexo):
- *   avatars/  {userId}/avatar-{timestamp}.jpg
- *   resumes/  {userId}/resume-{timestamp}.pdf
- *   projects/ {userId}/{projectId}-{timestamp}.jpg
  */
 
-async function readFileBytes(uri: string): Promise<ArrayBuffer> {
+async function readFileBytes(uri: string): Promise<Uint8Array> {
   if (Platform.OS === "web") {
     const response = await fetch(uri);
-    return response.arrayBuffer();
+    const buffer = await response.arrayBuffer();
+    return new Uint8Array(buffer);
   }
-  // Native: use expo-file-system v55 class-based API
-  return new File(uri).arrayBuffer();
+  // Native: read as base64 and convert to Uint8Array
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
 }
 
 async function uploadToR2(
   key: string,
-  body: ArrayBuffer,
+  body: Uint8Array,
   contentType: string
 ): Promise<string> {
+  console.log(`[Upload] Requesting presigned URL for: ${key}`);
   // Get presigned upload URL from API server
   const resp = await apiFetch("/storage/upload-url", {
     method: "POST",
     body: JSON.stringify({ key, contentType }),
   });
-  const { url, publicUrl, error } = await resp.json();
-  if (!resp.ok || error) throw new Error(error ?? "Failed to get upload URL");
 
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    console.error(`[Upload] Failed to get presigned URL: ${resp.status}`, errorText);
+    throw new Error(`Failed to get upload URL: ${resp.status}`);
+  }
+
+  const { url, publicUrl, error } = await resp.json();
+  if (error) throw new Error(error);
+
+  console.log(`[Upload] Uploading to R2: ${url.split("?")[0]}`);
   // Upload directly to R2
   const uploadResp = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": contentType },
     body,
   });
+
   if (!uploadResp.ok) {
+    console.error(`[Upload] R2 upload failed: ${uploadResp.status}`);
     throw new Error(`R2 upload failed: ${uploadResp.status}`);
   }
 
+  console.log(`[Upload] Successfully uploaded: ${publicUrl}`);
   return publicUrl as string;
 }
 

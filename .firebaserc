@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "mybexo",
+    "bexo": "mybexo"
+  }
+}

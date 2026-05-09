@@ -64,7 +64,7 @@ export const ProfileCard = React.memo(function ProfileCard({ profile, avatarUrl,
                 style={[styles.handle, { color: colors.primary }]}
                 numberOfLines={1}
               >
-                {profile.handle || "handle"}.mybrexo.com
+                {profile.handle || "handle"}.mybexo.com
               </Text>
             </View>
           </View>
