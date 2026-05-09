@@ -1,5 +1,6 @@
 {
   "expo": {
+    "platforms": ["ios", "android", "web"],
     "name": "BEXO",
     "slug": "mybexo",
     "version": "1.0.0",
@@ -25,6 +26,7 @@
       }
     },
     "web": {
+      "bundler": "metro",
       "favicon": "./assets/images/icon.png"
     },
     "plugins": [
