@@ -76,17 +76,31 @@ export default function HandleScreen() {
     setError("");
     setLoading(true);
     try {
+      // Check if profile already exists — if so, only update handle/name
+      const { data: existing } = await supabase
+        .from("profiles")
+        .select("id, headline, bio")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      const upsertPayload: Record<string, any> = {
+        user_id: user.id,
+        handle: slug,
+        full_name: fullName.trim(),
+        email: collectedEmail || user.email || null,
+        phone: collectedPhone || user.phone || null,
+      };
+
+      // Only set headline/bio to empty if the profile doesn't exist yet
+      // This prevents overwriting data parsed from a resume in a prior session
+      if (!existing) {
+        upsertPayload.headline = "";
+        upsertPayload.bio = "";
+      }
+
       const { data, error: err } = await supabase
         .from("profiles")
-        .upsert({
-          user_id: user.id,
-          handle: slug,
-          full_name: fullName.trim(),
-          headline: "",
-          bio: "",
-          email: collectedEmail || user.email || null,
-          phone: collectedPhone || user.phone || null,
-        }, { onConflict: "user_id" })
+        .upsert(upsertPayload, { onConflict: "user_id" })
         .select()
         .single();
       if (err) throw err;

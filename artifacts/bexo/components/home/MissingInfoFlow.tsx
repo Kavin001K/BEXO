@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, FadeInRight, FadeOutLeft } from "react-native-reanimated";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { LocationInput } from "@/components/ui/LocationInput";
 import { useColors } from "@/hooks/useColors";
 import { uploadAvatar } from "@/services/resumeParser";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -250,6 +251,13 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
                       </>
                     )}
                   </TouchableOpacity>
+                ) : current.key === "location" ? (
+                  <LocationInput
+                    value={value}
+                    onChangeText={setValue}
+                    placeholder={current.placeholder ?? "City, Country"}
+                    autoFocus
+                  />
                 ) : (
                   <TextInput
                     style={[

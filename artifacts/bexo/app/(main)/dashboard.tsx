@@ -283,7 +283,11 @@ export default function DashboardScreen() {
         visible={showMissingFlow}
         missingFields={completionResult.missingFields}
         onClose={() => setShowMissingFlow(false)}
-        onDone={() => setShowMissingFlow(false)}
+        onDone={async () => {
+          setShowMissingFlow(false);
+          // Re-fetch profile so the completion score updates immediately
+          if (user?.id) await fetchProfile(user.id);
+        }}
       />
     </View>
   );

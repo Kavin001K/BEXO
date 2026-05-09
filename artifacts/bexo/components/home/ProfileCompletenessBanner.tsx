@@ -1,7 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import React from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import * as Haptics from "expo-haptics";
+import React, { useEffect, useRef } from "react";
+import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import AnimatedRN, { FadeInDown } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
 import { useProfileStore, type CompletionResult } from "@/stores/useProfileStore";
@@ -15,11 +16,35 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
   const colors = useColors();
   const { score, missingFields } = result;
 
+  // Animated counter
+  const animatedScore = useRef(new Animated.Value(0)).current;
+  const [displayScore, setDisplayScore] = React.useState(0);
+
+  useEffect(() => {
+    animatedScore.setValue(0);
+    Animated.timing(animatedScore, {
+      toValue: score,
+      duration: 800,
+      useNativeDriver: false,
+    }).start();
+
+    const listenerId = animatedScore.addListener(({ value }) => {
+      setDisplayScore(Math.round(value));
+    });
+
+    // Haptic when score is low
+    if (score < 80 && Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+
+    return () => animatedScore.removeListener(listenerId);
+  }, [score]);
+
   const barColor =
-    score >= 80 ? "#6AFAD0" : score >= 50 ? colors.primary : "#FA6A6A";
+    displayScore >= 80 ? "#6AFAD0" : displayScore >= 50 ? colors.primary : "#FA6A6A";
 
   return (
-    <Animated.View
+    <AnimatedRN.View
       entering={FadeInDown.springify()}
       style={[
         styles.container,
@@ -39,7 +64,7 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
         </View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            Profile {score}% complete
+            Profile {displayScore}% complete
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {score < 80
@@ -51,10 +76,16 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
 
       {/* Progress bar */}
       <View style={[styles.barTrack, { backgroundColor: colors.surface }]}>
-        <View
+        <Animated.View
           style={[
             styles.barFill,
-            { width: `${score}%` as any, backgroundColor: barColor },
+            {
+              width: animatedScore.interpolate({
+                inputRange: [0, 100],
+                outputRange: ["0%", "100%"],
+              }),
+              backgroundColor: barColor,
+            },
           ]}
         />
         <View style={[styles.threshold, { left: "80%" as any, backgroundColor: colors.border }]} />
@@ -97,7 +128,7 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
           <Text style={styles.actionLabel}>Complete profile</Text>
         </TouchableOpacity>
       )}
-    </Animated.View>
+    </AnimatedRN.View>
   );
 }
 

@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Platform,
@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { LocationInput } from "@/components/ui/LocationInput";
 import { SkillTag } from "@/components/ui/SkillTag";
 import { useColors } from "@/hooks/useColors";
 import { supabase } from "@/lib/supabase";
@@ -27,11 +28,12 @@ const SUGGESTED_SKILLS = [
   "SQL", "AWS", "Docker", "Git", "Figma", "Next.js"
 ];
 
-type CardId = "headline" | "bio" | "skills";
+type CardId = "headline" | "bio" | "skills" | "location";
 const CARDS: { id: CardId; title: string; subtitle: string }[] = [
   { id: "headline", title: "Your headline", subtitle: "A one-liner that defines you" },
   { id: "bio", title: "Your bio", subtitle: "Tell the world who you are" },
   { id: "skills", title: "Your skills", subtitle: "What tools do you master?" },
+  { id: "location", title: "Your location", subtitle: "Where are you based?" },
 ];
 
 export default function CardsScreen() {
@@ -39,9 +41,9 @@ export default function CardsScreen() {
   const insets = useSafeAreaInsets();
   const { profile, parsedResumeData, skills: parsedSkills, setSkills, updateProfile, setOnboardingStep } = useProfileStore();
 
-  const [cardIdx, setCardIdx] = useState(0);
   const [headline, setHeadline] = useState(parsedResumeData?.headline ?? profile?.headline ?? "");
   const [bio, setBio] = useState(parsedResumeData?.bio ?? profile?.bio ?? "");
+  const [location, setLocation] = useState(profile?.location ?? "");
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
     parsedSkills.map((s) => s.name).filter(Boolean)
   );
@@ -49,6 +51,32 @@ export default function CardsScreen() {
   const [saving, setSaving] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  // Determine which cards actually need data (auto-skip filled ones)
+  const needsData = (id: CardId): boolean => {
+    switch (id) {
+      case "headline": return !headline.trim();
+      case "bio": return !bio.trim();
+      case "skills": return parsedSkills.length === 0 && selectedSkills.length === 0;
+      case "location": return !location.trim();
+      default: return true;
+    }
+  };
+
+  // Find first card that needs data
+  const findFirstMissing = () => {
+    return CARDS.findIndex((c) => needsData(c.id));
+  };
+
+  const initialIdx = findFirstMissing();
+  const [cardIdx, setCardIdx] = useState(initialIdx === -1 ? 0 : initialIdx);
+
+  useEffect(() => {
+    // If no cards need data, just finish immediately
+    if (initialIdx === -1) {
+      handleFinish();
+    }
+  }, []);
 
   const current = CARDS[cardIdx];
 
@@ -59,8 +87,17 @@ export default function CardsScreen() {
       Animated.timing(slideAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
     ]).start();
 
-    if (cardIdx < CARDS.length - 1) {
-      setCardIdx(cardIdx + 1);
+    // Find next card that needs data after current
+    let nextIdx = -1;
+    for (let i = cardIdx + 1; i < CARDS.length; i++) {
+      if (needsData(CARDS[i].id)) {
+        nextIdx = i;
+        break;
+      }
+    }
+
+    if (nextIdx >= 0) {
+      setCardIdx(nextIdx);
     } else {
       await handleFinish();
     }
@@ -69,7 +106,7 @@ export default function CardsScreen() {
   const handleFinish = async () => {
     setSaving(true);
     try {
-      await updateProfile({ headline, bio });
+      await updateProfile({ headline, bio, location: location.trim() || undefined });
       const profileId = profile?.id;
       if (profileId && selectedSkills.length > 0) {
         const skillRows = selectedSkills.map((name) => ({
@@ -103,12 +140,21 @@ export default function CardsScreen() {
     setCustomSkill("");
   };
 
-  const isLast = cardIdx === CARDS.length - 1;
+  const isLast = (() => {
+    // Check if there are any cards after the current one that still need data
+    for (let i = cardIdx + 1; i < CARDS.length; i++) {
+      if (needsData(CARDS[i].id)) return false;
+    }
+    return true;
+  })();
+
   const canContinue =
     current.id === "headline"
       ? !!headline.trim()
       : current.id === "bio"
       ? !!bio.trim()
+      : current.id === "location"
+      ? !!location.trim()
       : selectedSkills.length > 0;
 
   return (
@@ -223,6 +269,15 @@ export default function CardsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        )}
+
+        {current.id === "location" && (
+          <LocationInput
+            value={location}
+            onChangeText={setLocation}
+            placeholder="Search your city..."
+            autoFocus
+          />
         )}
 
         <BexoButton

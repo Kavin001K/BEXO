@@ -1,3 +1,7 @@
+// ⚠️ cryptoPolyfill MUST be the very first import — it sets up
+// globalThis.crypto.subtle before @supabase/supabase-js evaluates.
+import "./cryptoPolyfill";
+
 import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { setupURLPolyfill } from "react-native-url-polyfill";

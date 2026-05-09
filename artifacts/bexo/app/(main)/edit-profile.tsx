@@ -22,6 +22,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { LocationInput } from "@/components/ui/LocationInput";
 import { useColors } from "@/hooks/useColors";
 import { uploadAndParseResume, uploadAvatar } from "@/services/resumeParser";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -121,6 +122,24 @@ export default function EditProfileScreen() {
   const [skillForm, setSkillForm] = useState<Skill>(EMPTY_SKILL);
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [showCatPicker, setShowCatPicker] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Sync form when profile loads
+  React.useEffect(() => {
+    if (profile && !isInitialized) {
+      setProfileForm({
+        full_name:    profile.full_name    ?? "",
+        headline:     profile.headline     ?? "",
+        bio:          profile.bio          ?? "",
+        location:     profile.location     ?? "",
+        website:      profile.website      ?? "",
+        linkedin_url: profile.linkedin_url ?? "",
+        github_url:   profile.github_url   ?? "",
+        email:        profile.email        ?? "",
+      });
+      setIsInitialized(true);
+    }
+  }, [profile, isInitialized]);
 
   const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
@@ -200,9 +219,16 @@ export default function EditProfileScreen() {
   // ---- Profile ----
   const handleSaveProfile = async () => {
     setSaving(true);
-    await updateProfile(profileForm);
-    setSaving(false);
-    Alert.alert("Saved", "Profile updated successfully.");
+    try {
+      await updateProfile(profileForm);
+      Alert.alert("Saved", "Profile updated successfully.", [
+        { text: "OK", onPress: () => router.back() }
+      ]);
+    } catch (e: any) {
+      Alert.alert("Error", e.message ?? "Failed to save profile");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ---- Education ----
@@ -417,13 +443,11 @@ export default function EditProfileScreen() {
               </View>
 
               {/* Text fields */}
-              {(
-                [
+              {([
                   { key: "full_name",    label: "Full Name",    placeholder: "Your full name",                    multiline: false },
                   { key: "headline",     label: "Headline",     placeholder: "A one-liner that defines you",       multiline: false },
                   { key: "bio",          label: "Bio",          placeholder: "Tell your story...",                 multiline: true  },
                   { key: "email",        label: "Email",        placeholder: "hello@you.com",                     multiline: false },
-                  { key: "location",     label: "Location",     placeholder: "City, Country",                     multiline: false },
                   { key: "website",      label: "Website",      placeholder: "https://yoursite.com",              multiline: false },
                   { key: "linkedin_url", label: "LinkedIn URL", placeholder: "https://linkedin.com/in/you",        multiline: false },
                   { key: "github_url",   label: "GitHub URL",   placeholder: "https://github.com/you",            multiline: false },
@@ -445,6 +469,16 @@ export default function EditProfileScreen() {
                   />
                 </View>
               ))}
+
+              {/* Location with autocomplete */}
+              <View style={[styles.field, { zIndex: 100 }]}>
+                <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Location</Text>
+                <LocationInput
+                  value={profileForm.location}
+                  onChangeText={(v) => setProfileForm((p) => ({ ...p, location: v }))}
+                  placeholder="City, Country"
+                />
+              </View>
               <BexoButton
                 label={saving ? "Saving…" : "Save Profile"}
                 onPress={handleSaveProfile}

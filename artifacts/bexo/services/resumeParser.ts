@@ -42,7 +42,7 @@ export interface ParsedResume {
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY ?? "";
 const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent";
 
 const EXTRACTION_PROMPT = `You are an expert resume parser. Extract all information from this PDF resume and return ONLY a valid JSON object matching this exact schema. Do NOT include markdown, code fences, or any explanation — only raw JSON.
 
@@ -116,7 +116,7 @@ async function fileUriToBase64(uri: string): Promise<string> {
 }
 
 /**
- * Call Gemini 1.5 Flash to extract structured data from a PDF.
+ * Call Gemini 3.1 Flash Lite to extract structured data from a PDF.
  */
 async function callGeminiParsePdf(pdfBase64: string): Promise<ParsedResume> {
   if (!GEMINI_API_KEY) {
@@ -130,8 +130,8 @@ async function callGeminiParsePdf(pdfBase64: string): Promise<ParsedResume> {
       {
         parts: [
           {
-            inline_data: {
-              mime_type: "application/pdf",
+            inlineData: {
+              mimeType: "application/pdf",
               data: pdfBase64,
             },
           },
@@ -142,6 +142,7 @@ async function callGeminiParsePdf(pdfBase64: string): Promise<ParsedResume> {
     generationConfig: {
       temperature: 0.1,
       maxOutputTokens: 4096,
+      responseMimeType: "application/json",
     },
   };
 

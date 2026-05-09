@@ -55,6 +55,7 @@ export default function PortfolioScreen() {
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
               onPress={() => router.push("/(main)/edit-profile")}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Feather name="edit-2" size={14} color={colors.foreground} />
               <Text style={[styles.actionLabel, { color: colors.foreground }]}>Edit</Text>

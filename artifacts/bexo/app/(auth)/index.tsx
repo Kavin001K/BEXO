@@ -118,6 +118,8 @@ export default function LoginScreen() {
         if (oauthErr) throw oauthErr;
         if (!data?.url) throw new Error("No OAuth URL returned");
 
+        console.log("OAuth URL generated:", data.url);
+
         const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
         if (result.type === "success" && result.url) {
           const parsed = Linking.parse(result.url);
