@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { uploadAvatar } from "@/services/resumeParser";
+import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
@@ -70,7 +70,7 @@ export default function PhotoScreen() {
     if (imageUri) {
       setUploading(true);
       try {
-        const url = await uploadAvatar(imageUri, user.id);
+        const url = await uploadAvatar(user.id, imageUri);
         await updateProfile({ avatar_url: url });
       } catch (e: any) {
         setError(e.message ?? "Upload failed");

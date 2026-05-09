@@ -22,7 +22,7 @@ import Animated, { FadeIn, FadeInRight, FadeOutLeft } from "react-native-reanima
 import { BexoButton } from "@/components/ui/BexoButton";
 import { LocationInput } from "@/components/ui/LocationInput";
 import { useColors } from "@/hooks/useColors";
-import { uploadAvatar } from "@/services/resumeParser";
+import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore, type MissingField } from "@/stores/useProfileStore";
 
@@ -98,7 +98,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
     try {
       if (current.type === "image") {
         if (avatarUri && user?.id) {
-          const url = await uploadAvatar(avatarUri, user.id);
+          const url = await uploadAvatar(user.id, avatarUri);
           await updateProfile({ avatar_url: url });
         }
       } else {

@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import { readAsStringAsync, EncodingType } from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
 import { apiFetch } from "@/lib/apiConfig";
@@ -14,16 +14,30 @@ async function readFileBytes(uri: string): Promise<Uint8Array> {
     const buffer = await response.arrayBuffer();
     return new Uint8Array(buffer);
   }
+
   // Native: read as base64 and convert to Uint8Array
-  const base64 = await FileSystem.readAsStringAsync(uri, {
-    encoding: FileSystem.EncodingType.Base64,
-  });
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
+  try {
+    // Robust way to get the encoding type constant or fallback to string literal
+    const encoding = (EncodingType && EncodingType.Base64) ? EncodingType.Base64 : 'base64';
+    
+    console.log(`[Upload] Reading file: ${uri} with encoding: ${encoding}`);
+    
+    const base64 = await readAsStringAsync(uri, {
+      encoding: encoding as any,
+    });
+    
+    if (!base64) throw new Error("File is empty or could not be read");
+
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  } catch (err: any) {
+    console.error("[Upload] readFileBytes failed:", err);
+    throw new Error(`Failed to read file: ${err.message}`);
   }
-  return bytes;
 }
 
 async function uploadToR2(
@@ -93,9 +107,17 @@ export async function uploadAvatar(
 ): Promise<string> {
   onProgress?.(10);
 
+  // Normalize URI for native platforms (ensure it has file:// if it starts with /)
+  let processedUri = localUri;
+  if (Platform.OS !== "web" && localUri.startsWith("/") && !localUri.startsWith("file://")) {
+    processedUri = `file://${localUri}`;
+  }
+
+  console.log(`[UploadAvatar] Processing URI: ${processedUri}`);
+
   // Compress to max 400×400 JPEG at 82% quality
   const compressed = await ImageManipulator.manipulateAsync(
-    localUri,
+    processedUri,
     [{ resize: { width: 400, height: 400 } }],
     { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG }
   );
