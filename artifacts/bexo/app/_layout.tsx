@@ -28,7 +28,6 @@ function RootLayoutNav() {
   return (
     <Stack screenOptions={{ headerShown: false, animation: "fade" }}>
       <Stack.Screen name="index" />
-      <Stack.Screen name="(intro)" />
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(main)" />
