@@ -258,8 +258,17 @@ CREATE POLICY "Anyone can insert analytics"
 -- REALTIME (for live build status updates)
 -- ============================================================
 
-ALTER PUBLICATION supabase_realtime ADD TABLE public.site_builds;
-
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+      AND schemaname = 'public' 
+      AND tablename = 'site_builds'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.site_builds;
+  END IF;
+END $$;
 -- ============================================================
 -- STORAGE BUCKETS
 -- Run these separately if buckets don't exist yet
