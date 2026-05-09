@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router, raw } from "express";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -50,6 +50,41 @@ router.post("/upload-url", async (req, res) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message ?? "Failed to generate upload URL" });
+  }
+});
+
+/**
+ * POST /api/storage/upload
+ * Headers: x-key, content-type
+ * Body: binary data
+ * This route is used to proxy uploads and avoid CORS issues on web.
+ */
+router.post("/upload", raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
+  try {
+    const key = req.headers["x-key"] as string;
+    const contentType = req.headers["content-type"] as string;
+
+    if (!key) {
+      res.status(400).json({ error: "x-key header is required" });
+      return;
+    }
+
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      ContentType: contentType || "application/octet-stream",
+      Body: req.body as Buffer,
+    });
+
+    await r2.send(command);
+
+    res.json({
+      success: true,
+      publicUrl: `${R2_PUBLIC_BASE}/${key}`,
+    });
+  } catch (err: any) {
+    console.error("[Storage] Proxy upload failed:", err);
+    res.status(500).json({ error: err.message ?? "Failed to upload file via proxy" });
   }
 });
 

@@ -143,7 +143,7 @@ alter table public.site_analytics  enable row level security;
 create policy "profiles_owner" on public.profiles
   for all using (auth.uid() = user_id);
 create policy "profiles_public_read" on public.profiles
-  for select using (is_published = true);
+  for select using (true);
 
 -- education, experiences, projects, skills: owner only
 create policy "education_owner" on public.education

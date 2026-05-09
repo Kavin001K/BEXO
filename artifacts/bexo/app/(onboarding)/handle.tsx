@@ -103,7 +103,15 @@ export default function HandleScreen() {
         .upsert(upsertPayload, { onConflict: "user_id" })
         .select()
         .single();
-      if (err) throw err;
+      
+      if (err) {
+        // PostgREST 409 Conflict usually means the handle is already taken by another user_id
+        if (err.code === "23505") {
+          throw new Error("This handle is already taken. Please try another one.");
+        }
+        throw err;
+      }
+      
       const { setProfile } = useProfileStore.getState();
       setProfile(data);
       setOnboardingStep("resume");

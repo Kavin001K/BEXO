@@ -21,8 +21,8 @@ const SUPABASE_URL =
 const OTP_TTL_MS = 10 * 60 * 1000;
 
 function generateOTP(): string {
-  // 6 digits: 100000 to 999999
-  return String(100000 + crypto.randomInt(900000));
+  // 4 digits: 1000 to 9999
+  return String(1000 + crypto.randomInt(9000));
 }
 
 function hashOTP(otp: string): string {

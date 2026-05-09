@@ -17,7 +17,7 @@ interface Props {
   onCodeChange?: (code: string) => void;
 }
 
-export function OTPInput({ length = 6, onComplete, onCodeChange }: Props) {
+export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
   const colors = useColors();
   const [values, setValues] = useState<string[]>(Array(length).fill(""));
   const inputs = useRef<(TextInput | null)[]>([]);

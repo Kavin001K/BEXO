@@ -31,8 +31,31 @@ async function uploadToR2(
   body: Uint8Array,
   contentType: string
 ): Promise<string> {
+  // Web: Use the API server as a proxy to avoid R2 CORS issues on localhost
+  if (Platform.OS === "web") {
+    console.log(`[Upload] Web detected: Proxying upload via API server for: ${key}`);
+    const resp = await apiFetch("/storage/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": contentType,
+        "x-key": key,
+      },
+      body,
+    });
+
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      console.error(`[Upload] Proxy upload failed: ${resp.status}`, errorText);
+      throw new Error(`Proxy upload failed: ${resp.status}`);
+    }
+
+    const { publicUrl, error } = await resp.json();
+    if (error) throw new Error(error);
+    return publicUrl as string;
+  }
+
+  // Native: Direct upload via presigned URL works fine (no CORS)
   console.log(`[Upload] Requesting presigned URL for: ${key}`);
-  // Get presigned upload URL from API server
   const resp = await apiFetch("/storage/upload-url", {
     method: "POST",
     body: JSON.stringify({ key, contentType }),
@@ -48,7 +71,6 @@ async function uploadToR2(
   if (error) throw new Error(error);
 
   console.log(`[Upload] Uploading to R2: ${url.split("?")[0]}`);
-  // Upload directly to R2
   const uploadResp = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": contentType },
