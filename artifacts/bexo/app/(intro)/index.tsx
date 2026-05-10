@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
@@ -87,8 +88,8 @@ export default function IntroScreen() {
 
     return () => clearInterval(timer);
   }, [activeIdx]);
-
   const goNext = () => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isLast) {
       router.replace("/(auth)");
       return;

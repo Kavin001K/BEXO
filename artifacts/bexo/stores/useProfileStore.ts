@@ -239,12 +239,19 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   saveEducation: async (edu) => {
     const profile = get().profile;
     if (!profile) return;
-    if (edu.id) {
-      const { data } = await supabase.from("education").update(edu).eq("id", edu.id).select().single();
-      if (data) set((s) => ({ education: s.education.map((e) => (e.id === edu.id ? data : e)) }));
-    } else {
-      const { data } = await supabase.from("education").insert({ ...edu, profile_id: profile.id }).select().single();
-      if (data) set((s) => ({ education: [...s.education, data] }));
+    try {
+      if (edu.id) {
+        const { data, error } = await supabase.from("education").update(edu).eq("id", edu.id).select().single();
+        if (error) throw error;
+        if (data) set((s) => ({ education: s.education.map((e) => (e.id === edu.id ? data : e)) }));
+      } else {
+        const { data, error } = await supabase.from("education").insert({ ...edu, profile_id: profile.id }).select().single();
+        if (error) throw error;
+        if (data) set((s) => ({ education: [...s.education, data] }));
+      }
+    } catch (e: any) {
+      console.error("[ProfileStore] saveEducation error:", sanitizeError(e));
+      throw e;
     }
   },
   deleteEducation: async (id) => {
@@ -348,10 +355,11 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       throw error;
     }
     if (data) {
-      // Merge with existing, replacing any with same name
-      const existingNames = new Set(data.map(d => d.name));
-      const kept = get().skills.filter(s => !existingNames.has(s.name));
-      set({ skills: [...kept, ...data] });
+      // Merge with existing, replacing any with same name (deduplication)
+      const existing = get().skills;
+      const updatedNames = new Set(data.map(d => d.name));
+      const filtered = existing.filter(s => !updatedNames.has(s.name));
+      set({ skills: [...filtered, ...data] });
     }
   },
 
@@ -428,12 +436,13 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
 
       // 2. Deduplicate and save new items
       const existingEdu = get().education;
-      const newEdu = (parsed.education ?? []).filter(pe =>
-        !existingEdu.some(ee =>
+      const newEdu = (parsed.education ?? []).filter(pe => {
+        if (!pe.institution || !pe.degree) return false;
+        return !existingEdu.some(ee =>
           ee.institution.toLowerCase().trim() === pe.institution.toLowerCase().trim() &&
           ee.degree.toLowerCase().trim() === pe.degree.toLowerCase().trim()
-        )
-      );
+        );
+      });
 
       const existingExp = get().experiences;
       const newExp = (parsed.experiences ?? []).filter(pe =>

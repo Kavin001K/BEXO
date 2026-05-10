@@ -1,5 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
@@ -206,7 +207,7 @@ export default function EditProfileScreen() {
 
   // Sync form when profile loads
   React.useEffect(() => {
-    if (profile && !isInitialized) {
+    if (profile) {
       setProfileForm({
         full_name:    profile.full_name    ?? "",
         headline:     profile.headline     ?? "",
@@ -219,7 +220,7 @@ export default function EditProfileScreen() {
       });
       setIsInitialized(true);
     }
-  }, [profile, isInitialized]);
+  }, [profile?.id]); // Only re-sync if the underlying profile record changes
 
   const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
@@ -484,7 +485,10 @@ export default function EditProfileScreen() {
                   styles.tab,
                   activeTab === tab.id && { borderBottomColor: colors.primary },
                 ]}
-                onPress={() => setActiveTab(tab.id)}
+                onPress={() => {
+                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  setActiveTab(tab.id);
+                }}
               >
                 <Feather
                   name={tab.icon as any}

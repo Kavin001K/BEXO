@@ -108,7 +108,7 @@ router.post("/scan-attachment", async (req: any, res: any) => {
     });
   } catch (error: any) {
     console.error("[scan-attachment] Error:", error);
-    res.status(500).send(error.message);
+    res.status(500).send("An unexpected error occurred during processing.");
   }
 });
 
@@ -127,7 +127,7 @@ router.post("/upload-multi", async (req: any, res: any) => {
     res.json({ attachments: results });
   } catch (error: any) {
     console.error("[upload-multi] Error:", error);
-    res.status(500).send(error.message);
+    res.status(500).send("An unexpected error occurred during upload.");
   }
 });
 

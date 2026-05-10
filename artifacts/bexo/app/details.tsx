@@ -48,8 +48,8 @@ export default function DetailsScreen() {
   const [deleting, setDeleting] = useState(false);
   const ASSETS_BASE = "https://assets.mybexo.com";
 
-  const ensureAbsolute = (url: string) => {
-    if (!url) return "";
+  const ensureAbsolute = (url: string | null | undefined) => {
+    if (!url) return null;
     if (url.startsWith("http")) return url;
     return `${ASSETS_BASE}/${url.startsWith("/") ? url.slice(1) : url}`;
   };
@@ -112,12 +112,13 @@ export default function DetailsScreen() {
       if (type === "update") {
         await updateUpdate(id, { title, description, link_url: linkUrl });
       } else if (type === "education") {
+        const year = parseInt(date);
         await saveEducation({
           ...item,
           institution: title,
           degree: subTitle,
           field: description,
-          start_year: parseInt(date) || item.start_year,
+          start_year: !isNaN(year) ? year : item.start_year,
         });
       } else if (type === "experience") {
         await saveExperience({
@@ -279,7 +280,7 @@ export default function DetailsScreen() {
               <View style={[styles.section, { marginTop: -8, marginBottom: 8 }]}>
                 <View style={styles.sectionHeader}>
                   <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Attachments</Text>
-                  {isEditing && (
+                  {isEditing && type === "update" && (
                     <View style={styles.addButtons}>
                       <TouchableOpacity onPress={handleAddPhoto} style={styles.smallAddBtn}>
                         <Feather name="image" size={14} color={colors.primary} />

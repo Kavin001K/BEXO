@@ -93,7 +93,7 @@ function ClassicTabLayout() {
             isIOS ? (
               <SymbolView name="plus.circle" tintColor={color} size={22} />
             ) : (
-              <Feather name="plus-circle" onPress={() => router.navigate("/edit-profile")} size={22} color={color} />
+              <Feather name="plus-circle" size={22} color={color} />
             ),
         }}
       />
