@@ -22,6 +22,7 @@ const STEPS = [
   "Generating your card design...",
   "Applying BEXO magic...",
   "Your portfolio is almost ready!",
+  "Ready! Taking you to dashboard...",
 ];
 
 const THREE_MINUTES = 3 * 60 * 1000;
@@ -52,11 +53,19 @@ export default function GeneratingScreen() {
       setStepIdx((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev));
     }, 1800);
 
+    // Animation lasts for STEPS.length * 1800ms
     Animated.timing(progressAnim, {
       toValue: 1,
       duration: STEPS.length * 1800,
       useNativeDriver: false,
-    }).start();
+    }).start(() => {
+      // Once the bar is fully loaded, take user to dashboard
+      // We pass a 'notified' param so the dashboard can show the notification
+      router.replace({ 
+        pathname: "/dashboard", 
+        params: { onboarding_complete: "true" } 
+      });
+    });
 
     const delayTimer = setTimeout(() => {
       setShowDelayMessage(true);
@@ -96,10 +105,12 @@ export default function GeneratingScreen() {
   }, [profile?.id]);
 
   useEffect(() => {
+    // If the build actually finishes before our animation, we can skip ahead
     if (buildStatus === "done" && portfolioUrl) {
-      setTimeout(() => {
-        router.replace("/dashboard");
-      }, 1200);
+      router.replace({ 
+        pathname: "/dashboard", 
+        params: { onboarding_complete: "true" } 
+      });
     }
   }, [buildStatus, portfolioUrl]);
 

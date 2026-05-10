@@ -5,9 +5,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Alert,
   Platform, RefreshControl, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
 } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import Animated, {
   FadeIn, FadeInDown, FadeInRight,
   useAnimatedStyle, useSharedValue,
@@ -102,10 +104,22 @@ export default function DashboardScreen() {
   const [showMissing,    setShowMissing]    = useState(false);
   const [dashboardReady, setDashboardReady] = useState(false);
 
+  const params  = useLocalSearchParams<{ onboarding_complete?: string }>();
+
   const completionResult = useMemo(
     () => getCompletionResult(),
     [profile, education, experiences, projects, skills]
   );
+
+  useEffect(() => {
+    if (params.onboarding_complete === "true") {
+      Alert.alert(
+        "Website building in progress!",
+        "Your portfolio is being created. We'll notify you once it's live and ready to share!",
+        [{ text: "Great!", onPress: () => router.setParams({ onboarding_complete: undefined }) }]
+      );
+    }
+  }, [params.onboarding_complete]);
 
   useEffect(() => {
     if (!user?.id) return;
