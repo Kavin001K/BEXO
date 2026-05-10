@@ -20,6 +20,7 @@ import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
+import { sanitizeError } from "@/lib/errorUtils";
 
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -122,7 +123,7 @@ export default function UpdateScreen() {
       
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e: any) {
-      setError(e.message ?? "Scan failed.");
+      setError(sanitizeError(e));
     } finally {
       setScanning(false);
     }
@@ -160,7 +161,7 @@ export default function UpdateScreen() {
       setScannedAttachments([]);
       router.push("/dashboard");
     } catch (e: any) {
-      setError(e.message ?? "Could not post update");
+      setError(sanitizeError(e));
     } finally {
       setSaving(false);
     }

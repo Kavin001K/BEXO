@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
 import type { ParsedResume } from "@/services/resumeParser";
+import { sanitizeError } from "@/lib/errorUtils";
 
 export interface Education {
   id?: string;
@@ -123,6 +124,7 @@ interface ProfileState {
   replaceAllDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
   mergeDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
   refreshFromDB: () => Promise<void>;
+  reset: () => void;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
@@ -215,8 +217,8 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       } else {
         set({ profile: null, isLoading: false });
       }
-    } catch (e) {
-      console.error("[ProfileStore] fetchProfile error:", e);
+    } catch (e: any) {
+      console.error("[ProfileStore] fetchProfile error:", sanitizeError(e));
       set({ isLoading: false });
     }
   },
@@ -488,4 +490,14 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     });
     console.log("[ProfileStore] refreshFromDB: Done.");
   },
+  reset: () => set({
+    profile: null,
+    education: [],
+    experiences: [],
+    projects: [],
+    skills: [],
+    isLoading: false,
+    onboardingStep: "handle",
+    parsedResumeData: null,
+  }),
 }));

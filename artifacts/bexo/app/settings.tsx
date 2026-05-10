@@ -18,6 +18,7 @@ import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
+import { showErrorAlert, sanitizeError } from "@/lib/errorUtils";
 
 const COUNTRY_CODES = [
   { code: "+91", label: "India (+91)" },
@@ -69,7 +70,7 @@ export default function SettingsScreen() {
       if (!resp.ok) throw new Error(data.error ?? "Failed to send OTP");
       setPhoneStep("otp");
     } catch (e: any) {
-      setLinkError(e.message ?? "Failed to send OTP");
+      setLinkError(sanitizeError(e));
     } finally {
       setLinkLoading(false);
     }
@@ -90,11 +91,10 @@ export default function SettingsScreen() {
 
       setShowPhoneModal(false);
       setPhoneStep("input");
-      setLinkPhone(""); setPhoneOtp("");
       if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       Alert.alert("Phone linked!", `${phone} is now linked to your account. You can now log in with WhatsApp OTP.`);
     } catch (e: any) {
-      setLinkError(e.message ?? "Verification failed");
+      setLinkError(sanitizeError(e));
     } finally {
       setLinkLoading(false);
     }
@@ -117,7 +117,7 @@ export default function SettingsScreen() {
         [{ text: "Got it" }]
       );
     } catch (e: any) {
-      setEmailError(e.message ?? "Failed to save email");
+      setEmailError(sanitizeError(e));
     } finally {
       setEmailLoading(false);
     }
@@ -156,7 +156,7 @@ export default function SettingsScreen() {
       }
       setShowEmailModal(false);
     } catch (e: any) {
-      setEmailError(e.message ?? "Google linking failed");
+      setEmailError(sanitizeError(e));
     } finally {
       setGoogleLoading(false);
     }

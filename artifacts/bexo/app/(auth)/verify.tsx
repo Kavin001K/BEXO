@@ -20,6 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { sanitizeError } from "@/lib/errorUtils";
 
 const OTP_LENGTH = 4;
 const OTP_EXPIRY_SECS = 10 * 60;
@@ -103,7 +104,7 @@ export default function VerifyScreen() {
 
       router.replace("/dashboard");
     } catch (e: any) {
-      setError(e.message ?? "Invalid code. Try again.");
+      setError(sanitizeError(e));
     } finally {
       setLoading(false);
     }
@@ -127,7 +128,7 @@ export default function VerifyScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (e: any) {
-      setError(e.message ?? "Could not resend OTP");
+      setError(sanitizeError(e));
     } finally {
       setResending(false);
     }

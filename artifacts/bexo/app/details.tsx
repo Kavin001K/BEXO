@@ -26,6 +26,7 @@ import { useColors } from "@/hooks/useColors";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { uploadAttachments } from "@/services/achievementParser";
+import { showErrorAlert } from "@/lib/errorUtils";
 
 type DetailType = "update" | "education" | "experience" | "project";
 
@@ -136,7 +137,7 @@ export default function DetailsScreen() {
       }
       setIsEditing(false);
     } catch (e: any) {
-      Alert.alert("Error", e.message || "Failed to save changes");
+      showErrorAlert(e, "Save Failed");
     } finally {
       setLoading(false);
     }
@@ -161,7 +162,7 @@ export default function DetailsScreen() {
           await addAttachment(id, attr);
         }
       } catch (e: any) {
-        Alert.alert("Upload Failed", e.message);
+        showErrorAlert(e, "Upload Failed");
       } finally {
         setLoading(false);
       }
@@ -183,7 +184,7 @@ export default function DetailsScreen() {
           await addAttachment(id, attr);
         }
       } catch (e: any) {
-        Alert.alert("Upload Failed", e.message);
+        showErrorAlert(e, "Upload Failed");
       } finally {
         setLoading(false);
       }
@@ -227,7 +228,7 @@ export default function DetailsScreen() {
               else if (type === "project") await deleteProject(id);
               router.back();
             } catch (e: any) {
-              Alert.alert("Error", e.message || "Failed to delete");
+              showErrorAlert(e, "Delete Failed");
               setDeleting(false);
             }
           },

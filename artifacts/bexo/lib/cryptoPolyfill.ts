@@ -44,12 +44,16 @@ if (Platform.OS !== "web") {
         const inputBytes =
           data instanceof Uint8Array ? data : new Uint8Array(data);
         
-        // Use digestAsync to get a hex string, then convert to ArrayBuffer
-        const hex = await ExpoCrypto.digestStringAsync(mapped, Buffer.from(inputBytes).toString('hex'), {
+        // Manual hex conversion to avoid 'Buffer' dependency on native
+        const hex = Array.from(inputBytes)
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+
+        const digestHex = await ExpoCrypto.digestStringAsync(mapped, hex, {
           encoding: ExpoCrypto.CryptoEncoding.HEX
         });
         
-        const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+        const bytes = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
         return bytes.buffer as ArrayBuffer;
       },
     };

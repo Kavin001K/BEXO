@@ -15,6 +15,7 @@ import { uploadAndParseResume }  from "@/services/resumeParser";
 import { useAuthStore }          from "@/stores/useAuthStore";
 import { usePortfolioStore }     from "@/stores/usePortfolioStore";
 import { useProfileStore }       from "@/stores/useProfileStore";
+import { sanitizeError }         from "@/lib/errorUtils";
 
 interface Props {
   visible: boolean;
@@ -78,7 +79,7 @@ export function RebuildModal({ visible, onClose }: Props) {
       setParsedResult(parsed);
       setStep("parsed");
     } catch (e: any) {
-      setError(e.message ?? "Failed to process resume");
+      setError(sanitizeError(e));
       setStep("error");
     }
   };
@@ -96,7 +97,7 @@ export function RebuildModal({ visible, onClose }: Props) {
 
       setStep("saved");
     } catch (e: any) {
-      setError(e.message ?? "Failed to replace data");
+      setError(sanitizeError(e));
       setStep("error");
     }
   };
@@ -114,7 +115,7 @@ export function RebuildModal({ visible, onClose }: Props) {
 
       setStep("saved");
     } catch (e: any) {
-      setError(e.message ?? "Failed to merge data");
+      setError(sanitizeError(e));
       setStep("error");
     }
   };

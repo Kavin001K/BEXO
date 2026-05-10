@@ -20,6 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
+import { sanitizeError } from "@/lib/errorUtils";
 
 export default function HandleScreen() {
   const colors = useColors();
@@ -118,7 +119,7 @@ export default function HandleScreen() {
       setOnboardingStep("resume");
       router.push("/(onboarding)/resume");
     } catch (e: any) {
-      setError(e.message ?? "Something went wrong");
+      setError(sanitizeError(e));
     } finally {
       setLoading(false);
     }

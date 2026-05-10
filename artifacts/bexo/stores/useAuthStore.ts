@@ -2,6 +2,7 @@ import { Session, User } from "@supabase/supabase-js";
 import { router } from "expo-router";
 import { create } from "zustand";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { useProfileStore } from "./useProfileStore";
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 
@@ -88,6 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
+    useProfileStore.getState().reset();
     set(RESET_STATE);
     router.replace("/(auth)");
   },

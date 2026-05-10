@@ -3,11 +3,10 @@ import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,6 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
@@ -35,6 +35,7 @@ import {
   type Project,
   type Skill,
 } from "@/stores/useProfileStore";
+import { showErrorAlert } from "@/lib/errorUtils";
 
 type TabId = "profile" | "education" | "experience" | "projects" | "skills";
 
@@ -89,7 +90,7 @@ const FIELDS = [
   "Design", "Architecture", "Pharmacy",
 ];
 
-function AutocompleteInput({
+const AutocompleteInput = React.memo(function AutocompleteInput({
   value, onChangeText, options, placeholder, inputStyle,
 }: {
   value: string; onChangeText: (v: string) => void;
@@ -97,9 +98,9 @@ function AutocompleteInput({
 }) {
   const colors = useColors();
   const [open, setOpen] = useState(false);
-  const filtered = options.filter((o) =>
+  const filtered = useMemo(() => options.filter((o) =>
     o.toLowerCase().includes(value.toLowerCase()) && value.length > 0
-  ).slice(0, 5);
+  ).slice(0, 5), [options, value]);
 
   return (
     <View style={{ zIndex: 999 }}>
@@ -131,7 +132,7 @@ function AutocompleteInput({
       )}
     </View>
   );
-}
+});
 
 export default function EditProfileScreen() {
   const colors = useColors();
@@ -223,11 +224,11 @@ export default function EditProfileScreen() {
   const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
 
-  const inputStyle = {
+  const inputStyle = useMemo(() => ({
     backgroundColor: colors.surface,
     borderColor:     colors.border,
     color:           colors.foreground,
-  };
+  }), [colors]);
 
   // ---- Avatar ----
   const handlePickAvatar = async () => {
@@ -258,7 +259,7 @@ export default function EditProfileScreen() {
       console.log("[EditProfile] Avatar update complete");
     } catch (e: any) {
       console.error("[EditProfile] Upload error:", e);
-      Alert.alert("Error", e.message ?? "Failed to upload photo");
+      showErrorAlert(e, "Upload Failed");
     } finally {
       setUploadingAvatar(false);
     }
@@ -336,7 +337,7 @@ export default function EditProfileScreen() {
                 }
                 Alert.alert("Done!", "All data replaced with resume content. Review across tabs and save profile when ready.");
               } catch (err: any) {
-                Alert.alert("Error", err.message ?? "Failed to replace data");
+                showErrorAlert(err, "Update Failed");
               }
             },
           },
@@ -362,7 +363,7 @@ export default function EditProfileScreen() {
                 }
                 Alert.alert("Done!", "New items from your resume have been added. Duplicates were automatically removed.");
               } catch (err: any) {
-                Alert.alert("Error", err.message ?? "Failed to merge data");
+                showErrorAlert(err, "Merge Failed");
               }
             },
           },
@@ -370,14 +371,14 @@ export default function EditProfileScreen() {
         ]
       );
     } catch (e: any) {
-      Alert.alert("Error", e.message ?? "Failed to parse resume");
+      showErrorAlert(e, "AI Parsing Error");
     } finally {
       setParsingResume(false);
     }
   };
 
   // ---- Profile ----
-  const handleSaveProfile = async () => {
+  const handleSaveProfile = React.useCallback(async () => {
     setSaving(true);
     try {
       await updateProfile(profileForm);
@@ -385,11 +386,11 @@ export default function EditProfileScreen() {
         { text: "OK", onPress: () => router.back() }
       ]);
     } catch (e: any) {
-      Alert.alert("Error", e.message ?? "Failed to save profile");
+      showErrorAlert(e, "Save Failed");
     } finally {
       setSaving(false);
     }
-  };
+  }, [profileForm, updateProfile]);
 
   // ---- Education ----
   const openAddEducation    = () => { setEditingEduId(null); setEduForm(EMPTY_EDUCATION); setEduModalVisible(true); };
@@ -525,7 +526,12 @@ export default function EditProfileScreen() {
                     style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.primary }]}
                   >
                     {avatarSource ? (
-                      <Image source={{ uri: avatarSource }} style={styles.avatarImg} />
+                      <Image 
+                        source={{ uri: avatarSource }} 
+                        style={styles.avatarImg} 
+                        contentFit="cover"
+                        transition={200}
+                      />
                     ) : (
                       <Text style={[styles.avatarInitial, { color: colors.primary }]}>
                         {profile?.full_name?.[0]?.toUpperCase() ?? "B"}

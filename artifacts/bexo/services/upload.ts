@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
 import { decode } from "base64-arraybuffer";
@@ -25,8 +25,10 @@ async function uriToBase64(uri: string): Promise<string> {
       throw e;
     }
   }
+  
+  // On native, use the standard FileSystem module
   return FileSystem.readAsStringAsync(uri, {
-    encoding: "base64",
+    encoding: "base64" as any,
   });
 }
 

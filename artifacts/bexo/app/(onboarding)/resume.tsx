@@ -16,6 +16,7 @@ import { useColors } from "@/hooks/useColors";
 import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
+import { sanitizeError } from "@/lib/errorUtils";
 
 type Stage = "idle" | "uploading" | "parsing" | "done" | "error";
 
@@ -77,7 +78,7 @@ export default function ResumeScreen() {
 
     } catch (e: any) {
       console.error("[ResumeScreen] Error:", e);
-      setError(e.message ?? "Failed to process resume");
+      setError(sanitizeError(e));
       setStage("error");
     }
   };
@@ -100,7 +101,7 @@ export default function ResumeScreen() {
       router.push("/(onboarding)/photo");
     } catch (e: any) {
       console.error("[ResumeScreen] Save error:", e);
-      setError(e.message ?? "Failed to save data");
+      setError(sanitizeError(e));
       setStage("error");
     } finally {
       setParsing(false);

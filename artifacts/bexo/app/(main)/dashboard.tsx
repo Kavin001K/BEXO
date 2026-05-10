@@ -24,6 +24,7 @@ import { useColors }                  from "@/hooks/useColors";
 import { useAuthStore }               from "@/stores/useAuthStore";
 import { usePortfolioStore }          from "@/stores/usePortfolioStore";
 import { useProfileStore }            from "@/stores/useProfileStore";
+import { showErrorAlert }             from "@/lib/errorUtils";
 
 function LiveDot({ color }: { color: string }) {
   const opacity = useSharedValue(1);
@@ -39,7 +40,7 @@ function LiveDot({ color }: { color: string }) {
   return <Animated.View style={[style, { width: 8, height: 8, borderRadius: 4, backgroundColor: color }]} />;
 }
 
-function StatCard({ icon, value, label, color, delay }: {
+const StatCard = React.memo(function StatCard({ icon, value, label, color, delay }: {
   icon: any; value: number | string; label: string; color: string; delay: number;
 }) {
   const colors = useColors();
@@ -55,9 +56,9 @@ function StatCard({ icon, value, label, color, delay }: {
       <Text style={[S.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
     </Animated.View>
   );
-}
+});
 
-function QuickAction({ icon, label, sublabel, onPress, accent, delay }: {
+const QuickAction = React.memo(function QuickAction({ icon, label, sublabel, onPress, accent, delay }: {
   icon: any; label: string; sublabel?: string;
   onPress: () => void; accent?: string; delay: number;
 }) {
@@ -88,7 +89,7 @@ function QuickAction({ icon, label, sublabel, onPress, accent, delay }: {
       </TouchableOpacity>
     </Animated.View>
   );
-}
+});
 
 export default function DashboardScreen() {
   const colors  = useColors();
@@ -126,21 +127,25 @@ export default function DashboardScreen() {
     let unsubBuilds: (() => void) | undefined;
 
     const init = async () => {
-      await fetchProfile(user.id);
-      const p = useProfileStore.getState().profile;
+      try {
+        await fetchProfile(user.id!);
+        const p = useProfileStore.getState().profile;
 
-      if (!p || !p.handle) {
-        router.replace("/(onboarding)/handle");
-        return;
+        if (!p || !p.handle) {
+          router.replace("/(onboarding)/handle");
+          return;
+        }
+
+        await Promise.all([
+          fetchUpdates(p.id),
+          fetchBuildStatus(p.id),
+        ]);
+
+        unsubBuilds = subscribeToBuilds(p.id);
+        setDashboardReady(true);
+      } catch (e: any) {
+        showErrorAlert(e, "Dashboard Sync Failed");
       }
-
-      await Promise.all([
-        fetchUpdates(p.id),
-        fetchBuildStatus(p.id),
-      ]);
-
-      unsubBuilds = subscribeToBuilds(p.id);
-      setDashboardReady(true);
     };
 
     init();
@@ -152,7 +157,13 @@ export default function DashboardScreen() {
     setRefreshing(true);
     await fetchProfile(user.id);
     const p = useProfileStore.getState().profile;
-    if (p?.id) await Promise.all([fetchUpdates(p.id), fetchBuildStatus(p.id)]);
+    if (p?.id) {
+      try {
+        await Promise.all([fetchUpdates(p.id), fetchBuildStatus(p.id)]);
+      } catch (e: any) {
+        showErrorAlert(e, "Refresh Failed");
+      }
+    }
     setRefreshing(false);
   }, [user?.id]);
 
@@ -177,9 +188,14 @@ export default function DashboardScreen() {
     );
   }
 
-  const firstName  = profile?.full_name?.split(" ")[0] ?? "Student";
-  const timeOfDay  = new Date().getHours();
-  const greeting   = timeOfDay < 12 ? "Good morning" : timeOfDay < 18 ? "Good afternoon" : "Good evening";
+  const firstName = useMemo(() => profile?.full_name?.split(" ")[0] ?? "Student", [profile?.full_name]);
+  const greeting = useMemo(() => {
+    const hours = new Date().getHours();
+    if (hours < 12) return "Good morning";
+    if (hours < 18) return "Good afternoon";
+    return "Good evening";
+  }, []);
+
   const isLive     = buildStatus === "done" && !!portfolioUrl;
   const isBuilding = buildStatus === "building" || buildStatus === "queued";
 

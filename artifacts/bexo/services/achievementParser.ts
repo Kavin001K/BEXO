@@ -1,7 +1,7 @@
 import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { decode } from "base64-arraybuffer";
-import * as FileSystem from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 
 export interface ScannedAchievement {
   title: string;

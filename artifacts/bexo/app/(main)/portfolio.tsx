@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -31,7 +32,10 @@ export default function PortfolioScreen() {
   const [showRebuild, setShowRebuild] = useState(false);
 
   const activeTab = activePortfolioTab as TabId;
-  const setActiveTab = (tab: TabId) => setActivePortfolioTab(tab);
+  const setActiveTab = (tab: TabId) => {
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setActivePortfolioTab(tab);
+  };
 
   React.useEffect(() => {
     if (profile?.id) {
@@ -55,7 +59,7 @@ export default function PortfolioScreen() {
     ...experiences,
     ...updates.filter(u => u.type === "role").map(u => ({
       role: u.title,
-      company: "Added via Scan",
+      company: "Scan Result",
       description: u.description,
       start_date: new Date(u.created_at).getFullYear().toString(),
       is_current: false,
@@ -68,7 +72,7 @@ export default function PortfolioScreen() {
     ...updates.filter(u => u.type === "project").map(u => ({
       title: u.title,
       description: u.description,
-      tech_stack: [],
+      tech_stack: u.description.match(/#[a-zA-Z0-9]+/g)?.map(t => t.slice(1)) || [],
       id: u.id
     }))
   ];
@@ -77,8 +81,8 @@ export default function PortfolioScreen() {
     ...education,
     ...updates.filter(u => u.type === "education").map(u => ({
       institution: u.title,
-      degree: u.description,
-      field: "",
+      degree: u.description.split(",")[0] || "Certification",
+      field: u.description.split(",")[1] || "",
       start_year: new Date(u.created_at).getFullYear(),
       id: u.id
     }))
