@@ -20,7 +20,7 @@ export interface ParsedResume {
 }
 
 const DEEPSEEK_API_KEY   = process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY ?? "";
-const AI_MODEL           = "deepseek-v4-flash";
+const AI_MODEL           = "deepseek-chat";
 const DEEPSEEK_URL       = "https://api.deepseek.com/chat/completions";
 
 const EXTRACTION_PROMPT = `You are an expert resume parser. Extract ALL information from this resume.
@@ -178,7 +178,11 @@ async function parseWithAI(pdfBase64: string): Promise<ParsedResume> {
 
 function processAIResponse(data: any): ParsedResume {
   const text = data.choices?.[0]?.message?.content ?? "{}";
-  const clean = text.replace(/```json\n?|\n?```/g, "").trim();
+  // More aggressive cleaning for non-standard JSON output
+  const clean = text
+    .replace(/^[\s\S]*?({[\s\S]*})[\s\S]*$/, "$1") // Extract just the outer {} object
+    .replace(/```json\n?|\n?```/g, "")
+    .trim();
 
   try {
     const parsed = JSON.parse(clean) as ParsedResume;

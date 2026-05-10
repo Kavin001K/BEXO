@@ -89,8 +89,8 @@ export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
           value={val}
           onChangeText={(t) => handleChange(t, i)}
           onKeyPress={(e) => handleKeyPress(e, i)}
-          keyboardType="number-pad"
-          maxLength={length} // Allow longer input for paste detection
+          keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+          maxLength={i === 0 ? length : 1}
           textAlign="center"
           selectionColor={colors.primary}
           returnKeyType={i === length - 1 ? "done" : "next"}
@@ -98,6 +98,7 @@ export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
           textContentType="oneTimeCode"
           selectTextOnFocus
           blurOnSubmit={i === length - 1}
+          cursorColor={colors.primary}
         />
       ))}
     </View>

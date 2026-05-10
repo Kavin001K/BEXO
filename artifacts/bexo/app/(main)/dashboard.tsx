@@ -41,7 +41,7 @@ function LiveDot({ color }: { color: string }) {
 }
 
 const StatCard = React.memo(function StatCard({ icon, value, label, color, delay }: {
-  icon: any; value: number | string; label: string; color: string; delay: number;
+  icon: keyof typeof Feather.glyphMap; value: number | string; label: string; color: string; delay: number;
 }) {
   const colors = useColors();
   return (
@@ -59,7 +59,7 @@ const StatCard = React.memo(function StatCard({ icon, value, label, color, delay
 });
 
 const QuickAction = React.memo(function QuickAction({ icon, label, sublabel, onPress, accent, delay }: {
-  icon: any; label: string; sublabel?: string;
+  icon: keyof typeof Feather.glyphMap; label: string; sublabel?: string;
   onPress: () => void; accent?: string; delay: number;
 }) {
   const colors = useColors();

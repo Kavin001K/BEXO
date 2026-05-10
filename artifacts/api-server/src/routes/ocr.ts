@@ -5,7 +5,7 @@ import { uploadToR2 } from "../lib/r2";
 const router = Router();
 
 const DEEPSEEK_API_KEY = process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY ?? "";
-const AI_MODEL = "deepseek-v4-flash";
+const AI_MODEL = "deepseek-chat";
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
 const SCAN_PROMPT = `You are an expert at extracting achievement and education details from certificates.

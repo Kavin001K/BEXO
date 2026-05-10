@@ -4,7 +4,7 @@ import { Alert, Platform } from "react-native";
  * Sanitize technical error messages into user-friendly ones for production.
  */
 export function sanitizeError(error: any): string {
-  const message = error?.message || String(error);
+  const message = error?.message || error?.error || (typeof error === "string" ? error : JSON.stringify(error));
   
   // If we are in dev mode, keep the technical message for debugging
   if (__DEV__) {
@@ -24,12 +24,20 @@ export function sanitizeError(error: any): string {
     "Object object",
     "null is not an object",
     "undefined is not a function",
-    "404", "500", "502", "503",
+    "TypeError",
+    "ReferenceError",
+    "RangeError",
+    "Internal Server Error",
+    "Bad Gateway",
+    "Service Unavailable",
+    "Gateway Timeout",
+    "400", "401", "403", "404", "500", "502", "503", "504",
     "fetch",
     "Permission",
     "E_PERMISSION",
     "E_UNABLE_TO_OPEN",
     "file system",
+    "invalid json",
   ];
 
   if (technicalPatterns.some(p => message.includes(p))) {
