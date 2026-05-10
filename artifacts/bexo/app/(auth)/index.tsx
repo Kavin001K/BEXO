@@ -181,7 +181,6 @@ export default function LoginScreen() {
               source={require("../../assets/images/icon.png")}
               style={styles.logoImage}
             />
-            <Text style={[styles.appName, { color: colors.foreground }]}>BEXO</Text>
           </Animated.View>
 
           <Animated.Text
@@ -349,13 +348,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   glow: { position: "absolute", top: 0, left: 0, right: 0, height: 320 },
   scroll: { paddingHorizontal: 28, gap: 20 },
-  logoWrap: { flexDirection: "row", alignItems: "center", gap: 12 },
+  logoWrap: { alignItems: "center", justifyContent: "center", marginBottom: 10 },
   logoImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
+    width: 100,
+    height: 100,
+    borderRadius: 24,
   },
-  appName: { fontSize: 22, fontWeight: "800", letterSpacing: 3 },
   headline: {
     fontSize: 36,
     fontWeight: "800",

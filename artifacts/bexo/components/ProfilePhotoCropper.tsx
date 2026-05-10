@@ -77,7 +77,7 @@ export function ProfilePhotoCropper({
       savedTranslateY.value = translateY.value;
     });
 
-  const composed = Gesture.Simultaneously(pinchGesture, panGesture);
+  const composed = Gesture.Simultaneous(pinchGesture, panGesture);
 
   const imageStyle = useAnimatedStyle(() => ({
     transform: [
@@ -92,16 +92,24 @@ export function ProfilePhotoCropper({
     setLoading(true);
 
     try {
-      // In a real implementation, we'd calculate the exact crop region 
-      // based on the animated values. For this version, we'll use a 
-      // simplified high-quality center crop + resize.
+      // Get image dimensions first using Image.getSize (standard RN way)
+      const { width: imgW, height: imgH } = await new Promise<{ width: number; height: number }>((resolve, reject) => {
+        const { Image } = require("react-native");
+        Image.getSize(imageUri, (w: number, h: number) => resolve({ width: w, height: h }), reject);
+      });
+
+      // Calculate center crop based on the smaller dimension
+      const size = Math.min(imgW, imgH);
+      const originX = (imgW - size) / 2;
+      const originY = (imgH - size) / 2;
+
       const result = await ImageManipulator.manipulateAsync(
         imageUri,
         [
-          { resize: { width: 800 } }, // Resize first
-          { crop: { originX: 0, originY: 0, width: 800, height: 800 } }, // Simple square crop for now
+          { crop: { originX, originY, width: size, height: size } },
+          { resize: { width: 1000, height: 1000 } }, // High quality output
         ],
-        { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+        { compress: 0.9, format: ImageManipulator.SaveFormat.JPEG }
       );
       
       onCrop(result.uri);

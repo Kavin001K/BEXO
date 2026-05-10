@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -139,18 +140,24 @@ export default function HandleScreen() {
           contentContainerStyle={[
             styles.scroll,
             {
-              paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
+              paddingTop: insets.top + (Platform.OS === "web" ? 67 : 20),
               paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
             },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.stepRow}>
-            <View style={[styles.dot, { backgroundColor: colors.primary }]} />
-            <View style={[styles.dot, { backgroundColor: colors.border }]} />
-            <View style={[styles.dot, { backgroundColor: colors.border }]} />
-            <View style={[styles.dot, { backgroundColor: colors.border }]} />
+          <View style={styles.headerRow}>
+            <Image 
+              source={require("../../assets/images/icon.png")} 
+              style={styles.logo} 
+            />
+            <View style={styles.stepRow}>
+              <View style={[styles.dot, { backgroundColor: colors.primary }]} />
+              <View style={[styles.dot, { backgroundColor: colors.border }]} />
+              <View style={[styles.dot, { backgroundColor: colors.border }]} />
+              <View style={[styles.dot, { backgroundColor: colors.border }]} />
+            </View>
           </View>
 
           <Text style={[styles.headline, { color: colors.foreground }]}>
@@ -252,10 +259,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
     gap: 18,
   },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  logo: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+  },
   stepRow: {
     flexDirection: "row",
     gap: 6,
-    marginBottom: 8,
   },
   dot: {
     width: 20,

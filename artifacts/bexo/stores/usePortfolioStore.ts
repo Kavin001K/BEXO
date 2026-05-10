@@ -12,13 +12,22 @@ interface SiteBuild {
   created_at: string;
 }
 
+interface Attachment {
+  id: string;
+  update_id: string;
+  url: string;
+  type: "image" | "pdf";
+}
+
 interface Update {
   id: string;
   profile_id: string;
   type: "project" | "achievement" | "role" | "education";
   title: string;
   description: string;
+  link_url?: string | null;
   created_at: string;
+  attachments?: Attachment[];
 }
 
 interface PortfolioState {
@@ -33,7 +42,7 @@ interface PortfolioState {
   setActivePortfolioTab: (tab: string) => void;
   fetchBuildStatus: (profileId: string) => Promise<void>;
   fetchUpdates: (profileId: string) => Promise<void>;
-  addUpdate: (update: Omit<Update, "id" | "created_at">) => Promise<void>;
+  addUpdate: (update: Omit<Update, "id" | "created_at" | "attachments">, attachments?: Omit<Attachment, "id" | "update_id">[]) => Promise<void>;
   triggerBuild: (profileId: string) => Promise<void>;
   subscribeToBuilds: (profileId: string) => () => void;
 }
@@ -72,19 +81,41 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
   fetchUpdates: async (profileId) => {
     const { data } = await supabase
       .from("updates")
-      .select("*")
+      .select(`
+        *,
+        attachments:update_attachments(*)
+      `)
       .eq("profile_id", profileId)
       .order("created_at", { ascending: false });
     if (data) set({ updates: data });
   },
 
-  addUpdate: async (update) => {
-    const { data } = await supabase
+  addUpdate: async (update, attachments = []) => {
+    // 1. Insert Update
+    const { data: updateData, error: updateError } = await supabase
       .from("updates")
       .insert(update)
       .select()
       .single();
-    if (data) set((s) => ({ updates: [data, ...s.updates] }));
+    
+    if (updateError) throw updateError;
+
+    // 2. Insert Attachments if any
+    if (attachments.length > 0) {
+      const { error: attachError } = await supabase
+        .from("update_attachments")
+        .insert(
+          attachments.map(a => ({
+            update_id: updateData.id,
+            url: a.url,
+            type: a.type
+          }))
+        );
+      if (attachError) console.error("Failed to insert attachments:", attachError);
+    }
+
+    // 3. Refresh updates
+    await get().fetchUpdates(update.profile_id);
   },
 
   triggerBuild: async (profileId) => {

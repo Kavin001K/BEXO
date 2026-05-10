@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -19,6 +20,10 @@ import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
+
+import * as DocumentPicker from "expo-document-picker";
+import * as ImagePicker from "expo-image-picker";
+import { uploadAttachments, scanAttachments, LocalFile } from "@/services/achievementParser";
 
 type UpdateType = "project" | "achievement" | "role" | "education";
 
@@ -38,13 +43,93 @@ export default function UpdateScreen() {
   const [type, setType] = useState<UpdateType>("achievement");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  
+  // Multi-file state
+  const [files, setFiles] = useState<LocalFile[]>([]);
+  const [scannedAttachments, setScannedAttachments] = useState<{ url: string; type: "image" | "pdf" }[]>([]);
+  
   const [saving, setSaving] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [error, setError] = useState("");
 
   const selectedType = TYPES.find((t) => t.id === type)!;
 
+  const imageCount = files.filter(f => f.mimeType.includes("image")).length;
+  const pdfCount = files.filter(f => f.mimeType.includes("pdf")).length;
+
+  const handlePickPhoto = async () => {
+    if (imageCount >= 5) {
+      setError("Max 5 images allowed");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: 5 - imageCount,
+    });
+    
+    if (!res.canceled && res.assets) {
+      const newFiles: LocalFile[] = res.assets.map(a => ({
+        uri: a.uri,
+        name: a.fileName || `photo_${Date.now()}.jpg`,
+        mimeType: "image/jpeg"
+      }));
+      setFiles([...files, ...newFiles]);
+      setScannedAttachments([]); // Reset if new files added
+      setError("");
+    }
+  };
+
+  const handlePickPDF = async () => {
+    if (pdfCount >= 3) {
+      setError("Max 3 PDFs allowed");
+      return;
+    }
+    const res = await DocumentPicker.getDocumentAsync({ 
+      type: "application/pdf",
+      multiple: true 
+    });
+    
+    if (!res.canceled && res.assets) {
+      const newFiles: LocalFile[] = res.assets.map(a => ({
+        uri: a.uri,
+        name: a.name,
+        mimeType: "application/pdf"
+      }));
+      setFiles([...files, ...newFiles]);
+      setScannedAttachments([]); // Reset if new files added
+      setError("");
+    }
+  };
+
+  const removeFile = (uri: string) => {
+    setFiles(files.filter(f => f.uri !== uri));
+    setScannedAttachments([]);
+  };
+
+  const handleScanWithAI = async () => {
+    if (files.length === 0) return;
+    setScanning(true);
+    setError("");
+    try {
+      const result = await scanAttachments(files);
+      if (result.title) setTitle(result.title);
+      if (result.description) setDescription(result.description);
+      if (result.type) setType(result.type as any);
+      if (result.attachments) setScannedAttachments(result.attachments);
+      
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e: any) {
+      setError(e.message ?? "Scan failed.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
   const handlePost = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !profile.user_id) return;
     if (!title.trim()) {
       setError("Add a title");
       return;
@@ -53,14 +138,26 @@ export default function UpdateScreen() {
     setSaving(true);
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     try {
+      let finalAttachments = [...scannedAttachments];
+
+      // If we haven't scanned (or added new files since scanning), upload all
+      if (finalAttachments.length === 0 && files.length > 0) {
+        finalAttachments = await uploadAttachments(files);
+      }
+
       await addUpdate({
         profile_id: profile.id,
         type,
         title: title.trim(),
         description: description.trim(),
-      });
+        link_url: linkUrl.trim() || null,
+      }, finalAttachments);
+
       setTitle("");
       setDescription("");
+      setLinkUrl("");
+      setFiles([]);
+      setScannedAttachments([]);
       router.push("/dashboard");
     } catch (e: any) {
       setError(e.message ?? "Could not post update");
@@ -94,7 +191,7 @@ export default function UpdateScreen() {
         >
           <Text style={[styles.pageTitle, { color: colors.foreground }]}>Post Update</Text>
           <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            Keep your portfolio fresh with what you've been working on
+            Upload up to 5 images and 3 PDFs. AI will scan all of them.
           </Text>
 
           {/* Type selector */}
@@ -133,15 +230,7 @@ export default function UpdateScreen() {
                 styles.input,
                 { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
               ]}
-              placeholder={
-                type === "project"
-                  ? 'e.g. "Built an AI resume parser"'
-                  : type === "achievement"
-                  ? 'e.g. "Won XYZ Hackathon"'
-                  : type === "role"
-                  ? 'e.g. "Joined Google as SWE Intern"'
-                  : 'e.g. "Started MS CS at Stanford"'
-              }
+              placeholder="e.g. Build an AI resume parser"
               placeholderTextColor={colors.mutedForeground}
               value={title}
               onChangeText={setTitle}
@@ -169,6 +258,63 @@ export default function UpdateScreen() {
               selectionColor={colors.primary}
             />
           </View>
+
+          {/* Attachments */}
+          <View style={styles.field}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+              Attachments ({imageCount}/5 Photos, {pdfCount}/3 PDFs)
+            </Text>
+            
+            <View style={styles.attachmentRow}>
+              <TouchableOpacity
+                style={[styles.attachBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handlePickPhoto}
+              >
+                <Feather name="image" size={18} color={colors.mutedForeground} />
+                <Text style={[styles.attachBtnLabel, { color: colors.mutedForeground }]}>Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.attachBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handlePickPDF}
+              >
+                <Feather name="file-text" size={18} color={colors.mutedForeground} />
+                <Text style={[styles.attachBtnLabel, { color: colors.mutedForeground }]}>PDF</Text>
+              </TouchableOpacity>
+            </View>
+
+            {files.length > 0 && (
+              <View style={styles.fileList}>
+                {files.map((f) => (
+                  <View key={f.uri} style={[styles.attachmentPreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Feather name={f.mimeType.includes("pdf") ? "file-text" : "image"} size={16} color={colors.primary} />
+                    <Text style={[styles.attachmentName, { color: colors.foreground }]} numberOfLines={1}>
+                      {f.name}
+                    </Text>
+                    <TouchableOpacity onPress={() => removeFile(f.uri)} style={styles.removeMedia}>
+                      <Feather name="x" size={14} color={colors.mutedForeground} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {files.length > 0 && (type === "achievement" || type === "education") && (
+            <TouchableOpacity
+              style={[styles.scanBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "33" }]}
+              onPress={handleScanWithAI}
+              disabled={scanning}
+            >
+              {scanning ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Feather name="cpu" size={16} color={colors.primary} />
+              )}
+              <Text style={[styles.scanBtnLabel, { color: colors.primary }]}>
+                {scanning ? "Scanning all files..." : "Scan all certificates with AI"}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {error ? (
             <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
@@ -216,4 +362,41 @@ const styles = StyleSheet.create({
   },
   textarea: { minHeight: 120 },
   error: { fontSize: 13 },
+  inputWrapper: { position: "relative", justifyContent: "center" },
+  inputIcon: { position: "absolute", left: 16, zIndex: 1 },
+  attachmentRow: { flexDirection: "row", gap: 12 },
+  fileList: { gap: 8, marginTop: 8 },
+  attachBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  attachBtnLabel: { fontSize: 14, fontWeight: "600" },
+  attachmentPreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  attachmentName: { flex: 1, fontSize: 14, fontWeight: "500" },
+  removeMedia: { padding: 4 },
+  scanBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    marginTop: 8,
+  },
+  scanBtnLabel: { fontSize: 14, fontWeight: "700" },
 });

@@ -3,7 +3,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  KeyboardAvoidingView,
+  Image, KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -58,8 +58,12 @@ export default function CollectEmailScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={[styles.iconBadge, { backgroundColor: colors.surface }]}>
-            <Feather name="mail" size={32} color={colors.primary} />
+          <View style={{ marginBottom: 10 }}>
+            <Image 
+              source={require("../../assets/images/icon.png")} 
+              style={{ width: 100, height: 40 }} 
+              resizeMode="contain" 
+            />
           </View>
 
           <Text style={[styles.headline, { color: colors.foreground }]}>

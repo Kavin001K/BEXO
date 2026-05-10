@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  KeyboardAvoidingView,
+  Image, KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
@@ -140,11 +140,18 @@ export default function VerifyScreen() {
         <ScrollView
           contentContainerStyle={[
             styles.scroll,
-            { paddingTop: topPad, paddingBottom: bottomPad + 20 },
+            { paddingTop: topPad + 40, paddingBottom: bottomPad + 20 },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          <View style={styles.logoWrap}>
+            <Image 
+              source={require("../../assets/images/icon.png")} 
+              style={styles.logo} 
+              resizeMode="contain" 
+            />
+          </View>
           <TouchableOpacity onPress={() => router.back()} style={styles.back}>
             <Feather name="arrow-left" size={20} color={colors.primary} />
           </TouchableOpacity>
@@ -226,6 +233,8 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   glow: { position: "absolute", top: 0, left: 0, right: 0, height: 250 },
   scroll: { paddingHorizontal: 28, gap: 20, alignItems: "stretch" },
+  logoWrap: { marginBottom: 20 },
+  logo: { width: 100, height: 40 },
   back: { alignSelf: "flex-start" },
   iconBadge: {
     width: 72,

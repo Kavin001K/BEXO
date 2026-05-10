@@ -1,7 +1,7 @@
-import { Feather } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons"; 
 import { BlurView } from "expo-blur";
 import { isLiquidGlassAvailable } from "expo-glass-effect";
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
 import { Icon, Label, NativeTabs } from "expo-router/unstable-native-tabs";
 import { SymbolView } from "expo-symbols";
 import React from "react";
@@ -93,20 +93,8 @@ function ClassicTabLayout() {
             isIOS ? (
               <SymbolView name="plus.circle" tintColor={color} size={22} />
             ) : (
-              <Feather name="plus-circle" size={22} color={color} />
+              <Feather name="plus-circle" onPress={() => router.navigate("/edit-profile")} size={22} color={color} />
             ),
-        }}
-      />
-      <Tabs.Screen
-        name="edit-profile"
-        options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          href: null,
         }}
       />
     </Tabs>

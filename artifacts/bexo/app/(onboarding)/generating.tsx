@@ -76,6 +76,20 @@ export default function GeneratingScreen() {
 
   useEffect(() => {
     if (!profile?.id) return;
+
+    // Don't trigger build if profile is essentially empty
+    const { education, experiences, skills } = useProfileStore.getState();
+    const hasData = !!profile.bio?.trim() ||
+                    education.length > 0 ||
+                    experiences.length > 0 ||
+                    skills.length > 0;
+
+    if (!hasData) {
+      console.warn("[Generating] Profile has no data — skipping build, going to dashboard.");
+      setTimeout(() => router.replace("/dashboard"), 1500);
+      return;
+    }
+
     triggerBuild(profile.id);
     const unsub = subscribeToBuilds(profile.id);
     return unsub;

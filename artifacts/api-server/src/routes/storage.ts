@@ -88,4 +88,39 @@ router.post("/upload", raw({ type: "*/*", limit: "15mb" }), async (req, res) => 
   }
 });
 
+/**
+ * POST /api/storage/parse-pdf
+ * Body: binary PDF data
+ * Returns: { text: string }
+ */
+router.post("/parse-pdf", raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
+  try {
+    if (!req.body || !Buffer.isBuffer(req.body)) {
+      res.status(400).json({ error: "Request body must be binary PDF data" });
+      return;
+    }
+
+    // Dynamic import to avoid crash if pdf-parse is not installed yet
+    let pdfParse;
+    try {
+      pdfParse = (await import("pdf-parse")).default;
+    } catch (e) {
+      console.error("pdf-parse not installed:", e);
+      res.status(500).json({ error: "pdf-parse library not installed. Please run `pnpm install` in api-server." });
+      return;
+    }
+
+    const data = await pdfParse(req.body);
+    
+    res.json({
+      success: true,
+      text: data.text,
+      numPages: data.numpages
+    });
+  } catch (err: any) {
+    console.error("[Storage] PDF parsing failed:", err);
+    res.status(500).json({ error: err.message ?? "Failed to parse PDF" });
+  }
+});
+
 export default router;

@@ -73,6 +73,7 @@ function QuickAction({ icon, label, sublabel, onPress, accent, delay }: {
           onPress();
         }}
         activeOpacity={1}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <View style={[S.qaIcon, { backgroundColor: (accent ?? colors.primary) + "22" }]}>
           <Feather name={icon} size={18} color={accent ?? colors.primary} />
@@ -180,36 +181,36 @@ export default function DashboardScreen() {
         {/* Header */}
         <Animated.View entering={FadeIn.duration(400)} style={S.header}>
           <View style={S.headerLeft}>
-            <TouchableOpacity onPress={() => router.push("/(main)/settings")} activeOpacity={0.8}>
-              <View style={[S.avatarThumb, { borderColor: colors.primary }]}>
-                {profile?.avatar_url ? (
-                  <Image source={{ uri: profile.avatar_url }} style={S.avatarThumbImg} contentFit="cover" />
-                ) : (
-                  <Text style={[S.avatarInitial, { color: colors.primary }]}>
-                    {firstName[0]?.toUpperCase() ?? "B"}
-                  </Text>
-                )}
-              </View>
-            </TouchableOpacity>
             <View>
-              <Text style={[S.greeting, { color: colors.mutedForeground }]}>{greeting},</Text>
-              <Text style={[S.name, { color: colors.foreground }]}>{firstName}</Text>
+              <Text style={[S.greeting, { color: colors.mutedForeground }]}>
+                {greeting},
+              </Text>
+              <Text style={[S.userName, { color: colors.foreground }]}>
+                {firstName}
+              </Text>
             </View>
           </View>
           <View style={S.headerRight}>
-            {isLive && (
-              <TouchableOpacity
-                style={[S.headerBtn, { backgroundColor: "#6AFAD022", borderColor: "#6AFAD044" }]}
-                onPress={handleShare}
-              >
-                <Feather name="share-2" size={16} color="#6AFAD0" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              style={[S.headerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => router.push("/(main)/settings")}
+            <View style={S.brandContainer}>
+              <Image 
+                source={require("../../assets/images/icon.png")} 
+                style={{ width: 20, height: 20, borderRadius: 5 }} 
+                contentFit="cover" 
+              />
+              <Text style={[S.appName, { color: colors.mutedForeground }]}>BEXO</Text>
+            </View>
+            <TouchableOpacity 
+              onPress={() => router.navigate("/settings")} 
+              activeOpacity={0.8}
+              style={[S.avatarThumb, { borderColor: colors.primary + "44" }]}
             >
-              <Feather name="settings" size={16} color={colors.mutedForeground} />
+              {profile?.avatar_url ? (
+                <Image source={{ uri: profile.avatar_url }} style={S.avatarThumbImg} contentFit="cover" />
+              ) : (
+                <Text style={[S.avatarInitial, { color: colors.primary }]}>
+                  {firstName[0]?.toUpperCase() ?? "B"}
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -217,21 +218,27 @@ export default function DashboardScreen() {
         {/* Portfolio status card */}
         <Animated.View entering={FadeInDown.delay(80).springify()}>
           {isLive ? (
-            <TouchableOpacity onPress={() => router.push("/(main)/portfolio")} activeOpacity={0.88}>
+            <TouchableOpacity onPress={() => router.push("/(main)/portfolio")} activeOpacity={0.9}>
               <LinearGradient
-                colors={["#7C6AFA", "#A06AFA"]}
+                colors={["#7C6AFA", "#FA6A6A"]}
                 style={S.liveCard}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               >
-                <LiveDot color="#6AFAD0" />
-                <View style={{ flex: 1 }}>
-                  <Text style={S.liveLabel}>Portfolio Live</Text>
+                <View style={S.liveInfo}>
+                  <View style={S.liveStatusRow}>
+                    <LiveDot color="#6AFAD0" />
+                    <Text style={S.liveLabel}>Portfolio Live</Text>
+                  </View>
                   <Text style={S.liveUrl}>{profile?.handle}.mybexo.com</Text>
                 </View>
-                <TouchableOpacity onPress={handleShare}>
-                  <Feather name="share-2" size={16} color="rgba(255,255,255,0.8)" />
-                </TouchableOpacity>
-                <Feather name="external-link" size={16} color="rgba(255,255,255,0.8)" />
+                <View style={S.liveActions}>
+                  <TouchableOpacity onPress={handleShare} style={S.liveActionBtn}>
+                    <Feather name="share-2" size={16} color="#fff" />
+                  </TouchableOpacity>
+                  <View style={S.liveActionBtn}>
+                    <Feather name="chevron-right" size={18} color="#fff" />
+                  </View>
+                </View>
               </LinearGradient>
             </TouchableOpacity>
           ) : isBuilding ? (
@@ -245,7 +252,7 @@ export default function DashboardScreen() {
               onPress={() => router.push("/(main)/portfolio")}
             >
               <LinearGradient
-                colors={["#7C6AFA11", "transparent"]}
+                colors={[colors.primary + "15", "transparent"]}
                 style={StyleSheet.absoluteFill}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
               />
@@ -284,17 +291,17 @@ export default function DashboardScreen() {
             Quick Actions
           </Animated.Text>
           <QuickAction
-            icon="edit-3" label="Edit Profile" sublabel="Update your info"
-            onPress={() => router.push("/(main)/edit-profile")} delay={340}
+            icon="edit-3" label="Edit Profile" sublabel="Update your professional info"
+            onPress={() => router.navigate("/edit-profile")} delay={340}
           />
           <QuickAction
-            icon="layers" label="My Portfolio" sublabel="View, edit & rebuild"
-            onPress={() => router.push("/(main)/portfolio")} delay={370}
+            icon="layers" label="My Portfolio" sublabel="View, manage & rebuild site"
+            onPress={() => router.navigate("/(main)/portfolio")} delay={370}
           />
           <QuickAction
-            icon="plus-circle" label="Post an Update" sublabel="Share a project or achievement"
+            icon="plus-circle" label="Post an Update" sublabel="Certificate, project or award"
             accent="#FA6A6A"
-            onPress={() => router.push("/(main)/update")} delay={400}
+            onPress={() => router.navigate("/(main)/update")} delay={400}
           />
         </View>
 
@@ -306,37 +313,37 @@ export default function DashboardScreen() {
               {education.length > 0 && (
                 <TouchableOpacity
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "education" } })}
+                  onPress={() => router.navigate({ pathname: "/edit-profile", params: { tab: "education" } })}
+                  hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
-                  <Feather name="book" size={12} color={colors.primary} />
+                  <View style={[S.chipIcon, { backgroundColor: colors.primary + "15" }]}>
+                    <Feather name="book" size={10} color={colors.primary} />
+                  </View>
                   <Text style={[S.chipText, { color: colors.foreground }]}>{education.length} Education</Text>
                 </TouchableOpacity>
               )}
               {experiences.length > 0 && (
                 <TouchableOpacity
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "experience" } })}
+                  onPress={() => router.navigate({ pathname: "/edit-profile", params: { tab: "experience" } })}
+                  hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
-                  <Feather name="briefcase" size={12} color="#FA6A6A" />
+                  <View style={[S.chipIcon, { backgroundColor: "#FA6A6A15" }]}>
+                    <Feather name="briefcase" size={10} color="#FA6A6A" />
+                  </View>
                   <Text style={[S.chipText, { color: colors.foreground }]}>{experiences.length} Experience</Text>
                 </TouchableOpacity>
               )}
               {projects.length > 0 && (
                 <TouchableOpacity
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "projects" } })}
+                  onPress={() => router.navigate({ pathname: "/edit-profile", params: { tab: "projects" } })}
+                  hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
-                  <Feather name="code" size={12} color="#6AFAD0" />
+                  <View style={[S.chipIcon, { backgroundColor: "#6AFAD015" }]}>
+                    <Feather name="code" size={10} color="#6AFAD0" />
+                  </View>
                   <Text style={[S.chipText, { color: colors.foreground }]}>{projects.length} Projects</Text>
-                </TouchableOpacity>
-              )}
-              {skills.length > 0 && (
-                <TouchableOpacity
-                  style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "skills" } })}
-                >
-                  <Feather name="zap" size={12} color="#FAD06A" />
-                  <Text style={[S.chipText, { color: colors.foreground }]}>{skills.length} Skills</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -346,32 +353,34 @@ export default function DashboardScreen() {
         {/* Activity updates */}
         <Animated.View entering={FadeInDown.delay(460).springify()} style={S.section}>
           <View style={S.sectionRow}>
-            <Text style={[S.sectionTitle, { color: colors.foreground }]}>Activity</Text>
+            <Text style={[S.sectionTitle, { color: colors.foreground }]}>Activity Feed</Text>
             <TouchableOpacity
-              style={[S.addChip, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
-              onPress={() => router.push("/(main)/update")}
+              style={[S.addChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "33" }]}
+              onPress={() => router.navigate("/(main)/update")}
             >
               <Feather name="plus" size={12} color={colors.primary} />
-              <Text style={[S.addChipText, { color: colors.primary }]}>Add</Text>
+              <Text style={[S.addChipText, { color: colors.primary }]}>Post</Text>
             </TouchableOpacity>
           </View>
 
           {updates.length === 0 ? (
-            <View style={[S.emptyActivity, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Feather name="activity" size={28} color={colors.mutedForeground} />
+            <View style={[S.emptyActivity, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[S.emptyIconWrap, { backgroundColor: colors.surface }]}>
+                <Feather name="activity" size={24} color={colors.mutedForeground} />
+              </View>
               <Text style={[S.emptyTitle, { color: colors.foreground }]}>No activity yet</Text>
               <Text style={[S.emptySub, { color: colors.mutedForeground }]}>
-                Post projects, achievements, or role updates to keep your portfolio fresh
+                Post updates to keep your portfolio fresh and engaging for recruiters.
               </Text>
               <TouchableOpacity
                 style={[S.emptyBtn, { backgroundColor: colors.primary }]}
-                onPress={() => router.push("/(main)/update")}
+                onPress={() => router.navigate("/(main)/update")}
               >
                 <Text style={S.emptyBtnText}>Post first update</Text>
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={{ gap: 10 }}>
+            <View style={{ gap: 12 }}>
               {updates.map((u, i) => (
                 <Animated.View key={u.id} entering={FadeInDown.delay(480 + i * 40).springify()}>
                   <UpdateCard update={u} />
@@ -397,7 +406,7 @@ export default function DashboardScreen() {
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
           />
-          <Feather name="plus" size={22} color="#fff" />
+          <Feather name="plus" size={24} color="#fff" />
         </TouchableOpacity>
       </Animated.View>
 
@@ -419,60 +428,77 @@ const S = StyleSheet.create({
   loadingScreen: { flex: 1, alignItems: "center", justifyContent: "center" },
   loadingInner: { alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14 },
-  scroll: { paddingHorizontal: 20, gap: 16 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
-  headerRight: { flexDirection: "row", gap: 8 },
-  headerBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
-  avatarThumb: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#1A1A24" },
-  avatarThumbImg: { width: 44, height: 44, borderRadius: 22 },
-  avatarInitial: { fontSize: 18, fontWeight: "800" },
-  greeting: { fontSize: 12, fontWeight: "500" },
-  name: { fontSize: 24, fontWeight: "800", letterSpacing: -0.3 },
+  scroll: { paddingHorizontal: 20, gap: 20 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 4 },
+  headerLeft: { flex: 1 },
+  headerRight: { alignItems: "flex-end", gap: 10 },
+  brandContainer: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: 6, 
+    backgroundColor: "rgba(255,255,255,0.05)", 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)"
+  },
+  avatarThumb: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#1A1A24" },
+  avatarThumbImg: { width: 48, height: 48, borderRadius: 24 },
+  avatarInitial: { fontSize: 20, fontWeight: "900" },
+  appName: { fontSize: 11, fontWeight: "900", letterSpacing: 2, opacity: 0.8 },
+  greeting: { fontSize: 14, fontWeight: "600", marginBottom: -2, opacity: 0.6 },
+  userName: { fontSize: 28, fontWeight: "900", letterSpacing: -0.8 },
   liveCard: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    padding: 16, borderRadius: 16,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    padding: 22, borderRadius: 24,
     ...Platform.select({
-      web:     { boxShadow: "0 6px 20px rgba(124,106,250,0.3)" },
-      default: { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 },
+      web:     { boxShadow: "0 12px 40px rgba(124,106,250,0.4)" },
+      default: { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.4, shadowRadius: 24, elevation: 10 },
     }),
   },
-  liveLabel: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  liveUrl: { color: "rgba(255,255,255,0.75)", fontSize: 12 },
-  buildingCard: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 14, borderWidth: 1 },
-  buildingText: { fontSize: 14 },
-  buildPromptCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 16, borderWidth: 1, overflow: "hidden" },
-  bpIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  bpLabel: { fontSize: 15, fontWeight: "700" },
-  bpSub: { fontSize: 12, marginTop: 2 },
-  statsRow: { flexDirection: "row", gap: 10 },
-  statCard: { flex: 1, borderRadius: 16, borderWidth: 1, padding: 14, alignItems: "center", gap: 6 },
-  statIcon: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  statValue: { fontSize: 22, fontWeight: "800" },
-  statLabel: { fontSize: 11, fontWeight: "500" },
-  section: { gap: 10 },
-  sectionTitle: { fontSize: 17, fontWeight: "700" },
+  liveInfo: { gap: 4 },
+  liveStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  liveLabel: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: -0.3 },
+  liveUrl: { color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: "600" },
+  liveActions: { flexDirection: "row", alignItems: "center", gap: 10 },
+  liveActionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
+  buildingCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 18, borderWidth: 1 },
+  buildingText: { fontSize: 15, fontWeight: "600" },
+  buildPromptCard: { flexDirection: "row", alignItems: "center", gap: 14, padding: 20, borderRadius: 24, borderWidth: 1, overflow: "hidden" },
+  bpIcon: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  bpLabel: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
+  bpSub: { fontSize: 13, marginTop: 2, opacity: 0.8 },
+  statsRow: { flexDirection: "row", gap: 12 },
+  statCard: { flex: 1, borderRadius: 24, borderWidth: 1, padding: 18, alignItems: "center", gap: 8, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+  statIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  statValue: { fontSize: 26, fontWeight: "900", letterSpacing: -0.5 },
+  statLabel: { fontSize: 12, fontWeight: "700", opacity: 0.7 },
+  section: { gap: 14, marginTop: 8 },
+  sectionTitle: { fontSize: 19, fontWeight: "900", letterSpacing: -0.4 },
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  addChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
-  addChipText: { fontSize: 12, fontWeight: "600" },
-  quickAction: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1 },
-  qaIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  qaLabel: { fontSize: 14, fontWeight: "600" },
-  qaSub: { fontSize: 12, marginTop: 1 },
-  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
-  chipText: { fontSize: 12, fontWeight: "600" },
-  emptyActivity: { alignItems: "center", padding: 32, borderRadius: 20, borderWidth: 1, gap: 10 },
-  emptyTitle: { fontSize: 16, fontWeight: "700" },
-  emptySub: { fontSize: 13, textAlign: "center", lineHeight: 20, maxWidth: 240 },
-  emptyBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 4 },
-  emptyBtnText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  addChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, borderWidth: 1 },
+  addChipText: { fontSize: 13, fontWeight: "800" },
+  quickAction: { flexDirection: "row", alignItems: "center", gap: 14, padding: 18, borderRadius: 22, borderWidth: 1, elevation: 1 },
+  qaIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  qaLabel: { fontSize: 16, fontWeight: "800", letterSpacing: -0.2 },
+  qaSub: { fontSize: 13, marginTop: 2, opacity: 0.7 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: 1 },
+  chipIcon: { width: 22, height: 22, borderRadius: 7, alignItems: "center", justifyContent: "center" },
+  chipText: { fontSize: 14, fontWeight: "800" },
+  emptyActivity: { alignItems: "center", padding: 44, borderRadius: 28, borderWidth: 1, gap: 14 },
+  emptyIconWrap: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  emptyTitle: { fontSize: 20, fontWeight: "900", letterSpacing: -0.5 },
+  emptySub: { fontSize: 15, textAlign: "center", lineHeight: 24, maxWidth: 280, opacity: 0.7 },
+  emptyBtn: { paddingHorizontal: 28, paddingVertical: 14, borderRadius: 24, marginTop: 10 },
+  emptyBtnText: { color: "#fff", fontSize: 15, fontWeight: "800" },
   fab: { position: "absolute", right: 20 },
   fabBtn: {
-    width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", overflow: "hidden",
+    width: 68, height: 68, borderRadius: 34, alignItems: "center", justifyContent: "center", overflow: "hidden",
     ...Platform.select({
-      web:     { boxShadow: "0 8px 24px rgba(124,106,250,0.45)" },
-      default: { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 16, elevation: 10 },
+      web:     { boxShadow: "0 12px 36px rgba(124,106,250,0.55)" },
+      default: { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 12 }, shadowOpacity: 0.55, shadowRadius: 24, elevation: 14 },
     }),
   },
 });

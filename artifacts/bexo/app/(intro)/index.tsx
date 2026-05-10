@@ -118,6 +118,14 @@ export default function IntroScreen() {
               style={styles.screenImage}
               resizeMode="cover"
             />
+            {/* Logo Overlay */}
+            <View style={[styles.logoContainer, { top: insets.top + 20 }]}>
+              <Image 
+                source={require("../../assets/images/icon.png")} 
+                style={styles.logo}
+                resizeMode="contain"
+              />
+            </View>
           </View>
         ))}
       </ScrollView>
@@ -260,5 +268,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     letterSpacing: 0.3,
+  },
+  logoContainer: {
+    position: "absolute",
+    left: 20,
+    zIndex: 10,
+  },
+  logo: {
+    width: 80,
+    height: 32,
   },
 });

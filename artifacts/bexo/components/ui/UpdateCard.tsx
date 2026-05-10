@@ -5,12 +5,20 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
 
+interface Attachment {
+  id: string;
+  url: string;
+  type: "image" | "pdf";
+}
+
 interface Update {
   id: string;
   type: "project" | "achievement" | "role" | "education";
   title: string;
   description: string;
+  link_url?: string | null;
   created_at: string;
+  attachments?: Attachment[];
 }
 
 const TYPE_META: Record<Update["type"], { icon: string; color: string; label: string }> = {
@@ -35,6 +43,8 @@ function timeAgo(dateStr: string): string {
 export const UpdateCard = React.memo(function UpdateCard({ update }: { update: Update }) {
   const colors = useColors();
   const meta   = TYPE_META[update.type];
+  
+  const attachmentCount = update.attachments?.length ?? 0;
 
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -62,6 +72,23 @@ export const UpdateCard = React.memo(function UpdateCard({ update }: { update: U
             {update.description}
           </Text>
         ) : null}
+
+        <View style={styles.footer}>
+          {attachmentCount > 0 && (
+            <View style={[styles.metaItem, { backgroundColor: colors.surface }]}>
+              <Feather name="paperclip" size={10} color={colors.primary} />
+              <Text style={[styles.metaText, { color: colors.mutedForeground }]}>
+                {attachmentCount} {attachmentCount === 1 ? "File" : "Files"}
+              </Text>
+            </View>
+          )}
+          {update.link_url && (
+            <View style={[styles.metaItem, { backgroundColor: colors.surface }]}>
+              <Feather name="external-link" size={10} color={colors.primary} />
+              <Text style={[styles.metaText, { color: colors.mutedForeground }]}>Link</Text>
+            </View>
+          )}
+        </View>
       </View>
     </View>
   );
@@ -71,39 +98,54 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 12,
-    padding: 14,
-    paddingLeft: 18,
-    borderRadius: 16,
+    gap: 14,
+    padding: 16,
+    paddingLeft: 20,
+    borderRadius: 20,
     borderWidth: 1,
     overflow: "hidden",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
   },
   accentBar: {
     position: "absolute",
     left: 0,
     top: 0,
     bottom: 0,
-    width: 3,
-    borderRadius: 3,
+    width: 4,
+    borderRadius: 4,
   },
   iconWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     marginTop: 2,
   },
-  content: { flex: 1, gap: 5 },
+  content: { flex: 1, gap: 6 },
   topRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   typePill: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
     borderWidth: 1,
   },
-  typeLabel: { fontSize: 10, fontWeight: "700", letterSpacing: 0.3, textTransform: "uppercase" },
-  time: { fontSize: 11 },
-  title: { fontSize: 14, fontWeight: "700", lineHeight: 20 },
-  desc: { fontSize: 12, lineHeight: 18 },
+  typeLabel: { fontSize: 9, fontWeight: "900", letterSpacing: 0.8, textTransform: "uppercase" },
+  time: { fontSize: 11, fontWeight: "600", opacity: 0.6 },
+  title: { fontSize: 16, fontWeight: "800", lineHeight: 22, letterSpacing: -0.2 },
+  desc: { fontSize: 13, lineHeight: 20, opacity: 0.8 },
+  footer: { flexDirection: "row", gap: 8, marginTop: 4 },
+  metaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  metaText: { fontSize: 10, fontWeight: "700" },
 });

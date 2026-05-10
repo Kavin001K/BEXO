@@ -119,7 +119,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
         };
         onClose();
         router.push({
-          pathname: "/(main)/edit-profile",
+          pathname: "/edit-profile",
           params: { tab: tabMap[current.key] ?? "profile" },
         });
         return;
@@ -197,7 +197,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
                       onPress={() => {
                         onDone();
                         router.push({
-                          pathname: "/(main)/edit-profile",
+                          pathname: "/edit-profile",
                           params: { tab: field.key === "experience" ? "experience" : field.key },
                         });
                       }}
@@ -223,7 +223,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
                 <BexoButton
                   label="Go to Edit Profile"
                   variant="secondary"
-                  onPress={() => { onDone(); router.push("/(main)/edit-profile"); }}
+                  onPress={() => { onDone(); router.push("/edit-profile"); }}
                 />
               </Animated.View>
             ) : current ? (
@@ -307,7 +307,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
 
             {sectionFields.length > 0 && actionableFields.length > 0 && (
               <TouchableOpacity
-                onPress={() => { onDone(); router.push("/(main)/edit-profile"); }}
+                onPress={() => { onDone(); router.push("/edit-profile"); }}
                 style={[styles.sectionNotice, { backgroundColor: colors.surface, borderColor: colors.border }]}
               >
                 <Feather name="info" size={14} color={colors.mutedForeground} />

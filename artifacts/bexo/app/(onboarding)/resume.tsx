@@ -13,7 +13,6 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { supabase } from "@/lib/supabase";
 import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
@@ -24,7 +23,7 @@ export default function ResumeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const user   = useAuthStore((s) => s.user);
-  const { profile, setParsedResumeData, setOnboardingStep, setEducation, setExperiences, setProjects, setSkills } = useProfileStore();
+  const { profile, setParsedResumeData, setOnboardingStep } = useProfileStore();
 
   const [selectedFile, setSelectedFile]     = useState<{ name: string; uri: string } | null>(null);
   const [uploadedPath, setUploadedPath]     = useState<string | null>(null);
@@ -72,11 +71,9 @@ export default function ResumeScreen() {
       setParsedData(parsed);
       setStage("done");
 
+      // Store parsed data for preview — DO NOT set into Zustand yet
+      // (items without DB IDs would break edit/delete later)
       setParsedResumeData(parsed);
-      if (parsed.education?.length)   setEducation(parsed.education);
-      if (parsed.experiences?.length) setExperiences(parsed.experiences);
-      if (parsed.projects?.length)    setProjects(parsed.projects);
-      if (parsed.skills?.length)      setSkills(parsed.skills);
 
     } catch (e: any) {
       console.error("[ResumeScreen] Error:", e);
@@ -85,46 +82,26 @@ export default function ResumeScreen() {
     }
   };
 
-  const handleConfirmParsed = async () => {
+  const handleConfirmParsed = async (mode: "replace" | "merge") => {
     if (!profile || !parsedData || !uploadedPath) return;
     setParsing(true);
-    try {
-      await Promise.all([
-        useProfileStore.getState().updateProfile({
-          full_name:    parsedData.full_name    ?? profile.full_name,
-          headline:     parsedData.headline     ?? profile.headline,
-          bio:          parsedData.bio          ?? profile.bio,
-          github_url:   parsedData.github_url   ?? profile.github_url,
-          linkedin_url: parsedData.linkedin_url ?? profile.linkedin_url,
-          location:     parsedData.location     ?? profile.location,
-          resume_url:   uploadedPath,
-        }),
-        ...(parsedData.education?.map((edu) =>
-          useProfileStore.getState().saveEducation(edu)
-        ) ?? []),
-        ...(parsedData.experiences?.map((exp) =>
-          useProfileStore.getState().saveExperience(exp)
-        ) ?? []),
-        ...(parsedData.projects?.map((proj) =>
-          useProfileStore.getState().saveProject(proj)
-        ) ?? []),
-        parsedData.skills?.length
-          ? supabase.from("skills").upsert(
-              parsedData.skills.map((s) => ({
-                profile_id: profile.id,
-                name:       s.name,
-                category:   s.category,
-                level:      s.level,
-              })),
-              { onConflict: "profile_id,name" }
-            )
-          : Promise.resolve(),
-      ]);
+    setError("");
 
+    try {
+      const store = useProfileStore.getState();
+      if (mode === "replace") {
+        await store.replaceAllDataFromResume(parsedData, uploadedPath);
+      } else {
+        await store.mergeDataFromResume(parsedData, uploadedPath);
+      }
+
+      // Sync done, move forward
       setOnboardingStep("photo");
       router.push("/(onboarding)/photo");
     } catch (e: any) {
+      console.error("[ResumeScreen] Save error:", e);
       setError(e.message ?? "Failed to save data");
+      setStage("error");
     } finally {
       setParsing(false);
     }
@@ -207,7 +184,7 @@ export default function ResumeScreen() {
           </Animated.View>
         )}
 
-        {/* Done: summary + confirm */}
+        {/* Done: summary + confirm choices */}
         {stage === "done" && parsedData && (
           <Animated.View entering={FadeInDown.springify()} style={{ gap: 14 }}>
             <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: "#6AFAD044" }]}>
@@ -239,11 +216,20 @@ export default function ResumeScreen() {
               </View>
             </View>
 
-            <BexoButton
-              label={parsing ? "Saving to profile…" : "Use this data →"}
-              onPress={handleConfirmParsed}
-              loading={parsing}
-            />
+            <View style={{ gap: 12 }}>
+              <BexoButton
+                label={parsing ? "Replacing profile…" : "Replace all existing data"}
+                onPress={() => handleConfirmParsed("replace")}
+                loading={parsing}
+              />
+              <BexoButton
+                label={parsing ? "Merging…" : "Add to existing data"}
+                onPress={() => handleConfirmParsed("merge")}
+                variant="outline"
+                loading={parsing}
+              />
+            </View>
+
             <TouchableOpacity style={styles.changeBtn} onPress={pickDocument}>
               <Text style={[styles.changeBtnText, { color: colors.mutedForeground }]}>Upload a different file</Text>
             </TouchableOpacity>
@@ -253,8 +239,11 @@ export default function ResumeScreen() {
         {/* Error state */}
         {stage === "error" && (
           <Animated.View entering={FadeInDown.springify()} style={[styles.errorCard, { backgroundColor: "#FA6A6A11", borderColor: "#FA6A6A44" }]}>
-            <Feather name="alert-circle" size={28} color="#FA6A6A" />
-            <Text style={[styles.errorText, { color: "#FA6A6A" }]}>{error}</Text>
+            <View style={styles.errorHeader}>
+              <Feather name="alert-circle" size={32} color="#FA6A6A" />
+              <Text style={[styles.errorTitle, { color: colors.foreground }]}>Something went wrong</Text>
+            </View>
+            <Text style={[styles.errorText, { color: colors.mutedForeground }]}>{error}</Text>
             <BexoButton label="Try again" onPress={handleRetry} />
           </Animated.View>
         )}
@@ -316,8 +305,10 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, fontWeight: "700" },
   changeBtn: { alignItems: "center", paddingVertical: 8 },
   changeBtnText: { fontSize: 14, textDecorationLine: "underline" },
-  errorCard: { borderRadius: 20, borderWidth: 1, padding: 28, alignItems: "center", gap: 14 },
-  errorText: { fontSize: 14, textAlign: "center", lineHeight: 21 },
+  errorCard: { borderRadius: 24, borderWidth: 1, padding: 32, alignItems: "center", gap: 20 },
+  errorHeader: { alignItems: "center", gap: 12 },
+  errorTitle: { fontSize: 20, fontWeight: "800" },
+  errorText: { fontSize: 15, textAlign: "center", lineHeight: 22 },
   features: { gap: 10 },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   featureIcon: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },

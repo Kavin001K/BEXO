@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
+import type { ParsedResume } from "@/services/resumeParser";
 
 export interface Education {
   id?: string;
@@ -113,6 +114,15 @@ interface ProfileState {
   saveSkill: (skill: Skill) => Promise<void>;
   deleteSkill: (id: string) => Promise<void>;
   getCompletionResult: () => CompletionResult;
+
+  // ─── New bulk methods ───
+  bulkSaveEducation: (items: Education[]) => Promise<void>;
+  bulkSaveExperiences: (items: Experience[]) => Promise<void>;
+  bulkSaveProjects: (items: Project[]) => Promise<void>;
+  bulkSaveSkills: (items: Skill[]) => Promise<void>;
+  replaceAllDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
+  mergeDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
+  refreshFromDB: () => Promise<void>;
 }
 
 export const useProfileStore = create<ProfileState>((set, get) => ({
@@ -286,5 +296,196 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   deleteSkill: async (id) => {
     await supabase.from("skills").delete().eq("id", id);
     set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }));
+  },
+
+  // ─── New: Bulk save methods ───────────────────────────────────────────
+
+  bulkSaveEducation: async (items) => {
+    const profile = get().profile;
+    if (!profile || items.length === 0) return;
+    const rows = items.map(({ id, ...rest }) => ({ ...rest, profile_id: profile.id }));
+    const { data, error } = await supabase.from("education").insert(rows).select();
+    if (error) { console.error("[ProfileStore] bulkSaveEducation error:", error); throw error; }
+    if (data) set((s) => ({ education: [...s.education, ...data] }));
+  },
+
+  bulkSaveExperiences: async (items) => {
+    const profile = get().profile;
+    if (!profile || items.length === 0) return;
+    const rows = items.map(({ id, ...rest }) => ({ ...rest, profile_id: profile.id }));
+    const { data, error } = await supabase.from("experiences").insert(rows).select();
+    if (error) { console.error("[ProfileStore] bulkSaveExperiences error:", error); throw error; }
+    if (data) set((s) => ({ experiences: [...s.experiences, ...data] }));
+  },
+
+  bulkSaveProjects: async (items) => {
+    const profile = get().profile;
+    if (!profile || items.length === 0) return;
+    const rows = items.map(({ id, ...rest }) => ({ ...rest, profile_id: profile.id }));
+    const { data, error } = await supabase.from("projects").insert(rows).select();
+    if (error) { console.error("[ProfileStore] bulkSaveProjects error:", error); throw error; }
+    if (data) set((s) => ({ projects: [...s.projects, ...data] }));
+  },
+
+  bulkSaveSkills: async (items) => {
+    const profile = get().profile;
+    if (!profile || items.length === 0) return;
+    const rows = items.map(({ id, ...rest }) => ({ ...rest, profile_id: profile.id }));
+    const { data, error } = await supabase.from("skills")
+      .upsert(rows, { onConflict: "profile_id,name" })
+      .select();
+    if (error) {
+      console.error("[ProfileStore] bulkSaveSkills error:", error);
+      // Fallback: If constraint is missing, use simple insert
+      if (error.code === "42P10") {
+        const { data: insertData, error: insertError } = await supabase.from("skills").insert(rows).select();
+        if (insertError) throw insertError;
+        if (insertData) set((s) => ({ skills: [...s.skills, ...insertData] }));
+        return;
+      }
+      throw error;
+    }
+    if (data) {
+      // Merge with existing, replacing any with same name
+      const existingNames = new Set(data.map(d => d.name));
+      const kept = get().skills.filter(s => !existingNames.has(s.name));
+      set({ skills: [...kept, ...data] });
+    }
+  },
+
+  /**
+   * Replace all data: Delete existing records, insert new parsed data.
+   */
+  replaceAllDataFromResume: async (parsed, resumePath) => {
+    const profile = get().profile;
+    if (!profile) throw new Error("No profile loaded");
+    const pid = profile.id;
+
+    console.log("[ProfileStore] replaceAllData: Starting...");
+
+    try {
+      // 1. Update profile basic info
+      const profileUpdates: any = { resume_url: resumePath };
+      if (parsed.full_name) profileUpdates.full_name = parsed.full_name;
+      if (parsed.headline)  profileUpdates.headline  = parsed.headline;
+      if (parsed.bio)       profileUpdates.bio       = parsed.bio;
+
+      await get().updateProfile(profileUpdates);
+
+      // 2. Delete ALL existing sub-data
+      console.log("[ProfileStore] replaceAllData: Deleting old records...");
+      await Promise.all([
+        supabase.from("education").delete().eq("profile_id", pid),
+        supabase.from("experiences").delete().eq("profile_id", pid),
+        supabase.from("projects").delete().eq("profile_id", pid),
+        supabase.from("skills").delete().eq("profile_id", pid),
+      ]);
+
+      // 3. Insert NEW data using bulk helpers (to ensure local state sync)
+      console.log("[ProfileStore] replaceAllData: Inserting new records...");
+      
+      // Clear local state first to be safe
+      set({ education: [], experiences: [], projects: [], skills: [] });
+
+      const tasks: Promise<any>[] = [];
+      if (parsed.education?.length)   tasks.push(get().bulkSaveEducation(parsed.education));
+      if (parsed.experiences?.length) tasks.push(get().bulkSaveExperiences(parsed.experiences));
+      if (parsed.projects?.length)    tasks.push(get().bulkSaveProjects(parsed.projects));
+      if (parsed.skills?.length)      tasks.push(get().bulkSaveSkills(parsed.skills));
+
+      await Promise.all(tasks);
+
+      console.log("[ProfileStore] replaceAllData: Complete.");
+    } catch (e) {
+      console.error("[ProfileStore] replaceAllData failed:", e);
+      throw e;
+    }
+  },
+
+  /**
+   * Merge data: Only add missing records.
+   */
+  mergeDataFromResume: async (parsed, resumePath) => {
+    const profile = get().profile;
+    if (!profile) throw new Error("No profile loaded");
+
+    console.log("[ProfileStore] mergeData: Starting smart merge...");
+
+    try {
+      // 1. Update profile — only fill in empty fields
+      const profileUpdates: any = { resume_url: resumePath };
+      if (parsed.full_name && !profile.full_name?.trim()) profileUpdates.full_name = parsed.full_name;
+      if (parsed.headline  && !profile.headline?.trim())  profileUpdates.headline  = parsed.headline;
+      if (parsed.bio       && !profile.bio?.trim())       profileUpdates.bio       = parsed.bio;
+
+      if (Object.keys(profileUpdates).length > 1) { // more than just resume_url
+        await get().updateProfile(profileUpdates);
+      } else if (resumePath) {
+        await get().updateProfile({ resume_url: resumePath });
+      }
+
+      // 2. Deduplicate and save new items
+      const existingEdu = get().education;
+      const newEdu = (parsed.education ?? []).filter(pe =>
+        !existingEdu.some(ee =>
+          ee.institution.toLowerCase().trim() === pe.institution.toLowerCase().trim() &&
+          ee.degree.toLowerCase().trim() === pe.degree.toLowerCase().trim()
+        )
+      );
+
+      const existingExp = get().experiences;
+      const newExp = (parsed.experiences ?? []).filter(pe =>
+        !existingExp.some(ee =>
+          ee.company.toLowerCase().trim() === pe.company.toLowerCase().trim() &&
+          ee.role.toLowerCase().trim() === pe.role.toLowerCase().trim()
+        )
+      );
+
+      const existingProj = get().projects;
+      const newProj = (parsed.projects ?? []).filter(pp =>
+        !existingProj.some(ep =>
+          ep.title.toLowerCase().trim() === pp.title.toLowerCase().trim()
+        )
+      );
+
+      const tasks: Promise<any>[] = [];
+      if (newEdu.length > 0)   tasks.push(get().bulkSaveEducation(newEdu));
+      if (newExp.length > 0)   tasks.push(get().bulkSaveExperiences(newExp));
+      if (newProj.length > 0)  tasks.push(get().bulkSaveProjects(newProj));
+      if (parsed.skills?.length) tasks.push(get().bulkSaveSkills(parsed.skills)); // upsert handles skills
+
+      await Promise.all(tasks);
+
+      console.log("[ProfileStore] mergeData: Complete.");
+    } catch (e) {
+      console.error("[ProfileStore] mergeData failed:", e);
+      throw e;
+    }
+  },
+
+  /**
+   * Re-fetch all data from DB to ensure local state is authoritative.
+   */
+  refreshFromDB: async () => {
+    const profile = get().profile;
+    if (!profile) return;
+
+    console.log("[ProfileStore] refreshFromDB: Syncing from database...");
+    const [profRes, edu, exp, proj, skillsRes] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", profile.id).single(),
+      supabase.from("education").select("*").eq("profile_id", profile.id).order("start_year", { ascending: false }),
+      supabase.from("experiences").select("*").eq("profile_id", profile.id).order("start_date", { ascending: false }),
+      supabase.from("projects").select("*").eq("profile_id", profile.id),
+      supabase.from("skills").select("*").eq("profile_id", profile.id),
+    ]);
+
+    set({
+      profile:     profRes.data ?? profile,
+      education:   edu.data     ?? [],
+      experiences: exp.data     ?? [],
+      projects:    proj.data    ?? [],
+      skills:      skillsRes.data ?? [],
+    });
+    console.log("[ProfileStore] refreshFromDB: Done.");
   },
 }));

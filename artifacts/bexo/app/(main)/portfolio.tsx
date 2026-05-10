@@ -21,27 +21,70 @@ import { useColors } from "@/hooks/useColors";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
-type TabId = "overview" | "experience" | "projects" | "skills";
+type TabId = "overview" | "experience" | "education" | "projects" | "skills";
 
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { profile, education, experiences, projects, skills, isLoading } = useProfileStore();
-  const { buildStatus, portfolioUrl, activePortfolioTab, setActivePortfolioTab } = usePortfolioStore();
+  const { buildStatus, updates, activePortfolioTab, setActivePortfolioTab, fetchUpdates } = usePortfolioStore();
   const [showRebuild, setShowRebuild] = useState(false);
 
   const activeTab = activePortfolioTab as TabId;
   const setActiveTab = (tab: TabId) => setActivePortfolioTab(tab);
 
+  React.useEffect(() => {
+    if (profile?.id) {
+      fetchUpdates(profile.id);
+    }
+  }, [profile?.id]);
+
   const TABS: { id: TabId; label: string }[] = [
     { id: "overview",   label: "Overview"   },
     { id: "experience", label: "Experience" },
+    { id: "education",  label: "Education"  },
     { id: "projects",   label: "Projects"   },
     { id: "skills",     label: "Skills"     },
   ];
 
   const topPad    = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
+
+  // Merge profile data with AI updates
+  const allExperience = [
+    ...experiences,
+    ...updates.filter(u => u.type === "role").map(u => ({
+      role: u.title,
+      company: "Added via Scan",
+      description: u.description,
+      start_date: new Date(u.created_at).getFullYear().toString(),
+      is_current: false,
+      id: u.id
+    }))
+  ];
+
+  const allProjects = [
+    ...projects,
+    ...updates.filter(u => u.type === "project").map(u => ({
+      title: u.title,
+      description: u.description,
+      tech_stack: [],
+      id: u.id
+    }))
+  ];
+
+  const allEducation = [
+    ...education,
+    ...updates.filter(u => u.type === "education").map(u => ({
+      institution: u.title,
+      degree: u.description,
+      field: "",
+      start_year: new Date(u.created_at).getFullYear(),
+      id: u.id
+    }))
+  ];
+
+  const allAchievements = updates.filter(u => u.type === "achievement");
 
   // Skeleton loading state while profile data is loading
   if (isLoading || !profile) {
@@ -79,8 +122,9 @@ export default function PortfolioScreen() {
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
-              onPress={() => router.push("/edit-profile")}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+              onPress={() => router.navigate("/edit-profile")}
+              hitSlop={{ top: 25, bottom: 25, left: 20, right: 20 }}
+              activeOpacity={0.7}
             >
               <Feather name="edit-2" size={14} color={colors.foreground} />
               <Text style={[styles.actionLabel, { color: colors.foreground }]}>Edit</Text>
@@ -109,7 +153,7 @@ export default function PortfolioScreen() {
         {/* Hero card */}
         <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <LinearGradient
-            colors={["#7C6AFA22", "#FA6A6A11"]}
+            colors={["#7C6AFA15", "#FA6A6A08"]}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
@@ -129,15 +173,15 @@ export default function PortfolioScreen() {
               )}
             </TouchableOpacity>
             {buildStatus === "done" && (
-              <View style={styles.liveChip}>
+              <View style={[styles.liveChip, { backgroundColor: "#6AFAD015", borderColor: "#6AFAD044", borderWidth: 1 }]}>
                 <View style={styles.liveDot} />
-                <Text style={styles.liveChipText}>Live</Text>
+                <Text style={styles.liveChipText}>Live Portfolio</Text>
               </View>
             )}
             {(buildStatus === "building" || buildStatus === "queued") && (
-              <View style={[styles.liveChip, { backgroundColor: colors.primary + "33" }]}>
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4, transform: [{ scale: 0.7 }] }} />
-                <Text style={[styles.liveChipText, { color: colors.primary }]}>Building</Text>
+              <View style={[styles.liveChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "44", borderWidth: 1 }]}>
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6, transform: [{ scale: 0.7 }] }} />
+                <Text style={[styles.liveChipText, { color: colors.primary }]}>Syncing...</Text>
               </View>
             )}
           </View>
@@ -149,9 +193,12 @@ export default function PortfolioScreen() {
               {profile.headline}
             </Text>
           ) : null}
-          <Text style={[styles.heroHandle, { color: colors.primary }]}>
-            {profile?.handle ?? "handle"}.mybexo.com
-          </Text>
+          <View style={styles.handleRow}>
+            <Feather name="link" size={12} color={colors.primary} />
+            <Text style={[styles.heroHandle, { color: colors.primary }]}>
+              {profile?.handle ?? "handle"}.mybexo.com
+            </Text>
+          </View>
           {profile?.bio ? (
             <Text style={[styles.heroBio, { color: colors.mutedForeground }]}>
               {profile.bio}
@@ -161,21 +208,15 @@ export default function PortfolioScreen() {
           {(profile?.github_url || profile?.linkedin_url || profile?.website) && (
             <View style={styles.socialRow}>
               {profile.github_url && (
-                <View style={[styles.socialChip, { backgroundColor: colors.surface }]}>
-                  <Feather name="github" size={12} color={colors.mutedForeground} />
-                  <Text style={[styles.socialLabel, { color: colors.mutedForeground }]}>GitHub</Text>
+                <View style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+                  <Feather name="github" size={11} color={colors.foreground} />
+                  <Text style={[styles.socialLabel, { color: colors.foreground }]}>GitHub</Text>
                 </View>
               )}
               {profile.linkedin_url && (
-                <View style={[styles.socialChip, { backgroundColor: colors.surface }]}>
-                  <Feather name="linkedin" size={12} color={colors.primary} />
+                <View style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
+                  <Feather name="linkedin" size={11} color={colors.primary} />
                   <Text style={[styles.socialLabel, { color: colors.primary }]}>LinkedIn</Text>
-                </View>
-              )}
-              {profile.website && (
-                <View style={[styles.socialChip, { backgroundColor: colors.surface }]}>
-                  <Feather name="globe" size={12} color={colors.mutedForeground} />
-                  <Text style={[styles.socialLabel, { color: colors.mutedForeground }]}>Website</Text>
                 </View>
               )}
             </View>
@@ -183,7 +224,7 @@ export default function PortfolioScreen() {
         </View>
 
         {/* Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} style={styles.tabsContainer}>
           {TABS.map((tab) => (
             <TouchableOpacity
               key={tab.id}
@@ -206,35 +247,110 @@ export default function PortfolioScreen() {
         {/* Tab content */}
         {activeTab === "overview" && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Education</Text>
-            {education.length === 0 ? (
-              <EmptySection label="No education added yet" onAdd={() => router.push("/edit-profile?tab=education")} colors={colors} />
-            ) : (
-              education.map((edu, i) => (
-                <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                  <Text style={[styles.itemTitle, { color: colors.foreground }]}>{edu.institution}</Text>
-                  <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{edu.degree} in {edu.field}</Text>
-                  <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
-                    {edu.start_year} — {edu.end_year ?? "Present"}
-                  </Text>
+            {/* Experience Summary */}
+            {allExperience.length > 0 && (
+              <View style={styles.subSection}>
+                <View style={styles.subHeader}>
+                  <View style={styles.titleWithIcon}>
+                    <Feather name="briefcase" size={16} color={colors.mutedForeground} />
+                    <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Experience</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setActiveTab("experience")}>
+                    <Text style={[styles.viewAll, { color: colors.primary }]}>View all</Text>
+                  </TouchableOpacity>
                 </View>
-              ))
+                {allExperience.slice(0, 2).map((exp, i) => (
+                  <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.itemTitle, { color: colors.foreground }]}>{exp.role}</Text>
+                    <Text style={[styles.itemSub, { color: colors.primary }]}>{exp.company}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Project Summary */}
+            {allProjects.length > 0 && (
+              <View style={styles.subSection}>
+                <View style={styles.subHeader}>
+                  <View style={styles.titleWithIcon}>
+                    <Feather name="layout" size={16} color={colors.mutedForeground} />
+                    <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Top Projects</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setActiveTab("projects")}>
+                    <Text style={[styles.viewAll, { color: colors.primary }]}>View all</Text>
+                  </TouchableOpacity>
+                </View>
+                {allProjects.slice(0, 2).map((proj, i) => (
+                  <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Text style={[styles.itemTitle, { color: colors.foreground }]}>{proj.title}</Text>
+                    <Text style={[styles.itemDesc, { color: colors.mutedForeground }]} numberOfLines={1}>{proj.description}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Recent Achievements */}
+            {allAchievements.length > 0 && (
+              <View style={styles.subSection}>
+                <View style={styles.titleWithIcon}>
+                  <Feather name="award" size={16} color={colors.mutedForeground} />
+                  <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Achievements</Text>
+                </View>
+                {allAchievements.slice(0, 3).map((update, i) => (
+                  <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <View style={styles.achievementRow}>
+                      <View style={styles.awardDot} />
+                      <Text style={[styles.itemTitle, { color: colors.foreground, fontSize: 14 }]}>{update.title}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Education Summary */}
+            {allEducation.length > 0 && (
+              <View style={styles.subSection}>
+                <View style={styles.subHeader}>
+                  <View style={styles.titleWithIcon}>
+                    <Feather name="book-open" size={16} color={colors.mutedForeground} />
+                    <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Education</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setActiveTab("education")}>
+                    <Text style={[styles.viewAll, { color: colors.primary }]}>View all</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.itemTitle, { color: colors.foreground }]}>{allEducation[0].institution}</Text>
+                  <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{allEducation[0].degree}</Text>
+                </View>
+              </View>
+            )}
+
+            {allExperience.length === 0 && allProjects.length === 0 && allEducation.length === 0 && allAchievements.length === 0 && (
+              <EmptySection label="Your portfolio is empty" onAdd={() => router.push("/edit-profile")} colors={colors} />
             )}
           </View>
         )}
 
         {activeTab === "experience" && (
           <View style={styles.section}>
-            {experiences.length === 0 ? (
-              <EmptySection label="No experience added yet" onAdd={() => router.push("/edit-profile?tab=experience")} colors={colors} />
+            {allExperience.length === 0 ? (
+              <EmptySection 
+                label="No experience added yet" 
+                onAdd={() => router.navigate({ pathname: "/edit-profile", params: { tab: "experience" } })} 
+                colors={colors} 
+              />
             ) : (
-              experiences.map((exp, i) => (
+              allExperience.map((exp, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{exp.role}</Text>
                   <Text style={[styles.itemSub, { color: colors.primary }]}>{exp.company}</Text>
-                  <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
-                    {exp.start_date} — {exp.is_current ? "Present" : exp.end_date ?? ""}
-                  </Text>
+                  <View style={styles.dateRow}>
+                    <Feather name="calendar" size={12} color={colors.mutedForeground} />
+                    <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
+                      {exp.start_date} {exp.is_current ? "— Present" : ""}
+                    </Text>
+                  </View>
                   {exp.description ? (
                     <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>{exp.description}</Text>
                   ) : null}
@@ -244,36 +360,51 @@ export default function PortfolioScreen() {
           </View>
         )}
 
+        {activeTab === "education" && (
+          <View style={styles.section}>
+            {allEducation.length === 0 ? (
+              <EmptySection 
+                label="No education added yet" 
+                onAdd={() => router.navigate({ pathname: "/edit-profile", params: { tab: "education" } })} 
+                colors={colors} 
+              />
+            ) : (
+              allEducation.map((edu, i) => (
+                <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <Text style={[styles.itemTitle, { color: colors.foreground }]}>{edu.institution}</Text>
+                  <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{edu.degree} {edu.field ? `in ${edu.field}` : ""}</Text>
+                  <View style={styles.dateRow}>
+                    <Feather name="calendar" size={12} color={colors.mutedForeground} />
+                    <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
+                      {edu.start_year}
+                    </Text>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
         {activeTab === "projects" && (
           <View style={styles.section}>
-            {projects.length === 0 ? (
-              <EmptySection label="No projects added yet" onAdd={() => router.push("/edit-profile?tab=projects")} colors={colors} />
+            {allProjects.length === 0 ? (
+              <EmptySection 
+                label="No projects added yet" 
+                onAdd={() => router.navigate({ pathname: "/edit-profile", params: { tab: "projects" } })} 
+                colors={colors} 
+              />
             ) : (
-              projects.map((proj, i) => (
+              allProjects.map((proj, i) => (
                 <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{proj.title}</Text>
                   {proj.description ? (
                     <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>{proj.description}</Text>
                   ) : null}
-                  {proj.tech_stack?.length > 0 && (
+                  {proj.tech_stack && proj.tech_stack.length > 0 && (
                     <View style={styles.techRow}>
                       {proj.tech_stack.map((t) => <SkillTag key={t} label={t} size="sm" />)}
                     </View>
                   )}
-                  <View style={styles.linkRow}>
-                    {proj.live_url && (
-                      <View style={styles.linkChip}>
-                        <Feather name="external-link" size={12} color={colors.primary} />
-                        <Text style={[styles.linkText, { color: colors.primary }]}>Live</Text>
-                      </View>
-                    )}
-                    {proj.github_url && (
-                      <View style={styles.linkChip}>
-                        <Feather name="github" size={12} color={colors.mutedForeground} />
-                        <Text style={[styles.linkText, { color: colors.mutedForeground }]}>GitHub</Text>
-                      </View>
-                    )}
-                  </View>
                 </View>
               ))
             )}
@@ -324,7 +455,8 @@ function EmptySection({
       <TouchableOpacity
         style={[emptyStyles.btn, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
         onPress={onAdd}
-        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+        hitSlop={{ top: 30, bottom: 30, left: 30, right: 30 }}
+        activeOpacity={0.6}
       >
         <Feather name="plus" size={13} color={colors.primary} />
         <Text style={[emptyStyles.btnLabel, { color: colors.primary }]}>Add now</Text>
@@ -375,23 +507,32 @@ const styles = StyleSheet.create({
   heroName: { fontSize: 22, fontWeight: "800" },
   heroHeadline: { fontSize: 14 },
   heroHandle: { fontSize: 13, fontWeight: "600" },
-  heroBio: { fontSize: 13, lineHeight: 20, marginTop: 4 },
-  socialRow: { flexDirection: "row", gap: 8, marginTop: 4 },
+  handleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  heroBio: { fontSize: 13, lineHeight: 20, marginTop: 8 },
+  socialRow: { flexDirection: "row", gap: 8, marginTop: 12 },
   socialChip: {
-    flexDirection: "row", alignItems: "center", gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    flexDirection: "row", alignItems: "center", gap: 5,
+    paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
   },
-  socialLabel: { fontSize: 11, fontWeight: "500" },
-  tabs: { gap: 8, paddingRight: 20 },
-  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
-  tabLabel: { fontSize: 13, fontWeight: "600" },
-  section: { gap: 10 },
-  sectionTitle: { fontSize: 16, fontWeight: "700" },
-  itemCard: { borderRadius: 14, borderWidth: 1, padding: 14, gap: 4 },
-  itemTitle: { fontSize: 15, fontWeight: "600" },
-  itemSub: { fontSize: 13 },
-  itemDate: { fontSize: 12 },
-  itemDesc: { fontSize: 13, lineHeight: 19, marginTop: 4 },
+  socialLabel: { fontSize: 12, fontWeight: "600" },
+  tabsContainer: { marginTop: 4, marginBottom: 8 },
+  tabs: { gap: 10, paddingRight: 20 },
+  tab: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+  tabLabel: { fontSize: 14, fontWeight: "700" },
+  section: { gap: 16 },
+  sectionTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
+  titleWithIcon: { flexDirection: "row", alignItems: "center", gap: 8 },
+  subSection: { gap: 12, marginTop: 4 },
+  subHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  viewAll: { fontSize: 13, fontWeight: "700" },
+  achievementRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  awardDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#6AFAD0" },
+  itemCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 6, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  itemTitle: { fontSize: 16, fontWeight: "700", letterSpacing: -0.1 },
+  itemSub: { fontSize: 14, fontWeight: "600" },
+  dateRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
+  itemDate: { fontSize: 12, fontWeight: "500" },
+  itemDesc: { fontSize: 13, lineHeight: 20, marginTop: 4 },
   techRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
   linkRow: { flexDirection: "row", gap: 10, marginTop: 6 },
   linkChip: { flexDirection: "row", alignItems: "center", gap: 4 },

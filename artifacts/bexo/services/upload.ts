@@ -1,4 +1,4 @@
-import * as FileSystem from "expo-file-system";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
 import { decode } from "base64-arraybuffer";
@@ -6,20 +6,27 @@ import { supabase } from "@/lib/supabase";
 
 async function uriToBase64(uri: string): Promise<string> {
   if (Platform.OS === "web") {
-    const res  = await fetch(uri);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(",")[1] ?? result);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+    try {
+      const res = await fetch(uri);
+      const blob = await res.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          resolve(result.split(",")[1] ?? result);
+        };
+        reader.onerror = (e) => reject(new Error(`FileReader error: ${e}`));
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      console.error("[uriToBase64] Web fetch failed:", e);
+      // Fallback for some web environments if URI is already base64
+      if (uri.startsWith("data:")) return uri.split(",")[1];
+      throw e;
+    }
   }
   return FileSystem.readAsStringAsync(uri, {
-    encoding: "base64" as any,
+    encoding: "base64",
   });
 }
 
@@ -73,11 +80,11 @@ export async function uploadResume(
   userId: string,
   localUri: string,
   onProgress?: (pct: number) => void
-): Promise<string> {
+): Promise<{ path: string; base64: string }> {
   onProgress?.(10);
-
+  console.log("[uploadResume] Converting to base64...");
   const base64 = await uriToBase64(localUri);
-  onProgress?.(50);
+  onProgress?.(45);
 
   const path = `${userId}/resume-${Date.now()}.pdf`;
 
@@ -94,7 +101,7 @@ export async function uploadResume(
   }
   onProgress?.(100);
 
-  return data.path;
+  return { path: data.path, base64 };
 }
 
 /**

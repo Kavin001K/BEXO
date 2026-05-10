@@ -11,7 +11,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton }           from "@/components/ui/BexoButton";
 import { useColors }             from "@/hooks/useColors";
-import { supabase }              from "@/lib/supabase";
 import { uploadAndParseResume }  from "@/services/resumeParser";
 import { useAuthStore }          from "@/stores/useAuthStore";
 import { usePortfolioStore }     from "@/stores/usePortfolioStore";
@@ -22,13 +21,13 @@ interface Props {
   onClose: () => void;
 }
 
-type Step = "options" | "uploading" | "parsed" | "replacing" | "rebuilding" | "done" | "error";
+type Step = "options" | "uploading" | "parsed" | "saving" | "saved" | "rebuilding" | "error";
 
 export function RebuildModal({ visible, onClose }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const user   = useAuthStore((s) => s.user);
-  const { profile, updateProfile, setEducation, setExperiences, setProjects, setSkills } = useProfileStore();
+  const { profile } = useProfileStore();
   const { triggerBuild } = usePortfolioStore();
 
   const [step,         setStep]         = useState<Step>("options");
@@ -43,6 +42,14 @@ export function RebuildModal({ visible, onClose }: Props) {
   };
 
   const handleClose = () => { reset(); onClose(); };
+
+  // Check if parse has meaningful data
+  const parseHasData = parsedResult && (
+    (parsedResult.education?.length ?? 0) > 0 ||
+    (parsedResult.experiences?.length ?? 0) > 0 ||
+    (parsedResult.projects?.length ?? 0) > 0 ||
+    (parsedResult.skills?.length ?? 0) > 0
+  );
 
   // Upload new resume
   const handleUploadResume = async () => {
@@ -79,94 +86,44 @@ export function RebuildModal({ visible, onClose }: Props) {
   // Replace: wipe all data and use parsed only
   const handleReplace = async () => {
     if (!profile?.id || !parsedResult || !resumePath) return;
-    setStep("replacing");
+    setStep("saving");
     try {
-      await Promise.all([
-        supabase.from("education").delete().eq("profile_id", profile.id),
-        supabase.from("experiences").delete().eq("profile_id", profile.id),
-        supabase.from("projects").delete().eq("profile_id", profile.id),
-        supabase.from("skills").delete().eq("profile_id", profile.id),
-      ]);
+      // Use the new atomic replaceAllData method
+      await useProfileStore.getState().replaceAllDataFromResume(parsedResult, resumePath);
 
-      await updateProfile({
-        full_name:    parsedResult.full_name    ?? profile.full_name,
-        headline:     parsedResult.headline     ?? profile.headline,
-        bio:          parsedResult.bio          ?? profile.bio,
-        github_url:   parsedResult.github_url   ?? profile.github_url,
-        linkedin_url: parsedResult.linkedin_url ?? profile.linkedin_url,
-        location:     parsedResult.location     ?? profile.location,
-        resume_url:   resumePath,
-      });
+      // Refresh from DB to ensure local state matches
+      await useProfileStore.getState().refreshFromDB();
 
-      const pid = profile.id;
-      await Promise.all([
-        ...(parsedResult.education?.map((e: any) =>
-          supabase.from("education").insert({ ...e, profile_id: pid })
-        ) ?? []),
-        ...(parsedResult.experiences?.map((e: any) =>
-          supabase.from("experiences").insert({ ...e, profile_id: pid })
-        ) ?? []),
-        ...(parsedResult.projects?.map((p: any) =>
-          supabase.from("projects").insert({ ...p, profile_id: pid })
-        ) ?? []),
-        parsedResult.skills?.length
-          ? supabase.from("skills").insert(
-              parsedResult.skills.map((s: any) => ({ ...s, profile_id: pid }))
-            )
-          : Promise.resolve(),
-      ]);
-
-      setEducation(parsedResult.education   ?? []);
-      setExperiences(parsedResult.experiences ?? []);
-      setProjects(parsedResult.projects    ?? []);
-      setSkills(parsedResult.skills       ?? []);
-
-      await triggerBuild(profile.id);
-      setStep("rebuilding");
+      setStep("saved");
     } catch (e: any) {
       setError(e.message ?? "Failed to replace data");
       setStep("error");
     }
   };
 
-  // Merge: keep existing + add new parsed data
+  // Merge: keep existing + add new parsed data (smart dedup)
   const handleMerge = async () => {
     if (!profile?.id || !parsedResult || !resumePath) return;
-    setStep("replacing");
+    setStep("saving");
     try {
-      const pid = profile.id;
-      const updates: any = { resume_url: resumePath };
-      if (parsedResult.full_name    && !profile.full_name)    updates.full_name    = parsedResult.full_name;
-      if (parsedResult.headline     && !profile.headline)     updates.headline     = parsedResult.headline;
-      if (parsedResult.bio          && !profile.bio)          updates.bio          = parsedResult.bio;
-      if (parsedResult.github_url   && !profile.github_url)   updates.github_url   = parsedResult.github_url;
-      if (parsedResult.linkedin_url && !profile.linkedin_url) updates.linkedin_url = parsedResult.linkedin_url;
-      await updateProfile(updates);
+      // Use the new smart merge method with deduplication
+      await useProfileStore.getState().mergeDataFromResume(parsedResult, resumePath);
 
-      await Promise.all([
-        ...(parsedResult.education?.map((e: any) =>
-          supabase.from("education").upsert({ ...e, profile_id: pid }, { ignoreDuplicates: true })
-        ) ?? []),
-        ...(parsedResult.experiences?.map((e: any) =>
-          supabase.from("experiences").upsert({ ...e, profile_id: pid }, { ignoreDuplicates: true })
-        ) ?? []),
-        ...(parsedResult.projects?.map((p: any) =>
-          supabase.from("projects").upsert({ ...p, profile_id: pid }, { ignoreDuplicates: true })
-        ) ?? []),
-        parsedResult.skills?.length
-          ? supabase.from("skills").upsert(
-              parsedResult.skills.map((s: any) => ({ ...s, profile_id: pid })),
-              { onConflict: "profile_id,name" }
-            )
-          : Promise.resolve(),
-      ]);
+      // Refresh from DB to ensure local state matches
+      await useProfileStore.getState().refreshFromDB();
 
-      await triggerBuild(profile.id);
-      setStep("rebuilding");
+      setStep("saved");
     } catch (e: any) {
       setError(e.message ?? "Failed to merge data");
       setStep("error");
     }
+  };
+
+  // Only trigger rebuild after data is confirmed saved
+  const handleRebuildAfterSave = async () => {
+    if (!profile?.id) return;
+    setStep("rebuilding");
+    await triggerBuild(profile.id);
   };
 
   const handleRebuildNow = async () => {
@@ -175,6 +132,19 @@ export function RebuildModal({ visible, onClose }: Props) {
     await triggerBuild(profile.id);
   };
 
+  const stepTitle = (() => {
+    switch (step) {
+      case "options":    return "Rebuild Portfolio";
+      case "uploading":  return "Processing Resume";
+      case "parsed":     return "Resume Parsed";
+      case "saving":     return "Saving Data";
+      case "saved":      return "Data Saved!";
+      case "rebuilding": return "Building…";
+      case "error":      return "Something went wrong";
+      default:           return "Rebuild Portfolio";
+    }
+  })();
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleClose}>
       <View style={[M.container, { backgroundColor: colors.background }]}>
@@ -182,15 +152,7 @@ export function RebuildModal({ visible, onClose }: Props) {
           <TouchableOpacity onPress={handleClose}>
             <Text style={[M.cancel, { color: colors.mutedForeground }]}>Cancel</Text>
           </TouchableOpacity>
-          <Text style={[M.title, { color: colors.foreground }]}>
-            {step === "options"   ? "Rebuild Portfolio"  :
-             step === "uploading" ? "Processing Resume"  :
-             step === "parsed"    ? "Resume Parsed"      :
-             step === "replacing" ? "Saving Changes"     :
-             step === "rebuilding"? "Building…"          :
-             step === "done"      ? "Done!"              :
-                                    "Something went wrong"}
-          </Text>
+          <Text style={[M.title, { color: colors.foreground }]}>{stepTitle}</Text>
           <View style={{ width: 60 }} />
         </View>
 
@@ -255,9 +217,15 @@ export function RebuildModal({ visible, onClose }: Props) {
           {/* PARSED SUMMARY */}
           {step === "parsed" && parsedResult && (
             <Animated.View entering={FadeInDown.springify()} style={{ gap: 16 }}>
-              <Text style={[M.desc, { color: colors.mutedForeground }]}>
-                We found the following in your resume. Choose how to update your portfolio:
-              </Text>
+              {parseHasData ? (
+                <Text style={[M.desc, { color: colors.mutedForeground }]}>
+                  We found the following in your resume. Choose how to update your portfolio:
+                </Text>
+              ) : (
+                <Text style={[M.desc, { color: "#FA6A6A" }]}>
+                  AI couldn't extract structured data from this resume. The data will be saved, but you may want to add items manually.
+                </Text>
+              )}
 
               <View style={M.summaryRow}>
                 {[
@@ -302,7 +270,7 @@ export function RebuildModal({ visible, onClose }: Props) {
                 <View style={{ flex: 1 }}>
                   <Text style={[M.mergeLabel, { color: colors.primary }]}>Add to existing data</Text>
                   <Text style={[M.mergeSub, { color: colors.mutedForeground }]}>
-                    Keep current info and add new items from this resume
+                    Keep current info and add only new items (duplicates removed)
                   </Text>
                 </View>
                 <Feather name="chevron-right" size={14} color={colors.primary} />
@@ -310,26 +278,57 @@ export function RebuildModal({ visible, onClose }: Props) {
             </Animated.View>
           )}
 
-          {/* REPLACING / REBUILDING */}
-          {(step === "replacing" || step === "rebuilding") && (
+          {/* SAVING */}
+          {step === "saving" && (
             <Animated.View entering={FadeIn.duration(300)} style={M.centeredContent}>
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={[M.statusLabel, { color: colors.foreground }]}>
-                {step === "replacing" ? "Saving your data…" : "Rebuilding portfolio…"}
-              </Text>
+              <Text style={[M.statusLabel, { color: colors.foreground }]}>Saving your data…</Text>
               <Text style={[M.statusSub, { color: colors.mutedForeground }]}>
-                {step === "rebuilding"
-                  ? "Your portfolio site will be live in about 90 seconds."
-                  : "Just a moment…"}
+                Writing to database. Just a moment…
               </Text>
-              {step === "rebuilding" && (
-                <TouchableOpacity
-                  style={[M.doneBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
-                  onPress={handleClose}
-                >
-                  <Text style={[M.doneBtnText, { color: colors.primary }]}>Close (rebuilding in background)</Text>
-                </TouchableOpacity>
-              )}
+            </Animated.View>
+          )}
+
+          {/* SAVED — user chooses to rebuild or close */}
+          {step === "saved" && (
+            <Animated.View entering={FadeInDown.springify()} style={M.centeredContent}>
+              <View style={[M.successIcon, { backgroundColor: "#6AFAD022" }]}>
+                <Feather name="check-circle" size={32} color="#6AFAD0" />
+              </View>
+              <Text style={[M.statusLabel, { color: colors.foreground }]}>Data saved successfully!</Text>
+              <Text style={[M.statusSub, { color: colors.mutedForeground }]}>
+                Your portfolio data has been updated. You can now rebuild your site or review the changes first.
+              </Text>
+
+              <BexoButton
+                label="Rebuild Portfolio Now"
+                onPress={handleRebuildAfterSave}
+                icon={<Feather name="refresh-cw" size={14} color="#fff" />}
+              />
+
+              <TouchableOpacity
+                style={[M.doneBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={handleClose}
+              >
+                <Text style={[M.doneBtnText, { color: colors.mutedForeground }]}>Review changes first</Text>
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* REBUILDING */}
+          {step === "rebuilding" && (
+            <Animated.View entering={FadeIn.duration(300)} style={M.centeredContent}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[M.statusLabel, { color: colors.foreground }]}>Rebuilding portfolio…</Text>
+              <Text style={[M.statusSub, { color: colors.mutedForeground }]}>
+                Your portfolio site will be live in about 90 seconds.
+              </Text>
+              <TouchableOpacity
+                style={[M.doneBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
+                onPress={handleClose}
+              >
+                <Text style={[M.doneBtnText, { color: colors.primary }]}>Close (rebuilding in background)</Text>
+              </TouchableOpacity>
             </Animated.View>
           )}
 
@@ -369,7 +368,7 @@ const M = StyleSheet.create({
   optionSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
   centeredContent: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, paddingVertical: 40 },
   statusLabel: { fontSize: 18, fontWeight: "700", textAlign: "center" },
-  statusSub: { fontSize: 13, textAlign: "center", lineHeight: 20 },
+  statusSub: { fontSize: 13, textAlign: "center", lineHeight: 20, maxWidth: 280 },
   progressBar: { width: "100%", height: 6, borderRadius: 3, overflow: "hidden" },
   progressFill: { height: 6, borderRadius: 3 },
   progressText: { fontSize: 12 },
@@ -379,7 +378,8 @@ const M = StyleSheet.create({
   mergeCard: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: 16, borderWidth: 1 },
   mergeLabel: { fontSize: 15, fontWeight: "700" },
   mergeSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
-  doneBtn: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1, marginTop: 8 },
+  successIcon: { width: 72, height: 72, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  doneBtn: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1, marginTop: 8, width: "100%", alignItems: "center" },
   doneBtnText: { fontSize: 13, fontWeight: "600" },
   errorIcon: { width: 72, height: 72, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   errorMsg: { fontSize: 13, textAlign: "center", lineHeight: 20, maxWidth: 260 },

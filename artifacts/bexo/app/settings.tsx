@@ -4,9 +4,11 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
+  ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
   StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
+import * as Linking from "expo-linking";
+import * as WebBrowser from "expo-web-browser";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -43,10 +45,12 @@ export default function SettingsScreen() {
   const [linkLoading, setLinkLoading]       = useState(false);
   const [linkError, setLinkError]           = useState("");
 
+  const isPlaceholder = profile?.email?.endsWith("@bexo.local");
   const [showEmailModal, setShowEmailModal] = useState(false);
-  const [linkEmail, setLinkEmail]           = useState(profile?.email ?? "");
+  const [linkEmail, setLinkEmail]           = useState(isPlaceholder ? "" : (profile?.email ?? ""));
   const [emailLoading, setEmailLoading]     = useState(false);
   const [emailError, setEmailError]         = useState("");
+  const [googleLoading, setGoogleLoading]   = useState(false);
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
 
@@ -119,6 +123,45 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleLinkGoogle = async () => {
+    setGoogleLoading(true);
+    setEmailError("");
+    try {
+      if (Platform.OS !== "web") {
+        const redirectUrl = Linking.createURL("auth/callback");
+        const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+        });
+        if (oauthErr) throw oauthErr;
+        if (!data?.url) throw new Error("No OAuth URL returned");
+
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        if (result.type === "success" && result.url) {
+          const parsed = Linking.parse(result.url);
+          const code = parsed.queryParams?.code as string | undefined;
+          if (code) {
+            const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
+            if (exchErr) throw exchErr;
+          }
+        }
+      } else {
+        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo: window.location.origin + "/",
+          },
+        });
+        if (oauthErr) throw oauthErr;
+      }
+      setShowEmailModal(false);
+    } catch (e: any) {
+      setEmailError(e.message ?? "Google linking failed");
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   const handleLogout = () => {
     Alert.alert("Logout", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
@@ -134,7 +177,7 @@ export default function SettingsScreen() {
 
   const emailStatus = profile?.email_verified
     ? { icon: "check-circle" as const, color: "#6AFAD0", label: profile.email ?? "Verified" }
-    : profile?.email
+    : !isPlaceholder && profile?.email
     ? { icon: "clock" as const, color: "#FAD06A", label: "Check your inbox" }
     : { icon: "plus-circle" as const, color: colors.mutedForeground, label: "Not linked" };
 
@@ -248,7 +291,7 @@ export default function SettingsScreen() {
 
         <Animated.View entering={FadeInDown.delay(180).springify()} style={{ gap: 8 }}>
           {[
-            { label: "Edit Profile",   icon: "edit-3", route: "/(main)/edit-profile" },
+            { label: "Edit Profile",   icon: "edit-3", route: "/edit-profile" },
             { label: "View Portfolio", icon: "globe",  route: "/(main)/portfolio"    },
           ].map((item) => (
             <TouchableOpacity
@@ -385,10 +428,39 @@ export default function SettingsScreen() {
                 label={emailLoading ? "Saving…" : "Save Email & Send Verification"}
                 onPress={handleSaveEmail}
                 loading={emailLoading}
-                disabled={!linkEmail.trim()}
+                disabled={!linkEmail.trim() || googleLoading}
               />
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginVertical: 8 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                <Text style={{ fontSize: 12, color: colors.mutedForeground }}>OR</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+              </View>
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: "row", alignItems: "center", justifyContent: "center",
+                  gap: 10, height: 52, borderRadius: 14, borderWidth: 1,
+                  backgroundColor: colors.surface, borderColor: colors.border,
+                  opacity: googleLoading ? 0.6 : 1
+                }}
+                onPress={handleLinkGoogle}
+                disabled={googleLoading || emailLoading}
+              >
+                {googleLoading ? (
+                  <ActivityIndicator size="small" color={colors.primary} />
+                ) : (
+                  <>
+                    <Feather name="mail" size={18} color={colors.primary} />
+                    <Text style={{ fontSize: 15, fontWeight: "600", color: colors.foreground }}>
+                      Link with Google
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
               <Text style={[S.helperText, { color: colors.mutedForeground, textAlign: "center" }]}>
-                After clicking the verification link, Google login will work for this account.
+                Google login is the fastest way to verify your identity.
               </Text>
             </ScrollView>
           </KeyboardAvoidingView>

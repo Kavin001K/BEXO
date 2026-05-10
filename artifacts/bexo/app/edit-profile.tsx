@@ -237,7 +237,7 @@ export default function EditProfileScreen() {
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false, // We'll use our own "proper" cropper
       quality: 0.9,
     });
@@ -282,19 +282,93 @@ export default function EditProfileScreen() {
       const { resumeStoragePath, parsed } = await uploadAndParseResume(
         resumeFile.uri, resumeFile.name, user.id
       );
-      await updateProfile({ resume_url: resumeStoragePath });
-      if (parsed.full_name)  setProfileForm((f) => ({ ...f, full_name: parsed.full_name! }));
-      if (parsed.headline)   setProfileForm((f) => ({ ...f, headline: parsed.headline! }));
-      if (parsed.bio)        setProfileForm((f) => ({ ...f, bio: parsed.bio! }));
-      if (parsed.location)   setProfileForm((f) => ({ ...f, location: parsed.location ?? f.location }));
-      if (parsed.github_url) setProfileForm((f) => ({ ...f, github_url: parsed.github_url ?? f.github_url }));
+
+      // Update profile form with parsed data (local state preview)
+      if (parsed.full_name)    setProfileForm((f) => ({ ...f, full_name: parsed.full_name! }));
+      if (parsed.headline)     setProfileForm((f) => ({ ...f, headline: parsed.headline! }));
+      if (parsed.bio)          setProfileForm((f) => ({ ...f, bio: parsed.bio! }));
+      if (parsed.location)     setProfileForm((f) => ({ ...f, location: parsed.location ?? f.location }));
+      if (parsed.github_url)   setProfileForm((f) => ({ ...f, github_url: parsed.github_url ?? f.github_url }));
       if (parsed.linkedin_url) setProfileForm((f) => ({ ...f, linkedin_url: parsed.linkedin_url ?? f.linkedin_url }));
-      if (parsed.education?.length)   setEducation(parsed.education);
-      if (parsed.experiences?.length) setExperiences(parsed.experiences);
-      if (parsed.projects?.length)    setProjects(parsed.projects);
-      if (parsed.skills?.length)      setSkills(parsed.skills);
-      setResumeParsed(true);
-      Alert.alert("Done!", "Resume parsed. Review the auto-filled data and save.");
+
+      const hasData = (parsed.education?.length ?? 0) > 0 ||
+                      (parsed.experiences?.length ?? 0) > 0 ||
+                      (parsed.projects?.length ?? 0) > 0 ||
+                      (parsed.skills?.length ?? 0) > 0;
+
+      if (!hasData) {
+        // No structured data — just save profile text fields
+        await updateProfile({ resume_url: resumeStoragePath });
+        setResumeParsed(true);
+        Alert.alert(
+          "Partial Parse",
+          "AI couldn't extract structured data (education, experience, etc.) from this resume. Profile text fields were updated. You can add structured data manually.",
+        );
+        return;
+      }
+
+      // Ask user: Replace or Merge?
+      Alert.alert(
+        "Resume Parsed!",
+        `Found: ${parsed.education?.length ?? 0} education, ${parsed.experiences?.length ?? 0} experience, ${parsed.projects?.length ?? 0} projects, ${parsed.skills?.length ?? 0} skills.\n\nHow would you like to update your data?`,
+        [
+          {
+            text: "Replace All",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await useProfileStore.getState().replaceAllDataFromResume(parsed, resumeStoragePath);
+                await useProfileStore.getState().refreshFromDB();
+                setResumeParsed(true);
+                // Sync form with refreshed profile
+                const fresh = useProfileStore.getState().profile;
+                if (fresh) {
+                  setProfileForm({
+                    full_name:    fresh.full_name    ?? "",
+                    headline:     fresh.headline     ?? "",
+                    bio:          fresh.bio          ?? "",
+                    location:     fresh.location     ?? "",
+                    website:      fresh.website      ?? "",
+                    linkedin_url: fresh.linkedin_url ?? "",
+                    github_url:   fresh.github_url   ?? "",
+                    email:        fresh.email        ?? "",
+                  });
+                }
+                Alert.alert("Done!", "All data replaced with resume content. Review across tabs and save profile when ready.");
+              } catch (err: any) {
+                Alert.alert("Error", err.message ?? "Failed to replace data");
+              }
+            },
+          },
+          {
+            text: "Add to Existing",
+            onPress: async () => {
+              try {
+                await useProfileStore.getState().mergeDataFromResume(parsed, resumeStoragePath);
+                await useProfileStore.getState().refreshFromDB();
+                setResumeParsed(true);
+                const fresh = useProfileStore.getState().profile;
+                if (fresh) {
+                  setProfileForm({
+                    full_name:    fresh.full_name    ?? "",
+                    headline:     fresh.headline     ?? "",
+                    bio:          fresh.bio          ?? "",
+                    location:     fresh.location     ?? "",
+                    website:      fresh.website      ?? "",
+                    linkedin_url: fresh.linkedin_url ?? "",
+                    github_url:   fresh.github_url   ?? "",
+                    email:        fresh.email        ?? "",
+                  });
+                }
+                Alert.alert("Done!", "New items from your resume have been added. Duplicates were automatically removed.");
+              } catch (err: any) {
+                Alert.alert("Error", err.message ?? "Failed to merge data");
+              }
+            },
+          },
+          { text: "Cancel", style: "cancel" },
+        ]
+      );
     } catch (e: any) {
       Alert.alert("Error", e.message ?? "Failed to parse resume");
     } finally {
