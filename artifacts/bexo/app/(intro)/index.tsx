@@ -37,6 +37,9 @@ const SCREENS = [
   {
     image: require("../../assets/images/Screen_3.png"),
   },
+  {
+    image: require("../../assets/images/Screen_4.png"),
+  },
 ];
 
 function AnimatedDot({ active }: { active: boolean }) {
@@ -69,10 +72,21 @@ export default function IntroScreen() {
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / W);
-    if (idx >= 0 && idx < SCREENS.length) {
+    if (idx >= 0 && idx < SCREENS.length && idx !== activeIdx) {
       setActiveIdx(idx);
     }
   };
+
+  // Auto-scroll every 20 seconds
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      const next = (activeIdx + 1) % SCREENS.length;
+      scrollRef.current?.scrollTo({ x: next * W, animated: true });
+      setActiveIdx(next);
+    }, 20000);
+
+    return () => clearInterval(timer);
+  }, [activeIdx]);
 
   const goNext = () => {
     if (isLast) {
