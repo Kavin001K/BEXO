@@ -327,7 +327,10 @@ export default function DashboardScreen() {
               {education.length > 0 && (
                 <TouchableOpacity
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.navigate({ pathname: "/edit-profile", params: { tab: "education" } })}
+                  onPress={() => {
+                    usePortfolioStore.getState().setActivePortfolioTab("education");
+                    router.navigate("/(main)/portfolio");
+                  }}
                   hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
                   <View style={[S.chipIcon, { backgroundColor: colors.primary + "15" }]}>
@@ -339,7 +342,10 @@ export default function DashboardScreen() {
               {experiences.length > 0 && (
                 <TouchableOpacity
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.navigate({ pathname: "/edit-profile", params: { tab: "experience" } })}
+                  onPress={() => {
+                    usePortfolioStore.getState().setActivePortfolioTab("experience");
+                    router.navigate("/(main)/portfolio");
+                  }}
                   hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
                   <View style={[S.chipIcon, { backgroundColor: "#FA6A6A15" }]}>
@@ -351,7 +357,10 @@ export default function DashboardScreen() {
               {projects.length > 0 && (
                 <TouchableOpacity
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
-                  onPress={() => router.navigate({ pathname: "/edit-profile", params: { tab: "projects" } })}
+                  onPress={() => {
+                    usePortfolioStore.getState().setActivePortfolioTab("projects");
+                    router.navigate("/(main)/portfolio");
+                  }}
                   hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
                   <View style={[S.chipIcon, { backgroundColor: "#6AFAD015" }]}>

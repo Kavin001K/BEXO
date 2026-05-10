@@ -260,10 +260,15 @@ export default function PortfolioScreen() {
                   </TouchableOpacity>
                 </View>
                 {allExperience.slice(0, 2).map((exp, i) => (
-                  <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <TouchableOpacity 
+                    key={i} 
+                    onPress={() => router.push({ pathname: "/details", params: { type: "experience", id: exp.id } })}
+                    activeOpacity={0.8}
+                    style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
                     <Text style={[styles.itemTitle, { color: colors.foreground }]}>{exp.role}</Text>
                     <Text style={[styles.itemSub, { color: colors.primary }]}>{exp.company}</Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -281,10 +286,15 @@ export default function PortfolioScreen() {
                   </TouchableOpacity>
                 </View>
                 {allProjects.slice(0, 2).map((proj, i) => (
-                  <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <TouchableOpacity 
+                    key={i} 
+                    onPress={() => router.push({ pathname: "/details", params: { type: "project", id: proj.id } })}
+                    activeOpacity={0.8}
+                    style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
                     <Text style={[styles.itemTitle, { color: colors.foreground }]}>{proj.title}</Text>
                     <Text style={[styles.itemDesc, { color: colors.mutedForeground }]} numberOfLines={1}>{proj.description}</Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -297,12 +307,17 @@ export default function PortfolioScreen() {
                   <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Achievements</Text>
                 </View>
                 {allAchievements.slice(0, 3).map((update, i) => (
-                  <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <TouchableOpacity 
+                    key={i} 
+                    onPress={() => router.push({ pathname: "/details", params: { type: "update", id: update.id } })}
+                    activeOpacity={0.8}
+                    style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  >
                     <View style={styles.achievementRow}>
                       <View style={styles.awardDot} />
                       <Text style={[styles.itemTitle, { color: colors.foreground, fontSize: 14 }]}>{update.title}</Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             )}
@@ -319,10 +334,14 @@ export default function PortfolioScreen() {
                     <Text style={[styles.viewAll, { color: colors.primary }]}>View all</Text>
                   </TouchableOpacity>
                 </View>
-                <View style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <TouchableOpacity 
+                  onPress={() => router.push({ pathname: "/details", params: { type: "education", id: allEducation[0].id } })}
+                  activeOpacity={0.8}
+                  style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{allEducation[0].institution}</Text>
                   <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{allEducation[0].degree}</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -342,7 +361,12 @@ export default function PortfolioScreen() {
               />
             ) : (
               allExperience.map((exp, i) => (
-                <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <TouchableOpacity 
+                  key={i} 
+                  onPress={() => router.push({ pathname: "/details", params: { type: "experience", id: exp.id } })}
+                  activeOpacity={0.8}
+                  style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{exp.role}</Text>
                   <Text style={[styles.itemSub, { color: colors.primary }]}>{exp.company}</Text>
                   <View style={styles.dateRow}>
@@ -354,7 +378,7 @@ export default function PortfolioScreen() {
                   {exp.description ? (
                     <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>{exp.description}</Text>
                   ) : null}
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -370,7 +394,12 @@ export default function PortfolioScreen() {
               />
             ) : (
               allEducation.map((edu, i) => (
-                <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <TouchableOpacity 
+                  key={i} 
+                  onPress={() => router.push({ pathname: "/details", params: { type: "education", id: edu.id } })}
+                  activeOpacity={0.8}
+                  style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{edu.institution}</Text>
                   <Text style={[styles.itemSub, { color: colors.mutedForeground }]}>{edu.degree} {edu.field ? `in ${edu.field}` : ""}</Text>
                   <View style={styles.dateRow}>
@@ -379,7 +408,7 @@ export default function PortfolioScreen() {
                       {edu.start_year}
                     </Text>
                   </View>
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>
@@ -395,7 +424,12 @@ export default function PortfolioScreen() {
               />
             ) : (
               allProjects.map((proj, i) => (
-                <View key={i} style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                <TouchableOpacity 
+                  key={i} 
+                  onPress={() => router.push({ pathname: "/details", params: { type: "project", id: proj.id } })}
+                  activeOpacity={0.8}
+                  style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                >
                   <Text style={[styles.itemTitle, { color: colors.foreground }]}>{proj.title}</Text>
                   {proj.description ? (
                     <Text style={[styles.itemDesc, { color: colors.mutedForeground }]}>{proj.description}</Text>
@@ -405,7 +439,7 @@ export default function PortfolioScreen() {
                       {proj.tech_stack.map((t) => <SkillTag key={t} label={t} size="sm" />)}
                     </View>
                   )}
-                </View>
+                </TouchableOpacity>
               ))
             )}
           </View>

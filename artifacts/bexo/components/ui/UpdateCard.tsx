@@ -1,6 +1,7 @@
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
@@ -47,7 +48,11 @@ export const UpdateCard = React.memo(function UpdateCard({ update }: { update: U
   const attachmentCount = update.attachments?.length ?? 0;
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <TouchableOpacity 
+      onPress={() => router.push({ pathname: "/details", params: { type: "update", id: update.id } })}
+      activeOpacity={0.9}
+      style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
       {/* Left accent bar */}
       <View style={[styles.accentBar, { backgroundColor: meta.color }]} />
 
@@ -90,7 +95,7 @@ export const UpdateCard = React.memo(function UpdateCard({ update }: { update: U
           )}
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 });
 

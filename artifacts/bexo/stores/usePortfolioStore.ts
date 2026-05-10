@@ -43,6 +43,10 @@ interface PortfolioState {
   fetchBuildStatus: (profileId: string) => Promise<void>;
   fetchUpdates: (profileId: string) => Promise<void>;
   addUpdate: (update: Omit<Update, "id" | "created_at" | "attachments">, attachments?: Omit<Attachment, "id" | "update_id">[]) => Promise<void>;
+  updateUpdate: (id: string, updates: Partial<Omit<Update, "id" | "created_at" | "attachments">>) => Promise<void>;
+  deleteUpdate: (id: string) => Promise<void>;
+  addAttachment: (updateId: string, attachment: Omit<Attachment, "id" | "update_id">) => Promise<void>;
+  deleteAttachment: (attachmentId: string) => Promise<void>;
   triggerBuild: (profileId: string) => Promise<void>;
   subscribeToBuilds: (profileId: string) => () => void;
 }
@@ -116,6 +120,62 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
 
     // 3. Refresh updates
     await get().fetchUpdates(update.profile_id);
+  },
+
+  updateUpdate: async (id, updates) => {
+    const { error } = await supabase
+      .from("updates")
+      .update(updates)
+      .eq("id", id);
+    if (error) throw error;
+    
+    // Optimistic update
+    set((s) => ({
+      updates: s.updates.map((u) => (u.id === id ? { ...u, ...updates } : u)),
+    }));
+  },
+
+  deleteUpdate: async (id) => {
+    const { error } = await supabase
+      .from("updates")
+      .delete()
+      .eq("id", id);
+    if (error) throw error;
+    
+    set((s) => ({
+      updates: s.updates.filter((u) => u.id !== id),
+    }));
+  },
+
+  addAttachment: async (updateId, attachment) => {
+    const { data, error } = await supabase
+      .from("update_attachments")
+      .insert({ ...attachment, update_id: updateId })
+      .select()
+      .single();
+    if (error) throw error;
+    if (data) {
+      set((s) => ({
+        updates: s.updates.map((u) => 
+          u.id === updateId ? { ...u, attachments: [...(u.attachments || []), data] } : u
+        ),
+      }));
+    }
+  },
+
+  deleteAttachment: async (attachmentId) => {
+    const { error } = await supabase
+      .from("update_attachments")
+      .delete()
+      .eq("id", attachmentId);
+    if (error) throw error;
+    
+    set((s) => ({
+      updates: s.updates.map((u) => ({
+        ...u,
+        attachments: u.attachments?.filter((a) => a.id !== attachmentId),
+      })),
+    }));
   },
 
   triggerBuild: async (profileId) => {
