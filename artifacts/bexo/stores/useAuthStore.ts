@@ -34,6 +34,26 @@ const RESET_STATE = {
   otpSentAt: null,
 };
 
+async function handleGoogleAccountMergeCheck(
+  googleUserId: string,
+  googleEmail: string
+): Promise<void> {
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("user_id, id")
+    .eq("email", googleEmail)
+    .eq("email_verified", true)
+    .neq("user_id", googleUserId)
+    .single();
+
+  if (existingProfile) {
+    console.log(
+      "[BEXO Auth] Existing phone account found for this Google email.",
+      "Manual merge available in Settings → Linked Accounts."
+    );
+  }
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   user: null,
@@ -79,13 +99,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     try {
       const { data } = await supabase.auth.getSession();
-      set({
-        session: data.session,
-        user: data.session?.user ?? null,
-        isLoading: false,
-      });
-      supabase.auth.onAuthStateChange((_event, session) => {
+      set({ session: data.session, user: data.session?.user ?? null, isLoading: false });
+
+      supabase.auth.onAuthStateChange(async (event, session) => {
         set({ session, user: session?.user ?? null });
+
+        if (event === "SIGNED_IN" && session?.user) {
+          const user = session.user;
+          const isGoogleUser = user.app_metadata?.provider === "google";
+          if (isGoogleUser) {
+            await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
+          }
+        }
       });
     } catch {
       set({ isLoading: false });

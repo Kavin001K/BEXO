@@ -53,15 +53,17 @@ export interface Profile {
   resume_url?: string | null;
   email?: string | null;
   phone?: string | null;
+  phone_verified?: boolean;
+  email_verified?: boolean;
   is_published: boolean;
   portfolio_theme: string;
   rebuild_preferences?: string | null;
 }
 
 export interface CompletionResult {
-  score: number;          // 0-100
+  score: number;
   missingFields: MissingField[];
-  isPassing: boolean;     // score >= 80
+  isPassing: boolean;
 }
 
 export interface MissingField {
@@ -132,96 +134,104 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   setProjects: (projects) => set({ projects }),
   setSkills: (skills) => set({ skills }),
 
-  addEducation: (edu) =>
-    set((s) => ({ education: [...s.education, edu] })),
-  addExperience: (exp) =>
-    set((s) => ({ experiences: [...s.experiences, exp] })),
-  addProject: (proj) =>
-    set((s) => ({ projects: [...s.projects, proj] })),
-  addSkill: (skill) =>
-    set((s) => ({ skills: [...s.skills, skill] })),
+  addEducation: (edu) => set((s) => ({ education: [...s.education, edu] })),
+  addExperience: (exp) => set((s) => ({ experiences: [...s.experiences, exp] })),
+  addProject: (proj) => set((s) => ({ projects: [...s.projects, proj] })),
+  addSkill: (skill) => set((s) => ({ skills: [...s.skills, skill] })),
 
-  // ---- Completion score ----
   getCompletionResult: (): CompletionResult => {
     const { profile, education, experiences, projects, skills } = get();
     const missing: MissingField[] = [];
     let score = 0;
 
-    if (profile?.full_name?.trim()) {
-      score += 15;
-    } else {
-      missing.push({ key: "full_name", label: "Full Name", type: "text", placeholder: "Your full name" });
-    }
+    if (profile?.full_name?.trim()) { score += 15; }
+    else { missing.push({ key: "full_name", label: "Full Name", type: "text", placeholder: "Your full name" }); }
 
-    if (profile?.headline?.trim()) {
-      score += 15;
-    } else {
-      missing.push({ key: "headline", label: "Headline", type: "text", placeholder: "A one-liner that defines you" });
-    }
+    if (profile?.headline?.trim()) { score += 15; }
+    else { missing.push({ key: "headline", label: "Headline", type: "text", placeholder: "A one-liner that defines you" }); }
 
-    if (profile?.bio?.trim()) {
-      score += 10;
-    } else {
-      missing.push({ key: "bio", label: "Bio", type: "multiline", placeholder: "Tell your story in 2-3 sentences..." });
-    }
+    if (profile?.bio?.trim()) { score += 10; }
+    else { missing.push({ key: "bio", label: "Bio", type: "multiline", placeholder: "Tell your story in 2-3 sentences..." }); }
 
-    if (profile?.avatar_url?.trim()) {
-      score += 10;
-    } else {
-      missing.push({ key: "avatar_url", label: "Profile Photo", type: "image" });
-    }
+    if (profile?.avatar_url?.trim()) { score += 10; }
+    else { missing.push({ key: "avatar_url", label: "Profile Photo", type: "image" }); }
 
-    if (profile?.location?.trim()) {
-      score += 5;
-    } else {
-      missing.push({ key: "location", label: "Location", type: "text", placeholder: "City, Country" });
-    }
+    if (profile?.location?.trim()) { score += 5; }
+    else { missing.push({ key: "location", label: "Location", type: "text", placeholder: "City, Country" }); }
 
-    if (education.length > 0) {
-      score += 15;
-    } else {
-      missing.push({ key: "education", label: "Education", type: "section", placeholder: "Add at least one education entry" });
-    }
+    if (education.length > 0) { score += 15; }
+    else { missing.push({ key: "education", label: "Education", type: "section", placeholder: "Add at least one education entry" }); }
 
-    if (experiences.length > 0) {
-      score += 15;
-    } else {
-      missing.push({ key: "experience", label: "Experience", type: "section", placeholder: "Add at least one experience entry" });
-    }
+    if (experiences.length > 0) { score += 15; }
+    else { missing.push({ key: "experience", label: "Experience", type: "section", placeholder: "Add at least one experience entry" }); }
 
-    if (projects.length > 0) {
-      score += 10;
-    } else {
-      missing.push({ key: "projects", label: "Projects", type: "section", placeholder: "Add at least one project" });
-    }
+    if (projects.length > 0) { score += 10; }
+    else { missing.push({ key: "projects", label: "Projects", type: "section", placeholder: "Add at least one project" }); }
 
-    if (skills.length >= 3) {
-      score += 5;
-    } else {
-      missing.push({ key: "skills", label: "Skills", type: "section", placeholder: "Add at least 3 skills" });
-    }
+    if (skills.length >= 3) { score += 5; }
+    else { missing.push({ key: "skills", label: "Skills", type: "section", placeholder: "Add at least 3 skills" }); }
 
     return { score, missingFields: missing, isPassing: score >= 80 };
   },
 
-  // ---- Supabase CRUD ----
+  fetchProfile: async (userId) => {
+    set({ isLoading: true });
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        throw error;
+      }
+
+      if (data) {
+        set({ profile: data, onboardingStep: "done" });
+        const [edu, exp, proj, skillsRes] = await Promise.all([
+          supabase.from("education").select("*").eq("profile_id", data.id).order("start_year", { ascending: false }),
+          supabase.from("experiences").select("*").eq("profile_id", data.id).order("start_date", { ascending: false }),
+          supabase.from("projects").select("*").eq("profile_id", data.id),
+          supabase.from("skills").select("*").eq("profile_id", data.id),
+        ]);
+        set({
+          education:   edu.data   ?? [],
+          experiences: exp.data   ?? [],
+          projects:    proj.data  ?? [],
+          skills:      skillsRes.data ?? [],
+          isLoading:   false,
+        });
+      } else {
+        set({ profile: null, isLoading: false });
+      }
+    } catch (e) {
+      console.error("[ProfileStore] fetchProfile error:", e);
+      set({ isLoading: false });
+    }
+  },
+
+  updateProfile: async (updates) => {
+    const profile = get().profile;
+    if (!profile) return;
+    const { data, error } = await supabase
+      .from("profiles")
+      .update(updates)
+      .eq("id", profile.id)
+      .select()
+      .single();
+    if (error) throw error;
+    if (data) set({ profile: data });
+  },
+
   saveEducation: async (edu) => {
     const profile = get().profile;
     if (!profile) return;
     if (edu.id) {
-      const { data } = await supabase
-        .from("education")
-        .update(edu)
-        .eq("id", edu.id)
-        .select()
-        .single();
+      const { data } = await supabase.from("education").update(edu).eq("id", edu.id).select().single();
       if (data) set((s) => ({ education: s.education.map((e) => (e.id === edu.id ? data : e)) }));
     } else {
-      const { data } = await supabase
-        .from("education")
-        .insert({ ...edu, profile_id: profile.id })
-        .select()
-        .single();
+      const { data } = await supabase.from("education").insert({ ...edu, profile_id: profile.id }).select().single();
       if (data) set((s) => ({ education: [...s.education, data] }));
     }
   },
@@ -234,19 +244,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const profile = get().profile;
     if (!profile) return;
     if (exp.id) {
-      const { data } = await supabase
-        .from("experiences")
-        .update(exp)
-        .eq("id", exp.id)
-        .select()
-        .single();
+      const { data } = await supabase.from("experiences").update(exp).eq("id", exp.id).select().single();
       if (data) set((s) => ({ experiences: s.experiences.map((e) => (e.id === exp.id ? data : e)) }));
     } else {
-      const { data } = await supabase
-        .from("experiences")
-        .insert({ ...exp, profile_id: profile.id })
-        .select()
-        .single();
+      const { data } = await supabase.from("experiences").insert({ ...exp, profile_id: profile.id }).select().single();
       if (data) set((s) => ({ experiences: [...s.experiences, data] }));
     }
   },
@@ -259,19 +260,10 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const profile = get().profile;
     if (!profile) return;
     if (proj.id) {
-      const { data } = await supabase
-        .from("projects")
-        .update(proj)
-        .eq("id", proj.id)
-        .select()
-        .single();
+      const { data } = await supabase.from("projects").update(proj).eq("id", proj.id).select().single();
       if (data) set((s) => ({ projects: s.projects.map((p) => (p.id === proj.id ? data : p)) }));
     } else {
-      const { data } = await supabase
-        .from("projects")
-        .insert({ ...proj, profile_id: profile.id })
-        .select()
-        .single();
+      const { data } = await supabase.from("projects").insert({ ...proj, profile_id: profile.id }).select().single();
       if (data) set((s) => ({ projects: [...s.projects, data] }));
     }
   },
@@ -284,63 +276,15 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     const profile = get().profile;
     if (!profile) return;
     if (skill.id) {
-      const { data } = await supabase
-        .from("skills")
-        .update(skill)
-        .eq("id", skill.id)
-        .select()
-        .single();
+      const { data } = await supabase.from("skills").update(skill).eq("id", skill.id).select().single();
       if (data) set((s) => ({ skills: s.skills.map((sk) => (sk.id === skill.id ? data : sk)) }));
     } else {
-      const { data } = await supabase
-        .from("skills")
-        .insert({ ...skill, profile_id: profile.id })
-        .select()
-        .single();
+      const { data } = await supabase.from("skills").insert({ ...skill, profile_id: profile.id }).select().single();
       if (data) set((s) => ({ skills: [...s.skills, data] }));
     }
   },
   deleteSkill: async (id) => {
     await supabase.from("skills").delete().eq("id", id);
     set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }));
-  },
-
-  fetchProfile: async (userId) => {
-    set({ isLoading: true });
-    const { data } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .single();
-    if (data) {
-      set({ profile: data, onboardingStep: "done" });
-      const [edu, exp, proj, skills] = await Promise.all([
-        supabase.from("education").select("*").eq("profile_id", data.id),
-        supabase.from("experiences").select("*").eq("profile_id", data.id),
-        supabase.from("projects").select("*").eq("profile_id", data.id),
-        supabase.from("skills").select("*").eq("profile_id", data.id),
-      ]);
-      set({
-        education: edu.data ?? [],
-        experiences: exp.data ?? [],
-        projects: proj.data ?? [],
-        skills: skills.data ?? [],
-      });
-    }
-    set({ isLoading: false });
-  },
-
-  updateProfile: async (updates) => {
-    const profile = get().profile;
-    if (!profile) return;
-    const { data, error } = await supabase
-      .from("profiles")
-      .update(updates)
-      .eq("id", profile.id)
-      .select()
-      .single();
-    
-    if (error) throw error;
-    if (data) set({ profile: data });
   },
 }));

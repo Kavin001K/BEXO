@@ -5,39 +5,35 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  ActivityIndicator,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+  ActivityIndicator, Platform, ScrollView,
+  StyleSheet, Text, TouchableOpacity, View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { uploadAndParseResume } from "@/services/resumeParser";
+import { supabase } from "@/lib/supabase";
+import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
+
+type Stage = "idle" | "uploading" | "parsing" | "done" | "error";
 
 export default function ResumeScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const user = useAuthStore((s) => s.user);
-  const {
-    profile,
-    setParsedResumeData,
-    setOnboardingStep,
-    setEducation,
-    setExperiences,
-    setProjects,
-    setSkills,
-  } = useProfileStore();
+  const user   = useAuthStore((s) => s.user);
+  const { profile, setParsedResumeData, setOnboardingStep, setEducation, setExperiences, setProjects, setSkills } = useProfileStore();
 
-  const [selectedFile, setSelectedFile] = useState<{ name: string; uri: string } | null>(null);
-  const [parsing, setParsing] = useState(false);
-  const [error, setError] = useState("");
+  const [selectedFile, setSelectedFile]     = useState<{ name: string; uri: string } | null>(null);
+  const [uploadedPath, setUploadedPath]     = useState<string | null>(null);
+  const [parsedData,   setParsedData]       = useState<ParsedResume | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [parseProgress,  setParseProgress]  = useState(0);
+  const [stage,        setStage]            = useState<Stage>("idle");
+  const [parsing,      setParsing]          = useState(false);
+  const [error,        setError]            = useState("");
 
   const pickDocument = async () => {
     try {
@@ -45,46 +41,90 @@ export default function ResumeScreen() {
         type: "application/pdf",
         copyToCacheDirectory: true,
       });
-      if (!result.canceled && result.assets[0]) {
-        setSelectedFile({ name: result.assets[0].name, uri: result.assets[0].uri });
-        setError("");
+      if (result.canceled || !result.assets[0]) return;
+      const file = result.assets[0];
+      setSelectedFile({ name: file.name, uri: file.uri });
+      setError("");
+      setStage("uploading");
+
+      if (!user || !profile) {
+        setError("Profile not ready. Try again.");
+        setStage("error");
+        return;
       }
-    } catch {
-      setError("Could not open file picker");
+      if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+      const { resumeStoragePath, parsed } = await uploadAndParseResume(
+        file.uri,
+        file.name,
+        user.id,
+        (s, pct) => {
+          if (s === "uploading") {
+            setUploadProgress(pct);
+          } else {
+            setStage("parsing");
+            setParseProgress(pct);
+          }
+        }
+      );
+
+      setUploadedPath(resumeStoragePath);
+      setParsedData(parsed);
+      setStage("done");
+
+      setParsedResumeData(parsed);
+      if (parsed.education?.length)   setEducation(parsed.education);
+      if (parsed.experiences?.length) setExperiences(parsed.experiences);
+      if (parsed.projects?.length)    setProjects(parsed.projects);
+      if (parsed.skills?.length)      setSkills(parsed.skills);
+
+    } catch (e: any) {
+      console.error("[ResumeScreen] Error:", e);
+      setError(e.message ?? "Failed to process resume");
+      setStage("error");
     }
   };
 
-  const handleParse = async () => {
-    if (!selectedFile || !user || !profile) return;
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  const handleConfirmParsed = async () => {
+    if (!profile || !parsedData || !uploadedPath) return;
     setParsing(true);
-    setError("");
     try {
-      const { resumeUrl, parsed } = await uploadAndParseResume(
-        selectedFile.uri,
-        selectedFile.name,
-        user.id
-      );
-      setParsedResumeData(parsed);
-      if (parsed.education) setEducation(parsed.education);
-      if (parsed.experiences) setExperiences(parsed.experiences);
-      if (parsed.projects) setProjects(parsed.projects);
-      if (parsed.skills) setSkills(parsed.skills);
-
-      // Update profile with parsed data
-      await useProfileStore.getState().updateProfile({
-        full_name: parsed.full_name ?? profile.full_name,
-        headline: parsed.headline ?? profile.headline,
-        bio: parsed.bio ?? profile.bio,
-        github_url: parsed.github_url ?? profile.github_url,
-        linkedin_url: parsed.linkedin_url ?? profile.linkedin_url,
-        resume_url: resumeUrl,
-      });
+      await Promise.all([
+        useProfileStore.getState().updateProfile({
+          full_name:    parsedData.full_name    ?? profile.full_name,
+          headline:     parsedData.headline     ?? profile.headline,
+          bio:          parsedData.bio          ?? profile.bio,
+          github_url:   parsedData.github_url   ?? profile.github_url,
+          linkedin_url: parsedData.linkedin_url ?? profile.linkedin_url,
+          location:     parsedData.location     ?? profile.location,
+          resume_url:   uploadedPath,
+        }),
+        ...(parsedData.education?.map((edu) =>
+          useProfileStore.getState().saveEducation(edu)
+        ) ?? []),
+        ...(parsedData.experiences?.map((exp) =>
+          useProfileStore.getState().saveExperience(exp)
+        ) ?? []),
+        ...(parsedData.projects?.map((proj) =>
+          useProfileStore.getState().saveProject(proj)
+        ) ?? []),
+        parsedData.skills?.length
+          ? supabase.from("skills").upsert(
+              parsedData.skills.map((s) => ({
+                profile_id: profile.id,
+                name:       s.name,
+                category:   s.category,
+                level:      s.level,
+              })),
+              { onConflict: "profile_id,name" }
+            )
+          : Promise.resolve(),
+      ]);
 
       setOnboardingStep("photo");
       router.push("/(onboarding)/photo");
     } catch (e: any) {
-      setError(e.message ?? "Failed to parse resume");
+      setError(e.message ?? "Failed to save data");
     } finally {
       setParsing(false);
     }
@@ -95,22 +135,26 @@ export default function ResumeScreen() {
     router.push("/(onboarding)/photo");
   };
 
+  const handleRetry = () => {
+    setStage("idle");
+    setSelectedFile(null);
+    setError("");
+    setUploadProgress(0);
+    setParseProgress(0);
+  };
+
+  const topPad    = insets.top + (Platform.OS === "web" ? 67 : 40);
+  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
         colors={["#7C6AFA18", "transparent"]}
         style={styles.glow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
+        start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
       />
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
-            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-          },
-        ]}
+        contentContainerStyle={[styles.scroll, { paddingTop: topPad, paddingBottom: bottomPad }]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.stepRow}>
@@ -120,87 +164,122 @@ export default function ResumeScreen() {
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
         </View>
 
-        <Text style={[styles.headline, { color: colors.foreground }]}>
-          Upload your resume
-        </Text>
+        <Text style={[styles.headline, { color: colors.foreground }]}>Upload your resume</Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
           AI will extract your experience, education, skills, and projects automatically.
         </Text>
 
-        {/* Drop zone */}
-        <TouchableOpacity
-          style={[
-            styles.dropZone,
-            {
-              backgroundColor: colors.surface,
-              borderColor: selectedFile ? colors.primary : colors.border,
-            },
-          ]}
-          onPress={pickDocument}
-          activeOpacity={0.8}
-        >
-          <LinearGradient
-            colors={selectedFile ? ["#7C6AFA18", "#7C6AFA08"] : ["transparent", "transparent"]}
-            style={StyleSheet.absoluteFill}
-          />
-          {selectedFile ? (
-            <>
-              <Feather name="file-text" size={36} color={colors.primary} />
-              <Text style={[styles.fileName, { color: colors.foreground }]}>
-                {selectedFile.name}
-              </Text>
-              <Text style={[styles.fileHint, { color: colors.mutedForeground }]}>
-                Tap to change
-              </Text>
-            </>
-          ) : (
-            <>
-              <View style={[styles.uploadIcon, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Feather name="upload-cloud" size={28} color={colors.mutedForeground} />
-              </View>
-              <Text style={[styles.dropLabel, { color: colors.foreground }]}>
-                Tap to upload PDF
-              </Text>
-              <Text style={[styles.dropHint, { color: colors.mutedForeground }]}>
-                Max 10MB · PDF only
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {/* AI features */}
-        <View style={styles.features}>
-          {[
-            { icon: "cpu", label: "AI extracts all info automatically" },
-            { icon: "shield", label: "Secure upload, private storage" },
-            { icon: "edit-3", label: "Review & edit before publishing" },
-          ].map((f) => (
-            <View key={f.icon} style={styles.featureRow}>
-              <View style={[styles.featureIcon, { backgroundColor: colors.primary + "22" }]}>
-                <Feather name={f.icon as any} size={14} color={colors.primary} />
-              </View>
-              <Text style={[styles.featureText, { color: colors.mutedForeground }]}>{f.label}</Text>
+        {/* Idle: drop zone */}
+        {stage === "idle" && (
+          <TouchableOpacity
+            style={[styles.dropZone, { backgroundColor: colors.surface, borderColor: colors.border }]}
+            onPress={pickDocument}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.uploadIcon, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <Feather name="upload-cloud" size={28} color={colors.mutedForeground} />
             </View>
-          ))}
-        </View>
+            <Text style={[styles.dropLabel, { color: colors.foreground }]}>Tap to upload PDF</Text>
+            <Text style={[styles.dropHint, { color: colors.mutedForeground }]}>Max 10MB · PDF only</Text>
+          </TouchableOpacity>
+        )}
 
-        {error ? (
-          <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
-        ) : null}
+        {/* Uploading state */}
+        {stage === "uploading" && (
+          <Animated.View entering={FadeInDown.springify()} style={[styles.progressCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.stageLabel, { color: colors.foreground }]}>Uploading…</Text>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View style={[styles.progressFill, { width: `${uploadProgress}%` as any, backgroundColor: colors.primary }]} />
+            </View>
+            <Text style={[styles.progressPct, { color: colors.mutedForeground }]}>{Math.round(uploadProgress)}%</Text>
+          </Animated.View>
+        )}
 
-        <BexoButton
-          label={parsing ? "Parsing with AI..." : "Parse Resume"}
-          onPress={handleParse}
-          loading={parsing}
-          disabled={!selectedFile || parsing}
-        />
+        {/* Parsing state */}
+        {stage === "parsing" && (
+          <Animated.View entering={FadeInDown.springify()} style={[styles.progressCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <ActivityIndicator size="large" color="#6AFAD0" />
+            <Text style={[styles.stageLabel, { color: colors.foreground }]}>AI is reading your resume…</Text>
+            <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
+              <View style={[styles.progressFill, { width: `${parseProgress}%` as any, backgroundColor: "#6AFAD0" }]} />
+            </View>
+          </Animated.View>
+        )}
 
-        <BexoButton
-          label="Skip for now"
-          onPress={handleSkip}
-          variant="ghost"
-          disabled={parsing}
-        />
+        {/* Done: summary + confirm */}
+        {stage === "done" && parsedData && (
+          <Animated.View entering={FadeInDown.springify()} style={{ gap: 14 }}>
+            <View style={[styles.summaryCard, { backgroundColor: colors.card, borderColor: "#6AFAD044" }]}>
+              <View style={[styles.summaryIcon, { backgroundColor: "#6AFAD022" }]}>
+                <Feather name="check-circle" size={22} color="#6AFAD0" />
+              </View>
+              <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Resume parsed!</Text>
+              <View style={styles.summaryChips}>
+                {parsedData.education?.length > 0 && (
+                  <View style={[styles.chip, { backgroundColor: colors.primary + "22" }]}>
+                    <Text style={[styles.chipText, { color: colors.primary }]}>{parsedData.education.length} Education</Text>
+                  </View>
+                )}
+                {parsedData.experiences?.length > 0 && (
+                  <View style={[styles.chip, { backgroundColor: "#FA6A6A22" }]}>
+                    <Text style={[styles.chipText, { color: "#FA6A6A" }]}>{parsedData.experiences.length} Jobs</Text>
+                  </View>
+                )}
+                {parsedData.projects?.length > 0 && (
+                  <View style={[styles.chip, { backgroundColor: "#6AFAD022" }]}>
+                    <Text style={[styles.chipText, { color: "#6AFAD0" }]}>{parsedData.projects.length} Projects</Text>
+                  </View>
+                )}
+                {parsedData.skills?.length > 0 && (
+                  <View style={[styles.chip, { backgroundColor: "#FAD06A22" }]}>
+                    <Text style={[styles.chipText, { color: "#FAD06A" }]}>{parsedData.skills.length} Skills</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            <BexoButton
+              label={parsing ? "Saving to profile…" : "Use this data →"}
+              onPress={handleConfirmParsed}
+              loading={parsing}
+            />
+            <TouchableOpacity style={styles.changeBtn} onPress={pickDocument}>
+              <Text style={[styles.changeBtnText, { color: colors.mutedForeground }]}>Upload a different file</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+
+        {/* Error state */}
+        {stage === "error" && (
+          <Animated.View entering={FadeInDown.springify()} style={[styles.errorCard, { backgroundColor: "#FA6A6A11", borderColor: "#FA6A6A44" }]}>
+            <Feather name="alert-circle" size={28} color="#FA6A6A" />
+            <Text style={[styles.errorText, { color: "#FA6A6A" }]}>{error}</Text>
+            <BexoButton label="Try again" onPress={handleRetry} />
+          </Animated.View>
+        )}
+
+        {/* AI features (idle only) */}
+        {stage === "idle" && (
+          <View style={styles.features}>
+            {[
+              { icon: "cpu",      label: "AI extracts all info automatically" },
+              { icon: "shield",   label: "Secure upload, private storage"     },
+              { icon: "edit-3",   label: "Review & edit before publishing"    },
+            ].map((f) => (
+              <View key={f.icon} style={styles.featureRow}>
+                <View style={[styles.featureIcon, { backgroundColor: colors.primary + "22" }]}>
+                  <Feather name={f.icon as any} size={14} color={colors.primary} />
+                </View>
+                <Text style={[styles.featureText, { color: colors.mutedForeground }]}>{f.label}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {stage === "idle" && (
+          <BexoButton label="Skip for now" onPress={handleSkip} variant="ghost" />
+        )}
       </ScrollView>
     </View>
   );
@@ -208,60 +287,39 @@ export default function ResumeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  glow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 280,
-  },
-  scroll: {
-    paddingHorizontal: 28,
-    gap: 18,
-  },
-  stepRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginBottom: 8,
-  },
-  dot: {
-    width: 20,
-    height: 4,
-    borderRadius: 2,
-  },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 280 },
+  scroll: { paddingHorizontal: 28, gap: 18 },
+  stepRow: { flexDirection: "row", gap: 6, marginBottom: 8 },
+  dot: { width: 20, height: 4, borderRadius: 2 },
   headline: { fontSize: 30, fontWeight: "800", letterSpacing: -0.4 },
   sub: { fontSize: 14, lineHeight: 21 },
   dropZone: {
-    height: 200,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    overflow: "hidden",
+    height: 200, borderRadius: 20, borderWidth: 1.5, borderStyle: "dashed",
+    alignItems: "center", justifyContent: "center", gap: 10,
   },
-  uploadIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  uploadIcon: { width: 60, height: 60, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   dropLabel: { fontSize: 16, fontWeight: "600" },
   dropHint: { fontSize: 13 },
-  fileName: { fontSize: 15, fontWeight: "600", textAlign: "center", paddingHorizontal: 20 },
-  fileHint: { fontSize: 12 },
+  progressCard: {
+    borderRadius: 20, borderWidth: 1, padding: 28,
+    alignItems: "center", gap: 14,
+  },
+  stageLabel: { fontSize: 16, fontWeight: "600" },
+  progressTrack: { width: "100%", height: 6, borderRadius: 3, overflow: "hidden" },
+  progressFill: { height: 6, borderRadius: 3 },
+  progressPct: { fontSize: 12 },
+  summaryCard: { borderRadius: 20, borderWidth: 1, padding: 20, alignItems: "center", gap: 12 },
+  summaryIcon: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  summaryTitle: { fontSize: 18, fontWeight: "800" },
+  summaryChips: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  chipText: { fontSize: 12, fontWeight: "700" },
+  changeBtn: { alignItems: "center", paddingVertical: 8 },
+  changeBtnText: { fontSize: 14, textDecorationLine: "underline" },
+  errorCard: { borderRadius: 20, borderWidth: 1, padding: 28, alignItems: "center", gap: 14 },
+  errorText: { fontSize: 14, textAlign: "center", lineHeight: 21 },
   features: { gap: 10 },
   featureRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  featureIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  featureIcon: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   featureText: { fontSize: 13 },
-  error: { fontSize: 13 },
 });

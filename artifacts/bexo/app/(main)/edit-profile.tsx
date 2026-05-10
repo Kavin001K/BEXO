@@ -279,10 +279,10 @@ export default function EditProfileScreen() {
     if (!resumeFile || !user?.id) return;
     setParsingResume(true);
     try {
-      const { resumeUrl, parsed } = await uploadAndParseResume(
+      const { resumeStoragePath, parsed } = await uploadAndParseResume(
         resumeFile.uri, resumeFile.name, user.id
       );
-      await updateProfile({ resume_url: resumeUrl });
+      await updateProfile({ resume_url: resumeStoragePath });
       if (parsed.full_name)  setProfileForm((f) => ({ ...f, full_name: parsed.full_name! }));
       if (parsed.headline)   setProfileForm((f) => ({ ...f, headline: parsed.headline! }));
       if (parsed.bio)        setProfileForm((f) => ({ ...f, bio: parsed.bio! }));

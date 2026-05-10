@@ -1,226 +1,157 @@
-import { readAsStringAsync, EncodingType } from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import { Platform } from "react-native";
-import { uploadResume } from "./upload";
+import { uploadResume, getResumeSignedUrl } from "@/services/upload";
 
 export interface ParsedResume {
-  full_name?: string;
-  headline?: string;
-  bio?: string;
-  email?: string;
-  phone?: string;
-  location?: string;
-  github_url?: string;
+  full_name?:    string;
+  headline?:     string;
+  bio?:          string;
+  email?:        string;
+  phone?:        string;
+  location?:     string;
+  github_url?:   string;
   linkedin_url?: string;
-  website?: string;
-  education: Array<{
-    institution: string;
-    degree: string;
-    field: string;
-    start_year: number;
-    end_year?: number | null;
-    gpa?: string | null;
-  }>;
-  experiences: Array<{
-    company: string;
-    role: string;
-    start_date: string;
-    end_date?: string | null;
-    description: string;
-    is_current: boolean;
-  }>;
-  projects: Array<{
-    title: string;
-    description: string;
-    tech_stack: string[];
-    live_url?: string | null;
-    github_url?: string | null;
-  }>;
-  skills: Array<{
-    name: string;
-    category: string;
-    level: "beginner" | "intermediate" | "advanced" | "expert";
-  }>;
+  website?:      string;
+  education:     Array<{ institution: string; degree: string; field: string; start_year: number; end_year?: number | null; gpa?: string | null }>;
+  experiences:   Array<{ company: string; role: string; start_date: string; end_date?: string | null; description: string; is_current: boolean }>;
+  projects:      Array<{ title: string; description: string; tech_stack: string[]; live_url?: string | null; github_url?: string | null }>;
+  skills:        Array<{ name: string; category: string; level: "beginner" | "intermediate" | "advanced" | "expert" }>;
 }
 
-const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_API_KEY ?? "";
-const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_GOOGLE_API_KEY ?? "";
+const GEMINI_MODEL    = "gemini-1.5-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
 
-const EXTRACTION_PROMPT = `You are an expert resume parser. Extract all information from this PDF resume and return ONLY a valid JSON object matching this exact schema. Do NOT include markdown, code fences, or any explanation — only raw JSON.
+const EXTRACTION_PROMPT = `You are an expert resume parser. Extract ALL information from this PDF resume.
+Return ONLY a raw JSON object — NO markdown, NO code fences, NO explanation.
 
 {
   "full_name": "string",
-  "headline": "concise professional headline (max 120 chars, e.g. 'CS Student · Full-Stack Developer · Open to opportunities')",
-  "bio": "2-3 sentence professional bio written in first person",
+  "headline": "concise professional headline ≤120 chars",
+  "bio": "2-3 sentence first-person bio",
   "email": "string or null",
   "phone": "string or null",
   "location": "City, Country or null",
-  "github_url": "full GitHub URL or null",
-  "linkedin_url": "full LinkedIn URL or null",
-  "website": "personal website URL or null",
-  "education": [
-    {
-      "institution": "University/School name",
-      "degree": "e.g. Bachelor of Science",
-      "field": "e.g. Computer Science",
-      "start_year": 2020,
-      "end_year": 2024,
-      "gpa": "3.8 or null"
-    }
-  ],
-  "experiences": [
-    {
-      "company": "Company name",
-      "role": "Job title",
-      "start_date": "Jan 2023",
-      "end_date": "Dec 2023 or null if current",
-      "description": "Key responsibilities and achievements",
-      "is_current": false
-    }
-  ],
-  "projects": [
-    {
-      "title": "Project name",
-      "description": "What it does and your role",
-      "tech_stack": ["React", "Node.js"],
-      "live_url": "https://... or null",
-      "github_url": "https://github.com/... or null"
-    }
-  ],
-  "skills": [
-    {
-      "name": "JavaScript",
-      "category": "Programming Languages",
-      "level": "advanced"
-    }
-  ]
+  "github_url": "full URL or null",
+  "linkedin_url": "full URL or null",
+  "website": "URL or null",
+  "education": [{"institution":"","degree":"","field":"","start_year":2020,"end_year":2024,"gpa":"or null"}],
+  "experiences": [{"company":"","role":"","start_date":"Mon YYYY","end_date":"or null","description":"","is_current":false}],
+  "projects": [{"title":"","description":"","tech_stack":[],"live_url":"or null","github_url":"or null"}],
+  "skills": [{"name":"","category":"Programming Languages|Frameworks|Tools|Cloud|Design|Soft Skills","level":"beginner|intermediate|advanced|expert"}]
 }
 
-Skill levels must be exactly one of: "beginner", "intermediate", "advanced", "expert".
-Extract as much detail as possible. If a field is missing from the resume, use null or an empty array.`;
+Rules:
+- maximum 5 education entries, 6 experiences, 6 projects, 25 skills
+- never invent data not present in the resume
+- github_url and linkedin_url: full URL (https://github.com/username)`;
 
-/**
- * Convert a file URI to a base64-encoded string.
- * Uses expo-file-system for native and fetch for web.
- */
-async function fileUriToBase64(uri: string): Promise<string> {
-  if (Platform.OS === "web") {
-    const response = await fetch(uri);
-    const arrayBuffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = "";
-    const CHUNK = 8192;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(binary);
-  }
-
-  // Native: Ensure URI is formatted correctly for FileSystem
-  let processedUri = uri;
-  if (uri.startsWith("/") && !uri.startsWith("file://")) {
-    processedUri = `file://${uri}`;
-  }
-
-  return await readAsStringAsync(processedUri, {
-    encoding: EncodingType.Base64,
-  });
-}
-
-/**
- * Call Gemini 3.1 Flash Lite to extract structured data from a PDF.
- */
-async function callGeminiParsePdf(pdfBase64: string): Promise<ParsedResume> {
+async function parseWithGemini(pdfBase64: string): Promise<ParsedResume> {
   if (!GEMINI_API_KEY) {
     throw new Error(
-      "Google AI API key is not configured. Add EXPO_PUBLIC_GOOGLE_API_KEY to your environment."
+      "EXPO_PUBLIC_GOOGLE_API_KEY is not set. Add your Gemini API key to .env"
     );
   }
 
-  const body = {
-    contents: [
-      {
-        parts: [
-          {
-            inlineData: {
-              mimeType: "application/pdf",
-              data: pdfBase64,
-            },
-          },
-          { text: EXTRACTION_PROMPT },
-        ],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.1,
-      maxOutputTokens: 4096,
-      responseMimeType: "application/json",
-    },
-  };
-
-  const res = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
+  const response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: EXTRACTION_PROMPT },
+          { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+        ],
+      }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+    }),
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Gemini API error ${res.status}: ${errText}`);
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${errText}`);
   }
 
-  const data = await res.json();
-  const text: string =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  const clean = text.replace(/```json\n?|\n?```/g, "").trim();
 
-  // Strip markdown fences if model includes them despite instructions
-  const cleaned = text
-    .trim()
-    .replace(/^```json\s*/i, "")
-    .replace(/^```\s*/i, "")
-    .replace(/\s*```$/i, "");
-
-  let parsed: ParsedResume;
   try {
-    parsed = JSON.parse(cleaned);
+    const parsed = JSON.parse(clean) as ParsedResume;
+    parsed.education   = parsed.education   ?? [];
+    parsed.experiences = parsed.experiences ?? [];
+    parsed.projects    = parsed.projects    ?? [];
+    parsed.skills      = parsed.skills      ?? [];
+    return parsed;
   } catch {
-    throw new Error("Gemini returned invalid JSON. Please try again.");
+    throw new Error("AI returned invalid JSON. Try again.");
   }
-
-  // Normalise arrays so callers always get arrays, never null
-  parsed.education  = parsed.education  ?? [];
-  parsed.experiences = parsed.experiences ?? [];
-  parsed.projects   = parsed.projects   ?? [];
-  parsed.skills     = parsed.skills     ?? [];
-
-  return parsed;
 }
 
 /**
- * Upload a resume PDF to Supabase Storage, then parse it with Gemini AI.
- * Returns the public storage URL and the extracted resume data.
+ * Upload resume to Supabase Storage, then parse with Gemini AI.
+ * Upload happens first, immediately — no separate "save" step.
  */
 export async function uploadAndParseResume(
-  fileUri: string,
+  localUri: string,
   fileName: string,
-  userId: string
-): Promise<{ resumeUrl: string; parsed: ParsedResume }> {
-  // Read file as base64 BEFORE uploading (avoids an extra download round-trip)
-  const pdfBase64 = await fileUriToBase64(fileUri);
+  userId: string,
+  onProgress?: (stage: "uploading" | "parsing", pct: number) => void
+): Promise<{ resumeStoragePath: string; resumeSignedUrl: string; parsed: ParsedResume }> {
+  console.log("[resumeParser] Uploading resume...");
+  const resumeStoragePath = await uploadResume(
+    userId,
+    localUri,
+    (pct) => onProgress?.("uploading", pct)
+  );
 
-  // Upload to R2 and update profile
-  const resumeUrl = await uploadResume(userId, fileUri);
+  const resumeSignedUrl = await getResumeSignedUrl(resumeStoragePath);
 
-  // Parse with Gemini
-  const parsed = await callGeminiParsePdf(pdfBase64);
+  let pdfBase64: string;
+  try {
+    if (Platform.OS !== "web") {
+      pdfBase64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: "base64" as any,
+      });
+    } else {
+      const res  = await fetch(localUri);
+      const blob = await res.blob();
+      pdfBase64  = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+  } catch {
+    const res  = await fetch(resumeSignedUrl);
+    const blob = await res.blob();
+    pdfBase64  = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve((reader.result as string).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
 
-  return { resumeUrl, parsed };
+  onProgress?.("parsing", 0);
+  console.log("[resumeParser] Parsing with Gemini...");
+  const parsed = await parseWithGemini(pdfBase64);
+  onProgress?.("parsing", 100);
+
+  console.log("[resumeParser] Done:", {
+    name: parsed.full_name,
+    edu:    parsed.education?.length,
+    exp:    parsed.experiences?.length,
+    proj:   parsed.projects?.length,
+    skills: parsed.skills?.length,
+  });
+
+  return { resumeStoragePath, resumeSignedUrl, parsed };
 }
 
+export { uploadAvatar } from "@/services/upload";
 
-/**
- * Generate a professional bio from profile data using Gemini.
- */
 export async function generateBioWithAI(context: {
   full_name: string;
   headline?: string;

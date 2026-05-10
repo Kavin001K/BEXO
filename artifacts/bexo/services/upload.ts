@@ -1,214 +1,157 @@
-import { readAsStringAsync, EncodingType } from "expo-file-system/legacy";
+import * as FileSystem from "expo-file-system";
 import * as ImageManipulator from "expo-image-manipulator";
 import { Platform } from "react-native";
-import { apiFetch } from "@/lib/apiConfig";
+import { decode } from "base64-arraybuffer";
 import { supabase } from "@/lib/supabase";
 
+async function uriToBase64(uri: string): Promise<string> {
+  if (Platform.OS === "web") {
+    const res  = await fetch(uri);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] ?? result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: "base64" as any,
+  });
+}
+
 /**
- * File upload via Cloudflare R2 using presigned URLs from the API server.
+ * Upload avatar — compress to 400×400 JPEG then upload to Supabase Storage.
+ * Returns public CDN URL.
  */
-
-async function readFileBytes(uri: string): Promise<Uint8Array> {
-  if (Platform.OS === "web") {
-    const response = await fetch(uri);
-    const buffer = await response.arrayBuffer();
-    return new Uint8Array(buffer);
-  }
-
-  // Native: read as base64 and convert to Uint8Array
-  try {
-    // Robust way to get the encoding type constant or fallback to string literal
-    const encoding = (EncodingType && EncodingType.Base64) ? EncodingType.Base64 : 'base64';
-    
-    console.log(`[Upload] Reading file: ${uri} with encoding: ${encoding}`);
-    
-    const base64 = await readAsStringAsync(uri, {
-      encoding: encoding as any,
-    });
-    
-    if (!base64) throw new Error("File is empty or could not be read");
-
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-    return bytes;
-  } catch (err: any) {
-    console.error("[Upload] readFileBytes failed:", err);
-    throw new Error(`Failed to read file: ${err.message}`);
-  }
-}
-
-async function uploadToR2(
-  key: string,
-  body: Uint8Array,
-  contentType: string
-): Promise<string> {
-  // Web: Use the API server as a proxy to avoid R2 CORS issues on localhost
-  if (Platform.OS === "web") {
-    console.log(`[Upload] Web detected: Proxying upload via API server for: ${key}`);
-    const resp = await apiFetch("/storage/upload", {
-      method: "POST",
-      headers: {
-        "Content-Type": contentType,
-        "x-key": key,
-      },
-      body,
-    });
-
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error(`[Upload] Proxy upload failed: ${resp.status}`, errorText);
-      throw new Error(`Proxy upload failed: ${resp.status}`);
-    }
-
-    const { publicUrl, error } = await resp.json();
-    if (error) throw new Error(error);
-    return publicUrl as string;
-  }
-
-  // Native: Direct upload via presigned URL works fine (no CORS)
-  console.log(`[Upload] Requesting presigned URL for: ${key}`);
-  const resp = await apiFetch("/storage/upload-url", {
-    method: "POST",
-    body: JSON.stringify({ key, contentType }),
-  });
-
-  if (!resp.ok) {
-    const errorText = await resp.text();
-    console.error(`[Upload] Failed to get presigned URL: ${resp.status}`, errorText);
-    throw new Error(`Failed to get upload URL: ${resp.status}`);
-  }
-
-  const { url, publicUrl, error } = await resp.json();
-  if (error) throw new Error(error);
-
-  console.log(`[Upload] Uploading to R2: ${url.split("?")[0]}`);
-  const uploadResp = await fetch(url, {
-    method: "PUT",
-    headers: { "Content-Type": contentType },
-    body,
-  });
-
-  if (!uploadResp.ok) {
-    console.error(`[Upload] R2 upload failed: ${uploadResp.status}`);
-    throw new Error(`R2 upload failed: ${uploadResp.status}`);
-  }
-
-  console.log(`[Upload] Successfully uploaded: ${publicUrl}`);
-  return publicUrl as string;
-}
-
 export async function uploadAvatar(
   userId: string,
   localUri: string,
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  onProgress?.(10);
+  onProgress?.(5);
 
-  // Normalize URI for native platforms (ensure it has file:// if it starts with /)
-  let processedUri = localUri;
-  if (Platform.OS !== "web" && localUri.startsWith("/") && !localUri.startsWith("file://")) {
-    processedUri = `file://${localUri}`;
-  }
-
-  console.log(`[UploadAvatar] Processing URI: ${processedUri}`);
-
-  // Compress to max 400×400 JPEG at 82% quality
   const compressed = await ImageManipulator.manipulateAsync(
-    processedUri,
+    localUri,
     [{ resize: { width: 400, height: 400 } }],
-    { compress: 0.82, format: ImageManipulator.SaveFormat.JPEG }
+    { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
   );
+  onProgress?.(30);
 
-  onProgress?.(40);
-  const bytes = await readFileBytes(compressed.uri);
-  onProgress?.(65);
+  const base64 = await uriToBase64(compressed.uri);
+  onProgress?.(55);
 
-  const key = `avatars/${userId}/avatar-${Date.now()}.jpg`;
-  const publicUrl = await uploadToR2(key, bytes, "image/jpeg");
+  const path = `${userId}/avatar-${Date.now()}.jpg`;
 
-  // Update profile with the new avatar URL
-  const { data: profileData } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
-  if (profileData) {
-    await supabase
-      .from("profiles")
-      .update({ avatar_url: publicUrl })
-      .eq("id", profileData.id);
+  const { data, error } = await supabase.storage
+    .from("avatars")
+    .upload(path, decode(base64), {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("[upload] Avatar upload failed:", error);
+    throw new Error(`Upload failed: ${error.message}`);
   }
+  onProgress?.(90);
 
+  const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.path);
   onProgress?.(100);
-  return publicUrl;
+  return urlData.publicUrl;
 }
 
+/**
+ * Upload resume PDF — stored privately.
+ * Returns the storage PATH (not a public URL — resumes are private).
+ * Use getResumeSignedUrl() to get a temporary readable URL.
+ */
 export async function uploadResume(
   userId: string,
   localUri: string,
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  onProgress?.(20);
-  const bytes = await readFileBytes(localUri);
-  onProgress?.(60);
+  onProgress?.(10);
 
-  const key = `resumes/${userId}/resume-${Date.now()}.pdf`;
-  const publicUrl = await uploadToR2(key, bytes, "application/pdf");
+  const base64 = await uriToBase64(localUri);
+  onProgress?.(50);
 
-  // Update profile with resume URL
-  const { data: profileData } = await supabase
-    .from("profiles")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
-  if (profileData) {
-    await supabase
-      .from("profiles")
-      .update({ resume_url: publicUrl })
-      .eq("id", profileData.id);
+  const path = `${userId}/resume-${Date.now()}.pdf`;
+
+  const { data, error } = await supabase.storage
+    .from("resumes")
+    .upload(path, decode(base64), {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("[upload] Resume upload failed:", error);
+    throw new Error(`Resume upload failed: ${error.message}`);
   }
-
   onProgress?.(100);
-  return publicUrl;
+
+  return data.path;
 }
 
+/**
+ * Get a signed URL for the resume (valid 1 hour).
+ */
+export async function getResumeSignedUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from("resumes")
+    .createSignedUrl(storagePath, 3600);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+/**
+ * Upload project image — compress to max 1200px width.
+ * Returns public CDN URL.
+ */
 export async function uploadProjectImage(
   userId: string,
-  projectId: string,
   localUri: string,
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  onProgress?.(10);
+  onProgress?.(5);
 
   const compressed = await ImageManipulator.manipulateAsync(
     localUri,
     [{ resize: { width: 1200 } }],
-    { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+    { compress: 0.88, format: ImageManipulator.SaveFormat.JPEG }
   );
+  onProgress?.(35);
 
-  onProgress?.(40);
-  const bytes = await readFileBytes(compressed.uri);
-  onProgress?.(70);
+  const base64 = await uriToBase64(compressed.uri);
+  onProgress?.(65);
 
-  const key = `projects/${userId}/${projectId}-${Date.now()}.jpg`;
-  const publicUrl = await uploadToR2(key, bytes, "image/jpeg");
+  const path = `${userId}/${Date.now()}.jpg`;
+  const { data, error } = await supabase.storage
+    .from("projects")
+    .upload(path, decode(base64), { contentType: "image/jpeg", upsert: true });
 
+  if (error) throw new Error(`Project image upload failed: ${error.message}`);
   onProgress?.(100);
-  return publicUrl;
+
+  const { data: urlData } = supabase.storage.from("projects").getPublicUrl(data.path);
+  return urlData.publicUrl;
 }
 
-// Legacy compatibility — keep uploadFile for existing callers (resumeParser.ts)
 export async function uploadFile(
   bucket: "avatars" | "resumes" | "projects",
   storagePath: string,
   uri: string,
-  contentType: string = "application/octet-stream"
+  contentType = "application/octet-stream"
 ): Promise<{ url: string; storagePath: string }> {
-  const bytes = await readFileBytes(uri);
-  const key = `${bucket}/${storagePath}`;
-  const url = await uploadToR2(key, bytes, contentType);
-  return { url, storagePath: key };
+  const base64 = await uriToBase64(uri);
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(storagePath, decode(base64), { contentType, upsert: true });
+  if (error) throw new Error(error.message);
+  const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+  return { url: urlData.publicUrl, storagePath: data.path };
 }

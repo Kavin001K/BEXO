@@ -1,0 +1,2553 @@
+# BEXO — Master Rebuild Prompt
+## Complete rewrite of Auth, Resume, Data Persistence, Home, Portfolio, Profile & Edit screens
+
+---
+
+> Paste this entire file into Replit AI. Work every section IN ORDER.
+> Do not skip. Each section builds on the previous.
+
+---
+
+# REPLIT AI PROMPT BEGINS HERE
+
+---
+
+## WHAT YOU ARE DOING
+
+The BEXO app has five major problem areas. This prompt fixes all of them with
+exact code and logic. Do not improvise — follow the specification precisely.
+
+**Problem 1:** Cross-auth linking (phone ↔ Google) — no logic exists
+**Problem 2:** Profile uploads (avatar, resume) silently fail
+**Problem 3:** Resume data disappears on refresh — not saved to Supabase
+**Problem 4:** Profile completion widget doesn't save inline
+**Problem 5:** Dashboard, Portfolio, Profile screens need complete redesign
+
+---
+
+## SECTION 1 — DATABASE: RUN THIS SQL FIRST
+
+Go to Supabase Dashboard → SQL Editor → New Query. Run this entire block.
+
+```sql
+-- ============================================================
+-- BEXO Master Schema — Run in full, safe to re-run
+-- ============================================================
+
+-- OTP store (persistent, survives server restarts)
+CREATE TABLE IF NOT EXISTS public.otp_codes (
+  id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  phone       TEXT        NOT NULL,
+  code_hash   TEXT        NOT NULL,
+  expires_at  TIMESTAMPTZ NOT NULL,
+  verified    BOOLEAN     DEFAULT FALSE,
+  attempts    INT         DEFAULT 0,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_otp_phone ON public.otp_codes(phone);
+
+-- Auto-clean expired OTPs
+CREATE OR REPLACE FUNCTION public.cleanup_expired_otps()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  DELETE FROM public.otp_codes WHERE expires_at < NOW() - INTERVAL '1 hour';
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_cleanup_otps ON public.otp_codes;
+CREATE TRIGGER trg_cleanup_otps
+  AFTER INSERT ON public.otp_codes
+  FOR EACH STATEMENT EXECUTE FUNCTION public.cleanup_expired_otps();
+
+-- Phone identity linking table
+-- Connects phone numbers to Supabase user IDs
+CREATE TABLE IF NOT EXISTS public.phone_identities (
+  id            UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id       UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  phone         TEXT        NOT NULL UNIQUE,
+  verified      BOOLEAN     DEFAULT FALSE,
+  verified_at   TIMESTAMPTZ,
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_phone_identities_user ON public.phone_identities(user_id);
+CREATE INDEX IF NOT EXISTS idx_phone_identities_phone ON public.phone_identities(phone);
+
+ALTER TABLE public.phone_identities ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Users manage own phone identities"
+  ON public.phone_identities FOR ALL USING (auth.uid() = user_id);
+
+-- Add phone_verified and email_verified columns to profiles
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS phone_verified    BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS email_verified    BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS rebuild_preferences TEXT,
+  ADD COLUMN IF NOT EXISTS is_published      BOOLEAN DEFAULT FALSE;
+
+-- Storage buckets (run once)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES
+  ('avatars',  'avatars',  true,  5242880,  ARRAY['image/jpeg','image/png','image/webp','image/heic']),
+  ('resumes',  'resumes',  false, 10485760, ARRAY['application/pdf']),
+  ('projects', 'projects', true,  20971520, ARRAY['image/jpeg','image/png','image/webp','application/pdf'])
+ON CONFLICT (id) DO NOTHING;
+
+-- Storage RLS
+DROP POLICY IF EXISTS "Avatar public read"    ON storage.objects;
+DROP POLICY IF EXISTS "Avatar owner upload"   ON storage.objects;
+DROP POLICY IF EXISTS "Avatar owner update"   ON storage.objects;
+DROP POLICY IF EXISTS "Avatar owner delete"   ON storage.objects;
+DROP POLICY IF EXISTS "Resume owner only"     ON storage.objects;
+DROP POLICY IF EXISTS "Projects public read"  ON storage.objects;
+DROP POLICY IF EXISTS "Projects owner upload" ON storage.objects;
+
+CREATE POLICY "Avatar public read"    ON storage.objects FOR SELECT USING (bucket_id = 'avatars');
+CREATE POLICY "Avatar owner upload"   ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Avatar owner update"   ON storage.objects FOR UPDATE USING  (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Avatar owner delete"   ON storage.objects FOR DELETE USING  (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Resume owner only"     ON storage.objects FOR ALL  USING    (bucket_id = 'resumes'  AND auth.uid()::text = (storage.foldername(name))[1]);
+CREATE POLICY "Projects public read"  ON storage.objects FOR SELECT USING  (bucket_id = 'projects');
+CREATE POLICY "Projects owner upload" ON storage.objects FOR INSERT WITH CHECK (bucket_id = 'projects' AND auth.uid()::text = (storage.foldername(name))[1]);
+
+-- Ensure realtime is on for site_builds
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables
+    WHERE pubname = 'supabase_realtime' AND tablename = 'site_builds'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.site_builds;
+  END IF;
+END $$;
+```
+
+**Verify:** Table Editor shows `otp_codes`, `phone_identities` tables.
+Storage shows 3 buckets: avatars (public), resumes (private), projects (public).
+
+---
+
+## SECTION 2 — CROSS-AUTH IDENTITY LINKING
+
+### The Logic (understand this before writing any code)
+
+```
+PHONE LOGIN user              GOOGLE LOGIN user
+─────────────────             ─────────────────
+auth.users row:               auth.users row:
+  email = +91xxx@bexo.local     email = real@gmail.com
+  user_metadata.phone = +91xxx  user_metadata.phone = null
+
+phone_identities row:         phone_identities row:
+  user_id = [phone user id]     (none yet)
+  phone = +91xxx
+  verified = true
+
+profiles row:                 profiles row:
+  phone = +91xxx                email = real@gmail.com
+  email_verified = false        phone_verified = false
+```
+
+**Cross-login rule:**
+- Phone user tries Google login → Google returns their real email →
+  Server looks for existing Google user with that email. None found →
+  Server checks if `profiles` table has a row with `phone = +91xxx@bexo.local`
+  where the email matches → No. BUT after the phone user adds their email
+  in Settings and verifies it → the profile has `email = real@gmail.com`.
+  Now Google login finds that profile → merges the session → same account.
+
+- Google user tries phone login → Server receives phone → finds existing
+  `phone_identities` row → gets `user_id` → creates session for that user.
+  If no `phone_identities` row → creates new account (separate).
+  After Google user adds phone in Settings and verifies → `phone_identities`
+  row created → cross-login now works.
+
+**The implementation:** The API server `/verify-otp` endpoint must:
+1. Look up `phone_identities` by phone number.
+2. If found and `verified=true` → sign in as that user (existing account).
+3. If not found → check `profiles` by `phone` field.
+4. If profile found → link phone to that user, create session.
+5. If nothing found → create new user, new profile.
+
+### 2A — Rewrite `/verify-otp` in `artifacts/api-server/src/routes/auth.ts`
+
+Replace the entire `router.post("/verify-otp", ...)` handler with:
+
+```typescript
+router.post("/verify-otp", async (req, res) => {
+  const { phone, code } = req.body as { phone?: string; code?: string };
+  if (!phone || !code) {
+    res.status(400).json({ error: "Phone and code are required" });
+    return;
+  }
+
+  const normalised = phone.replace(/\s/g, "");
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const anonKey = process.env.SUPABASE_ANON_KEY ?? process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!serviceRoleKey || !anonKey) {
+    res.status(500).json({ error: "Server configuration error: missing Supabase keys" });
+    return;
+  }
+
+  const admin = createClient(SUPABASE_URL, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // ── Step 1: Validate OTP from Supabase otp_codes table ──
+  const { data: otpRow, error: otpErr } = await admin
+    .from("otp_codes")
+    .select("*")
+    .eq("phone", normalised)
+    .eq("verified", false)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (otpErr || !otpRow) {
+    res.status(400).json({ error: "No valid OTP found. Please request a new one." });
+    return;
+  }
+
+  const expectedHash = hashOTP(code.trim());
+  if (expectedHash !== otpRow.code_hash) {
+    await admin.from("otp_codes")
+      .update({ attempts: (otpRow.attempts ?? 0) + 1 })
+      .eq("id", otpRow.id);
+    res.status(400).json({ error: "Invalid OTP. Please check and try again." });
+    return;
+  }
+
+  // OTP correct — mark used
+  await admin.from("otp_codes").update({ verified: true }).eq("id", otpRow.id);
+
+  try {
+    const tempPassword = crypto.randomBytes(32).toString("hex");
+    const fakeEmail    = `${normalised.replace(/\+/, "")}@bexo.local`;
+    let userId: string;
+    let signInEmail: string;
+
+    // ── Step 2: Cross-auth lookup ──
+    // Priority: phone_identities → profiles.phone → create new
+
+    // 2a. Check phone_identities (fastest, most reliable)
+    const { data: phoneIdentity } = await admin
+      .from("phone_identities")
+      .select("user_id, verified")
+      .eq("phone", normalised)
+      .single();
+
+    if (phoneIdentity?.user_id) {
+      // Existing phone-linked account → sign in as that user
+      userId = phoneIdentity.user_id;
+
+      // Get the user's email for signInWithPassword
+      const { data: authUser } = await admin.auth.admin.getUserById(userId);
+      signInEmail = authUser.user?.email ?? fakeEmail;
+
+      // Update password for this session
+      await admin.auth.admin.updateUserById(userId, {
+        password: tempPassword,
+        email_confirm: true,
+      });
+    } else {
+      // 2b. Check profiles table by phone field (catches old data)
+      const { data: profileByPhone } = await admin
+        .from("profiles")
+        .select("user_id")
+        .eq("phone", normalised)
+        .single();
+
+      if (profileByPhone?.user_id) {
+        userId = profileByPhone.user_id;
+        const { data: authUser } = await admin.auth.admin.getUserById(userId);
+        signInEmail = authUser.user?.email ?? fakeEmail;
+        await admin.auth.admin.updateUserById(userId, {
+          password: tempPassword, email_confirm: true,
+        });
+        // Create the phone_identities row for future logins
+        await admin.from("phone_identities").upsert({
+          user_id: userId, phone: normalised, verified: true,
+          verified_at: new Date().toISOString(),
+        }, { onConflict: "phone" });
+      } else {
+        // 2c. No existing account — create new user
+        const { data: createData, error: createErr } = await admin.auth.admin.createUser({
+          email: fakeEmail,
+          password: tempPassword,
+          email_confirm: true,
+          user_metadata: { phone: normalised },
+        });
+        if (createErr || !createData.user) {
+          res.status(500).json({ error: createErr?.message ?? "Failed to create user" });
+          return;
+        }
+        userId = createData.user.id;
+        signInEmail = fakeEmail;
+
+        // Create phone_identities row
+        await admin.from("phone_identities").insert({
+          user_id: userId, phone: normalised, verified: true,
+          verified_at: new Date().toISOString(),
+        });
+      }
+    }
+
+    // ── Step 3: Create a real session ──
+    const anonClient = createClient(SUPABASE_URL, anonKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data: sessionData, error: sessionErr } = await anonClient.auth.signInWithPassword({
+      email: signInEmail,
+      password: tempPassword,
+    });
+
+    if (sessionErr || !sessionData.session) {
+      res.status(500).json({ error: sessionErr?.message ?? "Failed to create session" });
+      return;
+    }
+
+    res.json({
+      access_token:  sessionData.session.access_token,
+      refresh_token: sessionData.session.refresh_token,
+      user:          sessionData.user,
+    });
+  } catch (err: any) {
+    console.error("verify-otp error:", err);
+    res.status(500).json({ error: err.message ?? "Internal server error" });
+  }
+});
+```
+
+### 2B — Rewrite Google OAuth post-login handler in `app/_layout.tsx`
+
+After Supabase session is established via Google, check if this Google user
+has an existing phone-linked account. In `stores/useAuthStore.ts` → `initialize`:
+
+```typescript
+initialize: async () => {
+  if (!isSupabaseConfigured) { set({ isLoading: false }); return; }
+  try {
+    const { data } = await supabase.auth.getSession();
+    set({ session: data.session, user: data.session?.user ?? null, isLoading: false });
+
+    supabase.auth.onAuthStateChange(async (event, session) => {
+      set({ session, user: session?.user ?? null });
+
+      // When Google OAuth completes, check for phone-linked account merge
+      if (event === "SIGNED_IN" && session?.user) {
+        const user = session.user;
+        const isGoogleUser = user.app_metadata?.provider === "google";
+        if (isGoogleUser) {
+          await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
+        }
+      }
+    });
+  } catch {
+    set({ isLoading: false });
+  }
+},
+```
+
+Add this helper function inside `useAuthStore` (outside the `create` call,
+or as a module-level function):
+
+```typescript
+// In useAuthStore.ts — add this outside the create() call
+async function handleGoogleAccountMergeCheck(
+  googleUserId: string,
+  googleEmail: string
+): Promise<void> {
+  // Look for a profile with this email that belongs to a different user
+  // (i.e., a phone-login user who later added and verified this email)
+  const { data: existingProfile } = await supabase
+    .from("profiles")
+    .select("user_id, id")
+    .eq("email", googleEmail)
+    .eq("email_verified", true)
+    .neq("user_id", googleUserId)
+    .single();
+
+  if (existingProfile) {
+    // There's a phone-linked account with this email verified.
+    // We cannot auto-merge in the client (requires service role).
+    // Instead, notify the user in the settings screen.
+    // Store the conflict info for the settings screen to handle.
+    console.log(
+      "[BEXO Auth] Existing phone account found for this Google email.",
+      "Manual merge available in Settings → Linked Accounts."
+    );
+    // TODO Phase 2: call a server endpoint to merge accounts server-side
+  }
+}
+```
+
+### 2C — Settings screen: Add phone (for Google users) and Add email (for phone users)
+
+Replace `app/(main)/settings.tsx` entirely with the following. This is the
+complete settings screen with identity linking UI:
+
+```typescript
+// app/(main)/settings.tsx
+// Complete rewrite — identity linking, verified contacts, logout
+
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
+import React, { useEffect, useState } from "react";
+import {
+  Alert, KeyboardAvoidingView, Modal, Platform, ScrollView,
+  StyleSheet, Text, TextInput, TouchableOpacity, View,
+} from "react-native";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { BexoButton } from "@/components/ui/BexoButton";
+import { useColors } from "@/hooks/useColors";
+import { apiFetch } from "@/lib/apiConfig";
+import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/stores/useAuthStore";
+import { useProfileStore } from "@/stores/useProfileStore";
+
+// ─── Country codes (same as login screen) ───────────────────────────────────
+const COUNTRY_CODES = [
+  { code: "+91", label: "India (+91)" },
+  { code: "+1",  label: "US (+1)"    },
+  { code: "+44", label: "UK (+44)"   },
+  { code: "+61", label: "AU (+61)"   },
+];
+
+export default function SettingsScreen() {
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const signOut = useAuthStore((s) => s.signOut);
+  const user    = useAuthStore((s) => s.user);
+  const { profile, updateProfile } = useProfileStore();
+
+  // Determine auth provider
+  const provider = user?.app_metadata?.provider ?? "email";
+  const isGoogleUser = provider === "google";
+  const isPhoneUser  = !isGoogleUser;
+
+  // Phone linking state (for Google users)
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [linkPhone, setLinkPhone]           = useState("");
+  const [linkCC, setLinkCC]                 = useState("+91");
+  const [phoneOtp, setPhoneOtp]             = useState("");
+  const [phoneStep, setPhoneStep]           = useState<"input"|"otp">("input");
+  const [linkLoading, setLinkLoading]       = useState(false);
+  const [linkError, setLinkError]           = useState("");
+
+  // Email linking state (for phone users)
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [linkEmail, setLinkEmail]           = useState(profile?.email ?? "");
+  const [emailLoading, setEmailLoading]     = useState(false);
+  const [emailError, setEmailError]         = useState("");
+
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+
+  // ── Phone linking flow (Google users) ──────────────────────────────────────
+  const handleSendPhoneOtp = async () => {
+    const phone = `${linkCC}${linkPhone.replace(/\D/g, "")}`;
+    if (linkPhone.replace(/\D/g, "").length < 7) {
+      setLinkError("Enter a valid phone number"); return;
+    }
+    setLinkLoading(true); setLinkError("");
+    try {
+      const resp = await apiFetch("/auth/send-otp", {
+        method: "POST",
+        body: JSON.stringify({ phone }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error ?? "Failed to send OTP");
+      setPhoneStep("otp");
+    } catch (e: any) {
+      setLinkError(e.message ?? "Failed to send OTP");
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleVerifyPhoneOtp = async () => {
+    const phone = `${linkCC}${linkPhone.replace(/\D/g, "")}`;
+    setLinkLoading(true); setLinkError("");
+    try {
+      // Call a new endpoint that links phone to current user (not sign-in)
+      const resp = await apiFetch("/auth/link-phone", {
+        method: "POST",
+        body: JSON.stringify({
+          phone,
+          code: phoneOtp,
+          user_id: user!.id,
+        }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error ?? "Verification failed");
+
+      // Update profile with phone
+      await updateProfile({ phone, phone_verified: true });
+
+      setShowPhoneModal(false);
+      setPhoneStep("input");
+      setLinkPhone(""); setPhoneOtp("");
+      if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert("Phone linked! ✅", `${phone} is now linked to your account. You can now log in with WhatsApp OTP.`);
+    } catch (e: any) {
+      setLinkError(e.message ?? "Verification failed");
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  // ── Email linking flow (phone users) ──────────────────────────────────────
+  const handleSaveEmail = async () => {
+    const email = linkEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setEmailError("Enter a valid email address"); return;
+    }
+    setEmailLoading(true); setEmailError("");
+    try {
+      // Update the Supabase auth email (sends verification email)
+      const { error } = await supabase.auth.updateUser({ email });
+      if (error) throw error;
+
+      // Save to profile (unverified until Supabase confirms)
+      await updateProfile({ email, email_verified: false });
+      setShowEmailModal(false);
+      Alert.alert(
+        "Verification sent",
+        `A confirmation link was sent to ${email}. Click it to verify your email.\n\nOnce verified, Google login will link to this account.`,
+        [{ text: "Got it" }]
+      );
+    } catch (e: any) {
+      setEmailError(e.message ?? "Failed to save email");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Logout", style: "destructive", onPress: signOut },
+    ]);
+  };
+
+  // ── Identity status badges ─────────────────────────────────────────────────
+  const phoneStatus = profile?.phone_verified
+    ? { icon: "check-circle" as const, color: "#6AFAD0", label: profile.phone ?? "Verified" }
+    : profile?.phone
+    ? { icon: "clock" as const, color: "#FAD06A", label: "Pending verification" }
+    : { icon: "plus-circle" as const, color: colors.mutedForeground, label: "Not linked" };
+
+  const emailStatus = profile?.email_verified
+    ? { icon: "check-circle" as const, color: "#6AFAD0", label: profile.email ?? "Verified" }
+    : profile?.email
+    ? { icon: "clock" as const, color: "#FAD06A", label: "Check your inbox" }
+    : { icon: "plus-circle" as const, color: colors.mutedForeground, label: "Not linked" };
+
+  return (
+    <View style={[S.container, { backgroundColor: colors.background }]}>
+      {/* Header */}
+      <View style={[S.header, { paddingTop: topPad + 8, borderBottomColor: colors.border }]}>
+        <TouchableOpacity
+          style={[S.backBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          onPress={() => router.back()}
+        >
+          <Feather name="arrow-left" size={18} color={colors.foreground} />
+        </TouchableOpacity>
+        <Text style={[S.headerTitle, { color: colors.foreground }]}>Settings</Text>
+        <View style={{ width: 38 }} />
+      </View>
+
+      <ScrollView contentContainerStyle={S.scroll} showsVerticalScrollIndicator={false}>
+
+        {/* ── Account Identity ── */}
+        <Animated.View entering={FadeInDown.delay(60).springify()}>
+          <Text style={[S.sectionLabel, { color: colors.mutedForeground }]}>IDENTITY</Text>
+          <View style={[S.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            {/* Current login method badge */}
+            <View style={S.identityRow}>
+              <View style={[S.identityIcon, { backgroundColor: isGoogleUser ? "#FA6A6A22" : "#25D36622" }]}>
+                <Feather
+                  name={isGoogleUser ? "mail" : "smartphone"}
+                  size={16}
+                  color={isGoogleUser ? "#FA6A6A" : "#25D366"}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[S.identityLabel, { color: colors.foreground }]}>
+                  {isGoogleUser ? "Google Account" : "WhatsApp Phone"}
+                </Text>
+                <Text style={[S.identityValue, { color: colors.mutedForeground }]}>
+                  {isGoogleUser ? (user?.email ?? "Google user") : (profile?.phone ?? "Phone user")}
+                </Text>
+              </View>
+              <View style={[S.verifiedBadge, { backgroundColor: "#6AFAD022" }]}>
+                <Feather name="check" size={11} color="#6AFAD0" />
+                <Text style={[S.verifiedText, { color: "#6AFAD0" }]}>Verified</Text>
+              </View>
+            </View>
+
+            <View style={[S.divider, { backgroundColor: colors.border }]} />
+
+            {/* Phone identity row */}
+            <TouchableOpacity
+              style={S.identityRow}
+              onPress={() => isGoogleUser ? setShowPhoneModal(true) : null}
+              disabled={!isGoogleUser || !!profile?.phone_verified}
+            >
+              <View style={[S.identityIcon, { backgroundColor: "#25D36622" }]}>
+                <Feather name="smartphone" size={16} color="#25D366" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[S.identityLabel, { color: colors.foreground }]}>WhatsApp / Phone</Text>
+                <Text style={[S.identityValue, { color: phoneStatus.color }]}>
+                  {phoneStatus.label}
+                </Text>
+              </View>
+              {isGoogleUser && !profile?.phone_verified && (
+                <Text style={[S.linkAction, { color: colors.primary }]}>Link →</Text>
+              )}
+              <Feather name={phoneStatus.icon} size={16} color={phoneStatus.color} />
+            </TouchableOpacity>
+
+            <View style={[S.divider, { backgroundColor: colors.border }]} />
+
+            {/* Email identity row */}
+            <TouchableOpacity
+              style={S.identityRow}
+              onPress={() => isPhoneUser ? setShowEmailModal(true) : null}
+              disabled={!isPhoneUser || !!profile?.email_verified}
+            >
+              <View style={[S.identityIcon, { backgroundColor: "#7C6AFA22" }]}>
+                <Feather name="mail" size={16} color="#7C6AFA" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[S.identityLabel, { color: colors.foreground }]}>Email / Google</Text>
+                <Text style={[S.identityValue, { color: emailStatus.color }]}>
+                  {emailStatus.label}
+                </Text>
+              </View>
+              {isPhoneUser && !profile?.email_verified && (
+                <Text style={[S.linkAction, { color: colors.primary }]}>Link →</Text>
+              )}
+              <Feather name={emailStatus.icon} size={16} color={emailStatus.color} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Helper text */}
+          <Text style={[S.helperText, { color: colors.mutedForeground }]}>
+            {isGoogleUser
+              ? "Link your phone number to enable WhatsApp OTP login as an alternative."
+              : "Link your email to enable Google login as an alternative. A verification link will be sent."}
+          </Text>
+        </Animated.View>
+
+        {/* ── Account Info ── */}
+        <Animated.View entering={FadeInDown.delay(120).springify()}>
+          <Text style={[S.sectionLabel, { color: colors.mutedForeground }]}>ACCOUNT</Text>
+          <View style={[S.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={S.infoRow}>
+              <Text style={[S.infoLabel, { color: colors.mutedForeground }]}>Handle</Text>
+              <Text style={[S.infoValue, { color: colors.primary }]}>@{profile?.handle ?? "—"}</Text>
+            </View>
+            <View style={[S.divider, { backgroundColor: colors.border }]} />
+            <View style={S.infoRow}>
+              <Text style={[S.infoLabel, { color: colors.mutedForeground }]}>Portfolio URL</Text>
+              <Text style={[S.infoValue, { color: colors.foreground }]} numberOfLines={1}>
+                {profile?.handle ? `${profile.handle}.mybrexo.com` : "—"}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        {/* ── Quick links ── */}
+        <Animated.View entering={FadeInDown.delay(180).springify()} style={{ gap: 8 }}>
+          {[
+            { label: "Edit Profile",    icon: "edit-3",   route: "/(main)/edit-profile" },
+            { label: "View Portfolio",  icon: "globe",    route: "/(main)/portfolio"    },
+          ].map((item) => (
+            <TouchableOpacity
+              key={item.route}
+              style={[S.navItem, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push(item.route as any)}
+            >
+              <View style={[S.navIcon, { backgroundColor: colors.primary + "22" }]}>
+                <Feather name={item.icon as any} size={16} color={colors.primary} />
+              </View>
+              <Text style={[S.navLabel, { color: colors.foreground }]}>{item.label}</Text>
+              <Feather name="chevron-right" size={15} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          ))}
+        </Animated.View>
+
+        {/* ── Logout ── */}
+        <Animated.View entering={FadeInDown.delay(240).springify()}>
+          <TouchableOpacity style={[S.logoutBtn, { borderColor: "#FA6A6A" }]} onPress={handleLogout}>
+            <Feather name="log-out" size={17} color="#FA6A6A" />
+            <Text style={S.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </Animated.View>
+
+        <Text style={[S.version, { color: colors.mutedForeground }]}>BEXO v1.0.0</Text>
+      </ScrollView>
+
+      {/* ── Phone Link Modal (for Google users) ── */}
+      <Modal visible={showPhoneModal} animationType="slide" presentationStyle="pageSheet"
+        onRequestClose={() => { setShowPhoneModal(false); setPhoneStep("input"); }}>
+        <View style={[S.modal, { backgroundColor: colors.background }]}>
+          <View style={[S.modalHeader, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={() => { setShowPhoneModal(false); setPhoneStep("input"); }}>
+              <Text style={[S.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={[S.modalTitle, { color: colors.foreground }]}>Link WhatsApp</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={S.modalContent} keyboardShouldPersistTaps="handled">
+              {phoneStep === "input" ? (
+                <>
+                  <Text style={[S.modalDesc, { color: colors.mutedForeground }]}>
+                    Enter your phone number. We'll send a WhatsApp OTP to verify it.
+                  </Text>
+                  <View style={[S.phoneRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <Text style={[S.cc, { color: colors.foreground }]}>{linkCC}</Text>
+                    <TextInput
+                      style={[S.phoneInput, { color: colors.foreground }]}
+                      placeholder="Phone number"
+                      placeholderTextColor={colors.mutedForeground}
+                      keyboardType="phone-pad"
+                      value={linkPhone}
+                      onChangeText={setLinkPhone}
+                      selectionColor={colors.primary}
+                    />
+                  </View>
+                  {linkError ? <Text style={S.errorText}>{linkError}</Text> : null}
+                  <BexoButton
+                    label={linkLoading ? "Sending…" : "Send WhatsApp OTP"}
+                    onPress={handleSendPhoneOtp}
+                    loading={linkLoading}
+                  />
+                </>
+              ) : (
+                <>
+                  <Text style={[S.modalDesc, { color: colors.mutedForeground }]}>
+                    Enter the 4-digit code sent to {linkCC}{linkPhone} via WhatsApp.
+                  </Text>
+                  <TextInput
+                    style={[S.otpInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
+                    placeholder="Enter OTP"
+                    placeholderTextColor={colors.mutedForeground}
+                    keyboardType="number-pad"
+                    maxLength={4}
+                    value={phoneOtp}
+                    onChangeText={setPhoneOtp}
+                    selectionColor={colors.primary}
+                    autoFocus
+                  />
+                  {linkError ? <Text style={S.errorText}>{linkError}</Text> : null}
+                  <BexoButton
+                    label={linkLoading ? "Verifying…" : "Verify & Link Phone"}
+                    onPress={handleVerifyPhoneOtp}
+                    loading={linkLoading}
+                    disabled={phoneOtp.length < 4}
+                  />
+                  <TouchableOpacity onPress={() => setPhoneStep("input")}>
+                    <Text style={[S.backLink, { color: colors.mutedForeground }]}>← Change number</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* ── Email Link Modal (for phone users) ── */}
+      <Modal visible={showEmailModal} animationType="slide" presentationStyle="pageSheet"
+        onRequestClose={() => setShowEmailModal(false)}>
+        <View style={[S.modal, { backgroundColor: colors.background }]}>
+          <View style={[S.modalHeader, { borderBottomColor: colors.border }]}>
+            <TouchableOpacity onPress={() => setShowEmailModal(false)}>
+              <Text style={[S.modalCancel, { color: colors.mutedForeground }]}>Cancel</Text>
+            </TouchableOpacity>
+            <Text style={[S.modalTitle, { color: colors.foreground }]}>Link Email</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+            <ScrollView contentContainerStyle={S.modalContent} keyboardShouldPersistTaps="handled">
+              <Text style={[S.modalDesc, { color: colors.mutedForeground }]}>
+                Add your email to enable Google login. A verification link will be sent to confirm it.
+              </Text>
+              <TextInput
+                style={[S.emailInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.mutedForeground}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                value={linkEmail}
+                onChangeText={setLinkEmail}
+                selectionColor={colors.primary}
+                autoFocus
+              />
+              {emailError ? <Text style={S.errorText}>{emailError}</Text> : null}
+              <BexoButton
+                label={emailLoading ? "Saving…" : "Save Email & Send Verification"}
+                onPress={handleSaveEmail}
+                loading={emailLoading}
+                disabled={!linkEmail.trim()}
+              />
+              <Text style={[S.helperText, { color: colors.mutedForeground, textAlign: "center" }]}>
+                After clicking the verification link, Google login will work for this account.
+              </Text>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+// Styles
+const S = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1,
+  },
+  headerTitle: { fontSize: 18, fontWeight: "700" },
+  backBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  scroll: { padding: 20, gap: 20 },
+  sectionLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, marginLeft: 4 },
+  card: { borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  identityRow: { flexDirection: "row", alignItems: "center", padding: 14, gap: 12 },
+  identityIcon: { width: 36, height: 36, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  identityLabel: { fontSize: 14, fontWeight: "600" },
+  identityValue: { fontSize: 12, marginTop: 1 },
+  verifiedBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999 },
+  verifiedText: { fontSize: 11, fontWeight: "600" },
+  linkAction: { fontSize: 13, fontWeight: "600", marginRight: 6 },
+  divider: { height: 1, marginHorizontal: 14 },
+  helperText: { fontSize: 12, lineHeight: 17, marginTop: 8, paddingHorizontal: 4 },
+  infoRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 14 },
+  infoLabel: { fontSize: 14 },
+  infoValue: { fontSize: 14, fontWeight: "600" },
+  navItem: { flexDirection: "row", alignItems: "center", padding: 14, borderRadius: 14, borderWidth: 1, gap: 12 },
+  navIcon: { width: 32, height: 32, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  navLabel: { flex: 1, fontSize: 15, fontWeight: "600" },
+  logoutBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", padding: 16, borderRadius: 14, borderWidth: 1, gap: 10, marginTop: 8 },
+  logoutText: { color: "#FA6A6A", fontSize: 15, fontWeight: "700" },
+  version: { textAlign: "center", fontSize: 12, marginTop: 12, opacity: 0.5 },
+  // Modals
+  modal: { flex: 1 },
+  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, paddingTop: 20, borderBottomWidth: 1 },
+  modalCancel: { fontSize: 15, width: 60 },
+  modalTitle: { fontSize: 16, fontWeight: "700" },
+  modalContent: { padding: 20, gap: 14 },
+  modalDesc: { fontSize: 14, lineHeight: 21 },
+  phoneRow: { flexDirection: "row", alignItems: "center", borderRadius: 14, borderWidth: 1, height: 52, overflow: "hidden" },
+  cc: { paddingHorizontal: 14, fontSize: 14, fontWeight: "600" },
+  phoneInput: { flex: 1, paddingHorizontal: 14, fontSize: 15, height: "100%" },
+  otpInput: { borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 24, textAlign: "center", letterSpacing: 12 },
+  emailInput: { borderRadius: 14, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15 },
+  errorText: { color: "#FA6A6A", fontSize: 13 },
+  backLink: { textAlign: "center", fontSize: 14, paddingVertical: 8 },
+});
+```
+
+### 2D — Add `/link-phone` endpoint to API server
+
+In `artifacts/api-server/src/routes/auth.ts`, add this new route:
+
+```typescript
+// POST /api/auth/link-phone
+// Links a verified phone number to an existing authenticated user
+// Body: { phone, code, user_id }
+router.post("/link-phone", async (req, res) => {
+  const { phone, code, user_id } = req.body as {
+    phone?: string; code?: string; user_id?: string;
+  };
+
+  if (!phone || !code || !user_id) {
+    res.status(400).json({ error: "phone, code, and user_id are required" });
+    return;
+  }
+
+  const normalised = phone.replace(/\s/g, "");
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) {
+    res.status(500).json({ error: "Server config error" });
+    return;
+  }
+
+  const admin = createClient(SUPABASE_URL, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  // Validate OTP
+  const { data: otpRow } = await admin
+    .from("otp_codes")
+    .select("*")
+    .eq("phone", normalised)
+    .eq("verified", false)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .single();
+
+  if (!otpRow || hashOTP(code.trim()) !== otpRow.code_hash) {
+    res.status(400).json({ error: "Invalid or expired OTP" });
+    return;
+  }
+
+  // Mark OTP used
+  await admin.from("otp_codes").update({ verified: true }).eq("id", otpRow.id);
+
+  // Check the phone isn't already linked to another user
+  const { data: existing } = await admin
+    .from("phone_identities")
+    .select("user_id")
+    .eq("phone", normalised)
+    .single();
+
+  if (existing && existing.user_id !== user_id) {
+    res.status(409).json({ error: "This phone number is already linked to another account." });
+    return;
+  }
+
+  // Upsert phone_identities
+  await admin.from("phone_identities").upsert({
+    user_id,
+    phone: normalised,
+    verified: true,
+    verified_at: new Date().toISOString(),
+  }, { onConflict: "phone" });
+
+  // Update profiles.phone
+  await admin
+    .from("profiles")
+    .update({ phone: normalised, phone_verified: true })
+    .eq("user_id", user_id);
+
+  res.json({ success: true });
+});
+```
+
+---
+
+## SECTION 3 — UPLOAD FIXES: avatar, resume, profile photo
+
+### Root cause analysis
+The `services/upload.ts` `uriToBlob` function uses `await fetch(uri)` which
+fails for `file://` URIs on iOS/Android because the Expo fetch polyfill doesn't
+handle local file URIs. Result: upload silently hangs or throws "network request failed."
+
+### 3A — Replace `services/upload.ts` entirely
+
+```typescript
+// services/upload.ts — complete rewrite, cross-platform safe
+
+import * as FileSystem from "expo-file-system";
+import * as ImageManipulator from "expo-image-manipulator";
+import { Platform } from "react-native";
+import { decode } from "base64-arraybuffer";
+import { supabase } from "@/lib/supabase";
+
+/**
+ * Read any URI as base64.
+ * - Native: uses expo-file-system (works for file://, content://, assets://)
+ * - Web: uses FileReader on a blob from fetch
+ */
+async function uriToBase64(uri: string): Promise<string> {
+  if (Platform.OS === "web") {
+    const res  = await fetch(uri);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] ?? result);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+  // Native path — most reliable for any local URI
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+}
+
+/**
+ * Upload avatar — compress to 400×400 JPEG then upload.
+ * Returns public CDN URL.
+ * Files stored at: avatars/{userId}/avatar-{timestamp}.jpg
+ */
+export async function uploadAvatar(
+  userId: string,
+  localUri: string,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  onProgress?.(5);
+  console.log("[upload] Compressing avatar...", localUri.slice(0, 60));
+
+  const compressed = await ImageManipulator.manipulateAsync(
+    localUri,
+    [{ resize: { width: 400, height: 400 } }],
+    { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG }
+  );
+  onProgress?.(30);
+
+  console.log("[upload] Reading as base64...");
+  const base64 = await uriToBase64(compressed.uri);
+  onProgress?.(55);
+
+  const path  = `${userId}/avatar-${Date.now()}.jpg`;
+  console.log("[upload] Uploading to Supabase Storage:", path);
+
+  const { data, error } = await supabase.storage
+    .from("avatars")
+    .upload(path, decode(base64), {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("[upload] Avatar upload failed:", error);
+    throw new Error(`Upload failed: ${error.message}`);
+  }
+  onProgress?.(90);
+
+  const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.path);
+  onProgress?.(100);
+  console.log("[upload] Avatar URL:", urlData.publicUrl);
+  return urlData.publicUrl;
+}
+
+/**
+ * Upload resume PDF — store privately under {userId}/resume-{timestamp}.pdf
+ * Returns the storage path (NOT a public URL — resumes are private).
+ * To generate a signed URL for display: call getResumeSignedUrl().
+ */
+export async function uploadResume(
+  userId: string,
+  localUri: string,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  onProgress?.(10);
+  console.log("[upload] Reading resume as base64...");
+
+  const base64 = await uriToBase64(localUri);
+  onProgress?.(50);
+
+  const path = `${userId}/resume-${Date.now()}.pdf`;
+  console.log("[upload] Uploading resume:", path);
+
+  const { data, error } = await supabase.storage
+    .from("resumes")
+    .upload(path, decode(base64), {
+      contentType: "application/pdf",
+      upsert: true,
+    });
+
+  if (error) {
+    console.error("[upload] Resume upload failed:", error);
+    throw new Error(`Resume upload failed: ${error.message}`);
+  }
+  onProgress?.(100);
+
+  console.log("[upload] Resume stored at:", data.path);
+  return data.path; // Return storage PATH, not public URL (bucket is private)
+}
+
+/**
+ * Get a signed URL for the resume (valid 1 hour).
+ */
+export async function getResumeSignedUrl(storagePath: string): Promise<string> {
+  const { data, error } = await supabase.storage
+    .from("resumes")
+    .createSignedUrl(storagePath, 3600);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+
+/**
+ * Upload project image — compress to max 1200px width.
+ * Returns public CDN URL.
+ * Files stored at: projects/{userId}/{timestamp}.jpg
+ */
+export async function uploadProjectImage(
+  userId: string,
+  localUri: string,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  onProgress?.(5);
+  const compressed = await ImageManipulator.manipulateAsync(
+    localUri,
+    [{ resize: { width: 1200 } }],
+    { compress: 0.88, format: ImageManipulator.SaveFormat.JPEG }
+  );
+  onProgress?.(35);
+
+  const base64 = await uriToBase64(compressed.uri);
+  onProgress?.(65);
+
+  const path = `${userId}/${Date.now()}.jpg`;
+  const { data, error } = await supabase.storage
+    .from("projects")
+    .upload(path, decode(base64), { contentType: "image/jpeg", upsert: true });
+
+  if (error) throw new Error(`Project image upload failed: ${error.message}`);
+  onProgress?.(100);
+
+  const { data: urlData } = supabase.storage.from("projects").getPublicUrl(data.path);
+  return urlData.publicUrl;
+}
+
+// Legacy compat — keep for any existing callers
+export async function uploadFile(
+  bucket: "avatars" | "resumes" | "projects",
+  storagePath: string,
+  uri: string,
+  contentType = "application/octet-stream"
+): Promise<{ url: string; storagePath: string }> {
+  const base64 = await uriToBase64(uri);
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .upload(storagePath, decode(base64), { contentType, upsert: true });
+  if (error) throw new Error(error.message);
+  const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
+  return { url: urlData.publicUrl, storagePath: data.path };
+}
+```
+
+Add required packages:
+```bash
+pnpm add expo-image-manipulator expo-file-system base64-arraybuffer
+```
+
+### 3B — Fix `services/resumeParser.ts`: auto-upload on pick + fix model name
+
+Replace `services/resumeParser.ts` `uploadAndParseResume` to:
+1. Upload immediately when called
+2. Use correct Gemini model name
+3. Return both storagePath and publicUrl
+
+```typescript
+// services/resumeParser.ts — complete rewrite
+
+import * as FileSystem from "expo-file-system";
+import { Platform } from "react-native";
+import { supabase } from "@/lib/supabase";
+import { uploadResume, getResumeSignedUrl } from "@/services/upload";
+
+export interface ParsedResume {
+  full_name?:    string;
+  headline?:     string;
+  bio?:          string;
+  email?:        string;
+  phone?:        string;
+  location?:     string;
+  github_url?:   string;
+  linkedin_url?: string;
+  website?:      string;
+  education:     Array<{ institution: string; degree: string; field: string; start_year: number; end_year?: number | null; gpa?: string | null }>;
+  experiences:   Array<{ company: string; role: string; start_date: string; end_date?: string | null; description: string; is_current: boolean }>;
+  projects:      Array<{ title: string; description: string; tech_stack: string[]; live_url?: string | null; github_url?: string | null }>;
+  skills:        Array<{ name: string; category: string; level: "beginner" | "intermediate" | "advanced" | "expert" }>;
+}
+
+const GEMINI_API_KEY  = process.env.EXPO_PUBLIC_GOOGLE_API_KEY ?? "";
+// FIXED: was "gemini-3.1-flash-lite" (doesn't exist)
+const GEMINI_MODEL    = "gemini-1.5-flash";
+const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+
+const EXTRACTION_PROMPT = `You are an expert resume parser. Extract ALL information from this PDF resume.
+Return ONLY a raw JSON object — NO markdown, NO code fences, NO explanation.
+
+{
+  "full_name": "string",
+  "headline": "concise professional headline ≤120 chars",
+  "bio": "2-3 sentence first-person bio",
+  "email": "string or null",
+  "phone": "string or null",
+  "location": "City, Country or null",
+  "github_url": "full URL or null",
+  "linkedin_url": "full URL or null",
+  "website": "URL or null",
+  "education": [{"institution":"","degree":"","field":"","start_year":2020,"end_year":2024,"gpa":"or null"}],
+  "experiences": [{"company":"","role":"","start_date":"Mon YYYY","end_date":"or null","description":"","is_current":false}],
+  "projects": [{"title":"","description":"","tech_stack":[],"live_url":"or null","github_url":"or null"}],
+  "skills": [{"name":"","category":"Programming Languages|Frameworks|Tools|Cloud|Design|Soft Skills","level":"beginner|intermediate|advanced|expert"}]
+}
+
+Rules:
+- maximum 5 education entries, 6 experiences, 6 projects, 25 skills
+- never invent data not present in the resume
+- github_url and linkedin_url: full URL (https://github.com/username)`;
+
+async function parseWithGemini(pdfBase64: string): Promise<ParsedResume> {
+  if (!GEMINI_API_KEY) {
+    throw new Error(
+      "EXPO_PUBLIC_GOOGLE_API_KEY is not set. Add your Gemini API key to .env"
+    );
+  }
+
+  const response = await fetch(`${GEMINI_ENDPOINT}?key=${GEMINI_API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: EXTRACTION_PROMPT },
+          { inline_data: { mime_type: "application/pdf", data: pdfBase64 } },
+        ],
+      }],
+      generationConfig: {
+        temperature: 0.1,
+        maxOutputTokens: 4096,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini API error ${response.status}: ${errText}`);
+  }
+
+  const data = await response.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  // Strip any accidental markdown fences
+  const clean = text.replace(/```json\n?|\n?```/g, "").trim();
+
+  try {
+    return JSON.parse(clean) as ParsedResume;
+  } catch {
+    throw new Error("AI returned invalid JSON. Try again.");
+  }
+}
+
+/**
+ * Upload resume to Cloudflare/Supabase R2, then parse with Gemini AI.
+ * Upload happens first, immediately when called — no separate "save" step.
+ *
+ * @returns storagePath (for Supabase profile.resume_url), parsed data
+ */
+export async function uploadAndParseResume(
+  localUri: string,
+  fileName: string,
+  userId: string,
+  onProgress?: (stage: "uploading"|"parsing", pct: number) => void
+): Promise<{ resumeStoragePath: string; resumeSignedUrl: string; parsed: ParsedResume }> {
+  // ── Step 1: Upload to Supabase Storage (resumes bucket) ──
+  console.log("[resumeParser] Uploading resume...");
+  const resumeStoragePath = await uploadResume(
+    userId,
+    localUri,
+    (pct) => onProgress?.("uploading", pct)
+  );
+
+  // ── Step 2: Get a signed URL to read the PDF back for Gemini ──
+  const resumeSignedUrl = await getResumeSignedUrl(resumeStoragePath);
+
+  // ── Step 3: Read PDF as base64 (use local file if available, signed URL as fallback) ──
+  let pdfBase64: string;
+  try {
+    if (Platform.OS !== "web") {
+      pdfBase64 = await FileSystem.readAsStringAsync(localUri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+    } else {
+      const res  = await fetch(localUri);
+      const blob = await res.blob();
+      pdfBase64  = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve((reader.result as string).split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+  } catch {
+    // Fallback: fetch from signed URL
+    const res  = await fetch(resumeSignedUrl);
+    const blob = await res.blob();
+    pdfBase64  = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload  = () => resolve((reader.result as string).split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  onProgress?.("parsing", 0);
+
+  // ── Step 4: Parse with Gemini ──
+  console.log("[resumeParser] Parsing with Gemini...");
+  const parsed = await parseWithGemini(pdfBase64);
+  onProgress?.("parsing", 100);
+
+  console.log("[resumeParser] Done. Parsed:", {
+    name: parsed.full_name,
+    edu: parsed.education?.length,
+    exp: parsed.experiences?.length,
+    proj: parsed.projects?.length,
+    skills: parsed.skills?.length,
+  });
+
+  return { resumeStoragePath, resumeSignedUrl, parsed };
+}
+
+// Keep uploadAvatar export for components that import it from resumeParser
+export { uploadAvatar } from "@/services/upload";
+```
+
+---
+
+## SECTION 4 — RESUME FLOW: Auto-upload + persist all parsed data
+
+### 4A — Onboarding Resume Screen: upload immediately on file pick
+
+Replace `app/(onboarding)/resume.tsx` logic section (keep all UI, just fix the handlers):
+
+```typescript
+// In ResumeScreen component — replace handleParse with this:
+
+const [uploadedPath, setUploadedPath]   = useState<string | null>(null);
+const [parsedData, setParsedData]       = useState<ParsedResume | null>(null);
+const [uploadProgress, setUploadProgress] = useState(0);
+const [parseProgress, setParseProgress]   = useState(0);
+const [stage, setStage] = useState<"idle"|"uploading"|"parsing"|"done"|"error">("idle");
+
+// Auto-process on file selection
+const pickDocument = async () => {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type: "application/pdf",
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const file = result.assets[0];
+    setSelectedFile({ name: file.name, uri: file.uri });
+    setError("");
+    setStage("uploading");
+
+    // ── AUTO-PROCESS: upload + parse immediately ──
+    if (!user || !profile) {
+      setError("Profile not ready. Try again.");
+      setStage("error");
+      return;
+    }
+    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    const { resumeStoragePath, parsed } = await uploadAndParseResume(
+      file.uri,
+      file.name,
+      user.id,
+      (s, pct) => {
+        if (s === "uploading") setUploadProgress(pct);
+        else { setStage("parsing"); setParseProgress(pct); }
+      }
+    );
+
+    setUploadedPath(resumeStoragePath);
+    setParsedData(parsed);
+    setStage("done");
+
+    // Pre-fill store immediately
+    setParsedResumeData(parsed);
+    if (parsed.education?.length)   setEducation(parsed.education);
+    if (parsed.experiences?.length) setExperiences(parsed.experiences);
+    if (parsed.projects?.length)    setProjects(parsed.projects);
+    if (parsed.skills?.length)      setSkills(parsed.skills);
+
+  } catch (e: any) {
+    console.error("[ResumeScreen] Error:", e);
+    setError(e.message ?? "Failed to process resume");
+    setStage("error");
+  }
+};
+
+// "Use this data" button — saves everything to Supabase
+const handleConfirmParsed = async () => {
+  if (!profile || !parsedData || !uploadedPath) return;
+  setParsing(true);
+  try {
+    // Save all data to Supabase in parallel
+    await Promise.all([
+      // Update profile with basic info + resume path
+      useProfileStore.getState().updateProfile({
+        full_name:    parsedData.full_name   ?? profile.full_name,
+        headline:     parsedData.headline    ?? profile.headline,
+        bio:          parsedData.bio         ?? profile.bio,
+        github_url:   parsedData.github_url  ?? profile.github_url,
+        linkedin_url: parsedData.linkedin_url ?? profile.linkedin_url,
+        location:     parsedData.location    ?? profile.location,
+        resume_url:   uploadedPath,          // Store the private storage path
+      }),
+      // Save education
+      ...(parsedData.education?.map((edu) =>
+        useProfileStore.getState().saveEducation(edu)
+      ) ?? []),
+      // Save experiences
+      ...(parsedData.experiences?.map((exp) =>
+        useProfileStore.getState().saveExperience(exp)
+      ) ?? []),
+      // Save projects
+      ...(parsedData.projects?.map((proj) =>
+        useProfileStore.getState().saveProject(proj)
+      ) ?? []),
+      // Save skills — batch upsert
+      parsedData.skills?.length
+        ? supabase.from("skills").upsert(
+            parsedData.skills.map((s) => ({
+              profile_id: profile.id,
+              name:       s.name,
+              category:   s.category,
+              level:      s.level,
+            })),
+            { onConflict: "profile_id,name" }
+          )
+        : Promise.resolve(),
+    ]);
+
+    setOnboardingStep("photo");
+    router.push("/(onboarding)/photo");
+  } catch (e: any) {
+    setError(e.message ?? "Failed to save data");
+  } finally {
+    setParsing(false);
+  }
+};
+```
+
+The UI of the resume screen should now show:
+- Idle: drop zone with "Tap to upload PDF"
+- Uploading: animated progress bar "Uploading... 45%"
+- Parsing: animated progress bar "AI is reading your resume..."
+- Done: summary card "Found 3 jobs · 4 projects · 12 skills" + "Use this data →" button
+- Error: error message + "Try again" button
+
+### 4B — Profile Store: Ensure `fetchProfile` loads all sub-tables
+
+The current `fetchProfile` looks correct BUT it doesn't handle the case where
+`profile` row doesn't exist yet (first-time user). Add this:
+
+```typescript
+// In useProfileStore.ts → fetchProfile:
+fetchProfile: async (userId) => {
+  set({ isLoading: true });
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+
+    if (error && error.code !== "PGRST116") {
+      // PGRST116 = "no rows found" — expected for new users
+      throw error;
+    }
+
+    if (data) {
+      set({ profile: data, onboardingStep: "done" });
+      const [edu, exp, proj, skillsRes] = await Promise.all([
+        supabase.from("education").select("*").eq("profile_id", data.id).order("start_year", { ascending: false }),
+        supabase.from("experiences").select("*").eq("profile_id", data.id).order("start_date", { ascending: false }),
+        supabase.from("projects").select("*").eq("profile_id", data.id),
+        supabase.from("skills").select("*").eq("profile_id", data.id),
+      ]);
+      set({
+        education:   edu.data   ?? [],
+        experiences: exp.data   ?? [],
+        projects:    proj.data  ?? [],
+        skills:      skillsRes.data ?? [],
+        isLoading:   false,
+      });
+    } else {
+      // New user — no profile yet
+      set({ profile: null, isLoading: false });
+    }
+  } catch (e) {
+    console.error("[ProfileStore] fetchProfile error:", e);
+    set({ isLoading: false });
+  }
+},
+```
+
+---
+
+## SECTION 5 — PROFILE COMPLETION WIDGET: Inline data collection
+
+The `MissingInfoFlow` component must save data directly to Supabase when each
+field is completed (not just set local state). Replace the save handler:
+
+```typescript
+// In components/home/MissingInfoFlow.tsx — replace handleSave function:
+
+const handleSave = async () => {
+  if (!current || !user) return;
+  setSaving(true);
+
+  try {
+    if (current.type === "image") {
+      // Avatar upload
+      if (!avatarUri) {
+        goNext(); return; // Skipped
+      }
+      const { uploadAvatar } = await import("@/services/upload");
+      const url = await uploadAvatar(user.id, avatarUri);
+      // Save to Supabase immediately
+      await updateProfile({ avatar_url: url });
+
+    } else if (current.type === "text" || current.type === "multiline") {
+      if (!value.trim()) {
+        goNext(); return; // Skipped
+      }
+      // Map field key to profile column
+      const updateMap: Record<string, Partial<Profile>> = {
+        full_name:  { full_name:  value.trim() },
+        headline:   { headline:   value.trim() },
+        bio:        { bio:        value.trim() },
+        location:   { location:   value.trim() },
+      };
+      const profileUpdate = updateMap[current.key];
+      if (profileUpdate) {
+        await updateProfile(profileUpdate); // Saves to Supabase immediately
+      }
+
+    } else if (current.type === "section") {
+      // For section types, navigate to edit-profile with the right tab
+      const tabMap: Record<string, string> = {
+        education:  "education",
+        experience: "experience",
+        projects:   "projects",
+        skills:     "skills",
+      };
+      onClose();
+      router.push({
+        pathname: "/(main)/edit-profile",
+        params: { tab: tabMap[current.key] ?? "profile" },
+      });
+      return;
+    }
+
+    if (Platform.OS !== "web") {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    goNext();
+  } catch (e: any) {
+    Alert.alert("Error", e.message ?? "Failed to save");
+  } finally {
+    setSaving(false);
+  }
+};
+
+const goNext = () => {
+  const nextIdx = currentIndex + 1;
+  if (nextIdx >= actionableFields.length) {
+    // Finished — re-fetch profile so completion score updates
+    if (user?.id) fetchProfile(user.id);
+    onDone();
+  } else {
+    setValue("");
+    setAvatarUri(null);
+    setCurrentIndex(nextIdx);
+  }
+};
+```
+
+---
+
+## SECTION 6 — HOME SCREEN: Complete redesign
+
+Replace `app/(main)/dashboard.tsx` in full. This is the new premium design:
+
+```typescript
+// app/(main)/dashboard.tsx — FULL REWRITE
+// Premium dark home screen with useful stats, smart layout, smooth animations
+
+import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
+import { Image } from "expo-image";
+import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Alert, Platform, RefreshControl, ScrollView,
+  StyleSheet, Text, TouchableOpacity, View,
+} from "react-native";
+import Animated, {
+  FadeIn, FadeInDown, FadeInRight,
+  useAnimatedStyle, useSharedValue,
+  withRepeat, withSequence, withTiming,
+} from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { MissingInfoFlow }        from "@/components/home/MissingInfoFlow";
+import { ProfileCompletenessBanner } from "@/components/home/ProfileCompletenessBanner";
+import { UpdateCard }              from "@/components/ui/UpdateCard";
+import { useColors }               from "@/hooks/useColors";
+import { useAuthStore }            from "@/stores/useAuthStore";
+import { usePortfolioStore }       from "@/stores/usePortfolioStore";
+import { useProfileStore }         from "@/stores/useProfileStore";
+
+// ── Pulsing live dot ─────────────────────────────────────────────────────────
+function LiveDot({ color }: { color: string }) {
+  const opacity = useSharedValue(1);
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.2, { duration: 600 }),
+        withTiming(1,   { duration: 600 })
+      ), -1, true
+    );
+  }, []);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View style={[style, { width: 8, height: 8, borderRadius: 4, backgroundColor: color }]} />;
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────────
+function StatCard({ icon, value, label, color, delay }: {
+  icon: any; value: number | string; label: string; color: string; delay: number;
+}) {
+  const colors = useColors();
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(delay).springify()}
+      style={[S.statCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+    >
+      <View style={[S.statIcon, { backgroundColor: color + "22" }]}>
+        <Feather name={icon} size={14} color={color} />
+      </View>
+      <Text style={[S.statValue, { color: colors.foreground }]}>{value}</Text>
+      <Text style={[S.statLabel, { color: colors.mutedForeground }]}>{label}</Text>
+    </Animated.View>
+  );
+}
+
+// ── Quick action button ───────────────────────────────────────────────────────
+function QuickAction({ icon, label, sublabel, onPress, accent, delay }: {
+  icon: any; label: string; sublabel?: string;
+  onPress: () => void; accent?: string; delay: number;
+}) {
+  const colors = useColors();
+  const scale  = useSharedValue(1);
+  const style  = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  return (
+    <Animated.View entering={FadeInRight.delay(delay).springify()} style={style}>
+      <TouchableOpacity
+        style={[S.quickAction, { backgroundColor: colors.card, borderColor: colors.border }]}
+        onPress={() => {
+          scale.value = withSequence(withTiming(0.96, { duration: 80 }), withTiming(1, { duration: 120 }));
+          if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          onPress();
+        }}
+        activeOpacity={1}
+      >
+        <View style={[S.qaIcon, { backgroundColor: (accent ?? colors.primary) + "22" }]}>
+          <Feather name={icon} size={18} color={accent ?? colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[S.qaLabel, { color: colors.foreground }]}>{label}</Text>
+          {sublabel ? <Text style={[S.qaSub, { color: colors.mutedForeground }]}>{sublabel}</Text> : null}
+        </View>
+        <Feather name="chevron-right" size={14} color={colors.mutedForeground} />
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// ── Main screen ───────────────────────────────────────────────────────────────
+export default function DashboardScreen() {
+  const colors  = useColors();
+  const insets  = useSafeAreaInsets();
+  const user    = useAuthStore((s) => s.user);
+  const signOut = useAuthStore((s) => s.signOut);
+
+  const { profile, skills, education, experiences, projects,
+          fetchProfile, getCompletionResult } = useProfileStore();
+  const { updates, analytics, buildStatus, portfolioUrl,
+          fetchUpdates, fetchBuildStatus, subscribeToBuilds } = usePortfolioStore();
+
+  const [refreshing,     setRefreshing]     = useState(false);
+  const [showMissing,    setShowMissing]    = useState(false);
+  const [dashboardReady, setDashboardReady] = useState(false);
+
+  const completionResult = useMemo(
+    () => getCompletionResult(),
+    [profile, education, experiences, projects, skills]
+  );
+
+  // ── Single load effect ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user?.id) return;
+    let unsubBuilds: (() => void) | undefined;
+
+    const init = async () => {
+      await fetchProfile(user.id);
+      const p = useProfileStore.getState().profile;
+
+      if (!p || !p.handle) {
+        router.replace("/(onboarding)/handle");
+        return;
+      }
+
+      await Promise.all([
+        fetchUpdates(p.id),
+        fetchBuildStatus(p.id),
+      ]);
+
+      unsubBuilds = subscribeToBuilds(p.id);
+      setDashboardReady(true);
+    };
+
+    init();
+    return () => unsubBuilds?.();
+  }, [user?.id]);
+
+  const onRefresh = useCallback(async () => {
+    if (!user?.id) return;
+    setRefreshing(true);
+    await fetchProfile(user.id);
+    const p = useProfileStore.getState().profile;
+    if (p?.id) await Promise.all([fetchUpdates(p.id), fetchBuildStatus(p.id)]);
+    setRefreshing(false);
+  }, [user?.id]);
+
+  // ── Share handler ─────────────────────────────────────────────────────────
+  const handleShare = useCallback(async () => {
+    if (!profile?.handle) return;
+    const { Share } = await import("react-native");
+    const url  = `https://${profile.handle}.mybrexo.com`;
+    const name = profile.full_name ?? profile.handle;
+    Share.share({ message: `Check out ${name}'s portfolio: ${url}`, url });
+  }, [profile]);
+
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
+  const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
+
+  if (!dashboardReady) {
+    return (
+      <View style={[S.loadingScreen, { backgroundColor: colors.background }]}>
+        <Animated.View entering={FadeIn.duration(400)} style={S.loadingInner}>
+          <Text style={[S.loadingText, { color: colors.mutedForeground }]}>Loading your portfolio…</Text>
+        </Animated.View>
+      </View>
+    );
+  }
+
+  const firstName = profile?.full_name?.split(" ")[0] ?? "Student";
+  const timeOfDay = new Date().getHours();
+  const greeting  = timeOfDay < 12 ? "Good morning" : timeOfDay < 18 ? "Good afternoon" : "Good evening";
+  const isLive    = buildStatus === "done" && !!portfolioUrl;
+  const isBuilding = buildStatus === "building" || buildStatus === "queued";
+
+  return (
+    <View style={[S.container, { backgroundColor: colors.background }]}>
+      <ScrollView
+        contentContainerStyle={[S.scroll, { paddingTop: topPad + 16, paddingBottom: botPad }]}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
+        {/* ── Header ── */}
+        <Animated.View entering={FadeIn.duration(400)} style={S.header}>
+          <View style={S.headerLeft}>
+            <TouchableOpacity onPress={() => router.push("/(main)/settings")} activeOpacity={0.8}>
+              <View style={[S.avatarThumb, { borderColor: colors.primary }]}>
+                {profile?.avatar_url ? (
+                  <Image source={{ uri: profile.avatar_url }} style={S.avatarThumbImg} contentFit="cover" />
+                ) : (
+                  <Text style={[S.avatarInitial, { color: colors.primary }]}>
+                    {firstName[0]?.toUpperCase() ?? "B"}
+                  </Text>
+                )}
+              </View>
+            </TouchableOpacity>
+            <View>
+              <Text style={[S.greeting, { color: colors.mutedForeground }]}>{greeting},</Text>
+              <Text style={[S.name, { color: colors.foreground }]}>{firstName} 👋</Text>
+            </View>
+          </View>
+          <View style={S.headerRight}>
+            {isLive && (
+              <TouchableOpacity
+                style={[S.headerBtn, { backgroundColor: "#6AFAD022", borderColor: "#6AFAD044" }]}
+                onPress={handleShare}
+              >
+                <Feather name="share-2" size={16} color="#6AFAD0" />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[S.headerBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              onPress={() => router.push("/(main)/settings")}
+            >
+              <Feather name="settings" size={16} color={colors.mutedForeground} />
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+
+        {/* ── Portfolio status card ── */}
+        <Animated.View entering={FadeInDown.delay(80).springify()}>
+          {isLive ? (
+            <TouchableOpacity onPress={() => router.push("/(main)/portfolio")} activeOpacity={0.88}>
+              <LinearGradient
+                colors={["#7C6AFA", "#A06AFA"]}
+                style={S.liveCard}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+              >
+                <LiveDot color="#6AFAD0" />
+                <View style={{ flex: 1 }}>
+                  <Text style={S.liveLabel}>Portfolio Live</Text>
+                  <Text style={S.liveUrl}>{profile?.handle}.mybrexo.com</Text>
+                </View>
+                <TouchableOpacity onPress={handleShare}>
+                  <Feather name="share-2" size={16} color="rgba(255,255,255,0.8)" />
+                </TouchableOpacity>
+                <Feather name="external-link" size={16} color="rgba(255,255,255,0.8)" />
+              </LinearGradient>
+            </TouchableOpacity>
+          ) : isBuilding ? (
+            <View style={[S.buildingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <LiveDot color={colors.primary} />
+              <Text style={[S.buildingText, { color: colors.mutedForeground }]}>Building your portfolio…</Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              style={[S.buildPromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => router.push("/(main)/portfolio")}
+            >
+              <LinearGradient
+                colors={["#7C6AFA11", "transparent"]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              />
+              <View style={[S.bpIcon, { backgroundColor: colors.primary + "22" }]}>
+                <Feather name="globe" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[S.bpLabel, { color: colors.foreground }]}>Generate Portfolio</Text>
+                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>Build your live site in 90 seconds</Text>
+              </View>
+              <Feather name="arrow-right" size={16} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </Animated.View>
+
+        {/* ── Profile completion banner ── */}
+        {!completionResult.isPassing && (
+          <Animated.View entering={FadeInDown.delay(140).springify()}>
+            <ProfileCompletenessBanner
+              result={completionResult}
+              onCompletePress={() => setShowMissing(true)}
+            />
+          </Animated.View>
+        )}
+
+        {/* ── Stats row ── */}
+        <Animated.View entering={FadeInDown.delay(200).springify()} style={S.statsRow}>
+          <StatCard icon="eye"          value={analytics.views}  label="Views"  color="#7C6AFA" delay={220} />
+          <StatCard icon="mouse-pointer" value={analytics.clicks} label="Clicks" color="#FA6A6A" delay={260} />
+          <StatCard icon="share-2"      value={analytics.shares} label="Shares" color="#6AFAD0" delay={300} />
+        </Animated.View>
+
+        {/* ── Quick actions ── */}
+        <View style={S.section}>
+          <Animated.Text entering={FadeInDown.delay(320).springify()} style={[S.sectionTitle, { color: colors.foreground }]}>
+            Quick Actions
+          </Animated.Text>
+          <QuickAction
+            icon="edit-3" label="Edit Profile" sublabel="Update your info"
+            onPress={() => router.push("/(main)/edit-profile")} delay={340}
+          />
+          <QuickAction
+            icon="layers" label="My Portfolio" sublabel="View, edit & rebuild"
+            onPress={() => router.push("/(main)/portfolio")} delay={370}
+          />
+          <QuickAction
+            icon="plus-circle" label="Post an Update" sublabel="Share a project or achievement"
+            accent="#FA6A6A"
+            onPress={() => router.push("/(main)/update")} delay={400}
+          />
+        </View>
+
+        {/* ── Profile snapshot chips ── */}
+        {(education.length > 0 || experiences.length > 0 || projects.length > 0) && (
+          <Animated.View entering={FadeInDown.delay(420).springify()} style={S.section}>
+            <Text style={[S.sectionTitle, { color: colors.foreground }]}>Portfolio Snapshot</Text>
+            <View style={S.chipRow}>
+              {education.length > 0 && (
+                <TouchableOpacity
+                  style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "education" } })}
+                >
+                  <Feather name="book" size={12} color={colors.primary} />
+                  <Text style={[S.chipText, { color: colors.foreground }]}>
+                    {education.length} Education
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {experiences.length > 0 && (
+                <TouchableOpacity
+                  style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "experience" } })}
+                >
+                  <Feather name="briefcase" size={12} color="#FA6A6A" />
+                  <Text style={[S.chipText, { color: colors.foreground }]}>
+                    {experiences.length} Experience
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {projects.length > 0 && (
+                <TouchableOpacity
+                  style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "projects" } })}
+                >
+                  <Feather name="code" size={12} color="#6AFAD0" />
+                  <Text style={[S.chipText, { color: colors.foreground }]}>
+                    {projects.length} Projects
+                  </Text>
+                </TouchableOpacity>
+              )}
+              {skills.length > 0 && (
+                <TouchableOpacity
+                  style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
+                  onPress={() => router.push({ pathname: "/(main)/edit-profile", params: { tab: "skills" } })}
+                >
+                  <Feather name="zap" size={12} color="#FAD06A" />
+                  <Text style={[S.chipText, { color: colors.foreground }]}>
+                    {skills.length} Skills
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* ── Activity updates ── */}
+        <Animated.View entering={FadeInDown.delay(460).springify()} style={S.section}>
+          <View style={S.sectionRow}>
+            <Text style={[S.sectionTitle, { color: colors.foreground }]}>Activity</Text>
+            <TouchableOpacity
+              style={[S.addChip, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
+              onPress={() => router.push("/(main)/update")}
+            >
+              <Feather name="plus" size={12} color={colors.primary} />
+              <Text style={[S.addChipText, { color: colors.primary }]}>Add</Text>
+            </TouchableOpacity>
+          </View>
+
+          {updates.length === 0 ? (
+            <View style={[S.emptyActivity, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Feather name="activity" size={28} color={colors.mutedForeground} />
+              <Text style={[S.emptyTitle, { color: colors.foreground }]}>No activity yet</Text>
+              <Text style={[S.emptySub, { color: colors.mutedForeground }]}>
+                Post projects, achievements, or role updates to keep your portfolio fresh
+              </Text>
+              <TouchableOpacity
+                style={[S.emptyBtn, { backgroundColor: colors.primary }]}
+                onPress={() => router.push("/(main)/update")}
+              >
+                <Text style={S.emptyBtnText}>Post first update</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={{ gap: 10 }}>
+              {updates.map((u, i) => (
+                <Animated.View key={u.id} entering={FadeInDown.delay(480 + i * 40).springify()}>
+                  <UpdateCard update={u} />
+                </Animated.View>
+              ))}
+            </View>
+          )}
+        </Animated.View>
+      </ScrollView>
+
+      {/* ── FAB: Post update ── */}
+      <Animated.View
+        entering={FadeIn.delay(600).springify()}
+        style={[S.fab, { bottom: botPad + 16 }]}
+      >
+        <TouchableOpacity
+          style={[S.fabBtn, { backgroundColor: colors.primary }]}
+          onPress={() => {
+            if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push("/(main)/update");
+          }}
+          activeOpacity={0.85}
+        >
+          <LinearGradient
+            colors={["#7C6AFA", "#FA6A6A"]}
+            style={StyleSheet.absoluteFill}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+          />
+          <Feather name="plus" size={22} color="#fff" />
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* ── Missing info flow modal ── */}
+      <MissingInfoFlow
+        visible={showMissing}
+        missingFields={completionResult.missingFields}
+        onClose={() => setShowMissing(false)}
+        onDone={async () => {
+          setShowMissing(false);
+          if (user?.id) await fetchProfile(user.id);
+        }}
+      />
+    </View>
+  );
+}
+
+const S = StyleSheet.create({
+  container: { flex: 1 },
+  loadingScreen: { flex: 1, alignItems: "center", justifyContent: "center" },
+  loadingInner: { alignItems: "center", gap: 12 },
+  loadingText: { fontSize: 14 },
+  scroll: { paddingHorizontal: 20, gap: 16 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  headerLeft: { flexDirection: "row", alignItems: "center", gap: 12 },
+  headerRight: { flexDirection: "row", gap: 8 },
+  headerBtn: { width: 38, height: 38, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  avatarThumb: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#1A1A24" },
+  avatarThumbImg: { width: 44, height: 44, borderRadius: 22 },
+  avatarInitial: { fontSize: 18, fontWeight: "800" },
+  greeting: { fontSize: 12, fontWeight: "500" },
+  name: { fontSize: 24, fontWeight: "800", letterSpacing: -0.3 },
+  liveCard: {
+    flexDirection: "row", alignItems: "center", gap: 10,
+    padding: 16, borderRadius: 16,
+    ...Platform.select({ web: { boxShadow: "0 6px 20px rgba(124,106,250,0.3)" }, default: { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 12, elevation: 6 } }),
+  },
+  liveLabel: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  liveUrl: { color: "rgba(255,255,255,0.75)", fontSize: 12 },
+  buildingCard: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14, borderRadius: 14, borderWidth: 1 },
+  buildingText: { fontSize: 14 },
+  buildPromptCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 16, borderWidth: 1, overflow: "hidden" },
+  bpIcon: { width: 44, height: 44, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  bpLabel: { fontSize: 15, fontWeight: "700" },
+  bpSub: { fontSize: 12, marginTop: 2 },
+  statsRow: { flexDirection: "row", gap: 10 },
+  statCard: { flex: 1, borderRadius: 16, borderWidth: 1, padding: 14, alignItems: "center", gap: 6 },
+  statIcon: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  statValue: { fontSize: 22, fontWeight: "800" },
+  statLabel: { fontSize: 11, fontWeight: "500" },
+  section: { gap: 10 },
+  sectionTitle: { fontSize: 17, fontWeight: "700" },
+  sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  addChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1 },
+  addChipText: { fontSize: 12, fontWeight: "600" },
+  quickAction: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1 },
+  qaIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  qaLabel: { fontSize: 14, fontWeight: "600" },
+  qaSub: { fontSize: 12, marginTop: 1 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
+  chipText: { fontSize: 12, fontWeight: "600" },
+  emptyActivity: { alignItems: "center", padding: 32, borderRadius: 20, borderWidth: 1, gap: 10 },
+  emptyTitle: { fontSize: 16, fontWeight: "700" },
+  emptySub: { fontSize: 13, textAlign: "center", lineHeight: 20, maxWidth: 240 },
+  emptyBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20, marginTop: 4 },
+  emptyBtnText: { color: "#fff", fontSize: 13, fontWeight: "600" },
+  fab: { position: "absolute", right: 20 },
+  fabBtn: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", overflow: "hidden",
+    ...Platform.select({ web: { boxShadow: "0 8px 24px rgba(124,106,250,0.45)" }, default: { shadowColor: "#7C6AFA", shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.45, shadowRadius: 16, elevation: 10 } }),
+  },
+});
+```
+
+---
+
+## SECTION 7 — PORTFOLIO SCREEN: Rebuild with resume replace logic
+
+Replace the `RebuildModal` component in `components/portfolio/RebuildModal.tsx`:
+
+```typescript
+// components/portfolio/RebuildModal.tsx — FULL REWRITE
+// Handles: rebuild with new resume, replace vs merge data, build status
+
+import { Feather } from "@expo/vector-icons";
+import * as DocumentPicker from "expo-document-picker";
+import { LinearGradient } from "expo-linear-gradient";
+import React, { useState } from "react";
+import {
+  ActivityIndicator, Alert, Modal, Platform,
+  ScrollView, StyleSheet, Text, TouchableOpacity, View,
+} from "react-native";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
+import { BexoButton }        from "@/components/ui/BexoButton";
+import { useColors }          from "@/hooks/useColors";
+import { uploadAndParseResume } from "@/services/resumeParser";
+import { useAuthStore }       from "@/stores/useAuthStore";
+import { usePortfolioStore }  from "@/stores/usePortfolioStore";
+import { useProfileStore }    from "@/stores/useProfileStore";
+import { supabase }           from "@/lib/supabase";
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+type Step = "options" | "uploading" | "parsed" | "replacing" | "rebuilding" | "done" | "error";
+
+export function RebuildModal({ visible, onClose }: Props) {
+  const colors = useColors();
+  const insets = useSafeAreaInsets();
+  const user   = useAuthStore((s) => s.user);
+  const { profile, updateProfile, setEducation, setExperiences, setProjects, setSkills } = useProfileStore();
+  const { triggerBuild, buildStatus } = usePortfolioStore();
+
+  const [step,         setStep]         = useState<Step>("options");
+  const [uploadPct,    setUploadPct]    = useState(0);
+  const [parsedResult, setParsedResult] = useState<any>(null);
+  const [resumePath,   setResumePath]   = useState<string | null>(null);
+  const [error,        setError]        = useState("");
+
+  const reset = () => {
+    setStep("options");
+    setUploadPct(0);
+    setParsedResult(null);
+    setResumePath(null);
+    setError("");
+  };
+
+  const handleClose = () => { reset(); onClose(); };
+
+  // ── Option 1: Upload new resume ─────────────────────────────────────────
+  const handleUploadResume = async () => {
+    if (!user?.id || !profile?.id) return;
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets?.[0]) return;
+
+      setStep("uploading");
+      const file = res.assets[0];
+
+      const { resumeStoragePath, parsed } = await uploadAndParseResume(
+        file.uri,
+        file.name,
+        user.id,
+        (stage, pct) => {
+          if (stage === "uploading") setUploadPct(pct * 0.5);
+          else setUploadPct(50 + pct * 0.5);
+        }
+      );
+
+      setResumePath(resumeStoragePath);
+      setParsedResult(parsed);
+      setStep("parsed");
+    } catch (e: any) {
+      setError(e.message ?? "Failed to process resume");
+      setStep("error");
+    }
+  };
+
+  // ── Replace: wipe all data and use parsed only ──────────────────────────
+  const handleReplace = async () => {
+    if (!profile?.id || !parsedResult || !resumePath) return;
+    setStep("replacing");
+    try {
+      // 1. Delete all existing sub-data
+      await Promise.all([
+        supabase.from("education").delete().eq("profile_id", profile.id),
+        supabase.from("experiences").delete().eq("profile_id", profile.id),
+        supabase.from("projects").delete().eq("profile_id", profile.id),
+        supabase.from("skills").delete().eq("profile_id", profile.id),
+      ]);
+
+      // 2. Update profile with parsed basic info + new resume path
+      await updateProfile({
+        full_name:    parsedResult.full_name    ?? profile.full_name,
+        headline:     parsedResult.headline     ?? profile.headline,
+        bio:          parsedResult.bio          ?? profile.bio,
+        github_url:   parsedResult.github_url   ?? profile.github_url,
+        linkedin_url: parsedResult.linkedin_url ?? profile.linkedin_url,
+        location:     parsedResult.location     ?? profile.location,
+        resume_url:   resumePath,
+      });
+
+      // 3. Insert all parsed data
+      const pid = profile.id;
+      await Promise.all([
+        ...(parsedResult.education?.map((e: any) =>
+          supabase.from("education").insert({ ...e, profile_id: pid })
+        ) ?? []),
+        ...(parsedResult.experiences?.map((e: any) =>
+          supabase.from("experiences").insert({ ...e, profile_id: pid })
+        ) ?? []),
+        ...(parsedResult.projects?.map((p: any) =>
+          supabase.from("projects").insert({ ...p, profile_id: pid })
+        ) ?? []),
+        parsedResult.skills?.length
+          ? supabase.from("skills").insert(
+              parsedResult.skills.map((s: any) => ({ ...s, profile_id: pid }))
+            )
+          : Promise.resolve(),
+      ]);
+
+      // 4. Update Zustand store
+      setEducation(parsedResult.education ?? []);
+      setExperiences(parsedResult.experiences ?? []);
+      setProjects(parsedResult.projects ?? []);
+      setSkills(parsedResult.skills ?? []);
+
+      await triggerBuild(profile.id);
+      setStep("rebuilding");
+    } catch (e: any) {
+      setError(e.message ?? "Failed to replace data");
+      setStep("error");
+    }
+  };
+
+  // ── Merge: keep existing + add new parsed data ──────────────────────────
+  const handleMerge = async () => {
+    if (!profile?.id || !parsedResult || !resumePath) return;
+    setStep("replacing");
+    try {
+      const pid = profile.id;
+
+      // Update profile basics where parsed data is better
+      const updates: any = { resume_url: resumePath };
+      if (parsedResult.full_name && !profile.full_name)    updates.full_name    = parsedResult.full_name;
+      if (parsedResult.headline  && !profile.headline)     updates.headline     = parsedResult.headline;
+      if (parsedResult.bio       && !profile.bio)          updates.bio          = parsedResult.bio;
+      if (parsedResult.github_url && !profile.github_url)  updates.github_url   = parsedResult.github_url;
+      if (parsedResult.linkedin_url && !profile.linkedin_url) updates.linkedin_url = parsedResult.linkedin_url;
+      await updateProfile(updates);
+
+      // Upsert — Supabase will skip duplicates
+      await Promise.all([
+        ...(parsedResult.education?.map((e: any) =>
+          supabase.from("education").upsert({ ...e, profile_id: pid }, { ignoreDuplicates: true })
+        ) ?? []),
+        ...(parsedResult.experiences?.map((e: any) =>
+          supabase.from("experiences").upsert({ ...e, profile_id: pid }, { ignoreDuplicates: true })
+        ) ?? []),
+        ...(parsedResult.projects?.map((p: any) =>
+          supabase.from("projects").upsert({ ...p, profile_id: pid }, { ignoreDuplicates: true })
+        ) ?? []),
+        parsedResult.skills?.length
+          ? supabase.from("skills").upsert(
+              parsedResult.skills.map((s: any) => ({ ...s, profile_id: pid })),
+              { onConflict: "profile_id,name" }
+            )
+          : Promise.resolve(),
+      ]);
+
+      await triggerBuild(profile.id);
+      setStep("rebuilding");
+    } catch (e: any) {
+      setError(e.message ?? "Failed to merge data");
+      setStep("error");
+    }
+  };
+
+  // ── Rebuild without resume ───────────────────────────────────────────────
+  const handleRebuildNow = async () => {
+    if (!profile?.id) return;
+    setStep("rebuilding");
+    await triggerBuild(profile.id);
+  };
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={handleClose}
+    >
+      <View style={[M.container, { backgroundColor: colors.background }]}>
+        {/* Header */}
+        <View style={[M.header, { paddingTop: insets.top + 12, borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={handleClose}>
+            <Text style={[M.cancel, { color: colors.mutedForeground }]}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[M.title, { color: colors.foreground }]}>
+            {step === "options"    ? "Rebuild Portfolio" :
+             step === "uploading"  ? "Processing Resume" :
+             step === "parsed"     ? "Resume Parsed ✨"  :
+             step === "replacing"  ? "Saving Changes"    :
+             step === "rebuilding" ? "Building…"         :
+             step === "done"       ? "Done! 🎉"          :
+                                     "Something went wrong"}
+          </Text>
+          <View style={{ width: 60 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={M.content}>
+
+          {/* ── OPTIONS ── */}
+          {step === "options" && (
+            <Animated.View entering={FadeIn.duration(300)} style={{ gap: 12 }}>
+              <Text style={[M.desc, { color: colors.mutedForeground }]}>
+                Upload a new resume to refresh your portfolio data, or rebuild with your current information.
+              </Text>
+
+              {/* Upload new resume card */}
+              <TouchableOpacity
+                style={[M.optionCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}
+                onPress={handleUploadResume}
+              >
+                <LinearGradient colors={["#7C6AFA11", "transparent"]} style={StyleSheet.absoluteFill} />
+                <View style={[M.optionIcon, { backgroundColor: colors.primary + "22" }]}>
+                  <Feather name="upload-cloud" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[M.optionLabel, { color: colors.foreground }]}>Upload new resume</Text>
+                  <Text style={[M.optionSub, { color: colors.mutedForeground }]}>
+                    AI extracts updated data. Choose to replace or merge.
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={colors.primary} />
+              </TouchableOpacity>
+
+              {/* Rebuild with current data */}
+              <TouchableOpacity
+                style={[M.optionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+                onPress={handleRebuildNow}
+              >
+                <View style={[M.optionIcon, { backgroundColor: "#FA6A6A22" }]}>
+                  <Feather name="refresh-cw" size={22} color="#FA6A6A" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[M.optionLabel, { color: colors.foreground }]}>Rebuild with current data</Text>
+                  <Text style={[M.optionSub, { color: colors.mutedForeground }]}>
+                    Re-generate the site using your existing profile info.
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* ── UPLOADING ── */}
+          {step === "uploading" && (
+            <Animated.View entering={FadeIn.duration(300)} style={M.centeredContent}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[M.statusLabel, { color: colors.foreground }]}>
+                {uploadPct < 50 ? "Uploading resume…" : "AI is reading your resume…"}
+              </Text>
+              <View style={[M.progressBar, { backgroundColor: colors.surface }]}>
+                <Animated.View
+                  style={[M.progressFill, { width: `${uploadPct}%`, backgroundColor: colors.primary }]}
+                />
+              </View>
+              <Text style={[M.progressText, { color: colors.mutedForeground }]}>{Math.round(uploadPct)}%</Text>
+            </Animated.View>
+          )}
+
+          {/* ── PARSED SUMMARY ── */}
+          {step === "parsed" && parsedResult && (
+            <Animated.View entering={FadeInDown.springify()} style={{ gap: 16 }}>
+              <Text style={[M.desc, { color: colors.mutedForeground }]}>
+                We found the following in your resume. Choose how to update your portfolio:
+              </Text>
+
+              {/* Summary chips */}
+              <View style={M.summaryRow}>
+                {[
+                  { label: `${parsedResult.education?.length ?? 0} Education`,   icon: "book",      color: colors.primary },
+                  { label: `${parsedResult.experiences?.length ?? 0} Experience`, icon: "briefcase", color: "#FA6A6A" },
+                  { label: `${parsedResult.projects?.length ?? 0} Projects`,      icon: "code",      color: "#6AFAD0" },
+                  { label: `${parsedResult.skills?.length ?? 0} Skills`,          icon: "zap",       color: "#FAD06A" },
+                ].map((item) => (
+                  <View key={item.label} style={[M.summaryChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                    <Feather name={item.icon as any} size={12} color={item.color} />
+                    <Text style={[M.summaryChipText, { color: colors.foreground }]}>{item.label}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Replace option */}
+              <TouchableOpacity
+                style={[M.mergeCard, { backgroundColor: "#FA6A6A11", borderColor: "#FA6A6A44" }]}
+                onPress={() => Alert.alert(
+                  "Replace all data?",
+                  "This will delete your existing education, experience, projects, and skills, then replace them with what was found in this resume. Your profile info (name, bio, etc.) will also be updated.\n\nThis cannot be undone.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Replace Everything", style: "destructive", onPress: handleReplace },
+                  ]
+                )}
+              >
+                <Feather name="trash-2" size={18} color="#FA6A6A" />
+                <View style={{ flex: 1 }}>
+                  <Text style={[M.mergeLabel, { color: "#FA6A6A" }]}>Replace all data</Text>
+                  <Text style={[M.mergeSub, { color: colors.mutedForeground }]}>
+                    Delete everything and use only what's in this resume
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={14} color="#FA6A6A" />
+              </TouchableOpacity>
+
+              {/* Merge option */}
+              <TouchableOpacity
+                style={[M.mergeCard, { backgroundColor: "#7C6AFA11", borderColor: "#7C6AFA44" }]}
+                onPress={handleMerge}
+              >
+                <Feather name="git-merge" size={18} color={colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[M.mergeLabel, { color: colors.primary }]}>Add to existing data</Text>
+                  <Text style={[M.mergeSub, { color: colors.mutedForeground }]}>
+                    Keep current info and add new items from this resume
+                  </Text>
+                </View>
+                <Feather name="chevron-right" size={14} color={colors.primary} />
+              </TouchableOpacity>
+            </Animated.View>
+          )}
+
+          {/* ── REPLACING / REBUILDING ── */}
+          {(step === "replacing" || step === "rebuilding") && (
+            <Animated.View entering={FadeIn.duration(300)} style={M.centeredContent}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[M.statusLabel, { color: colors.foreground }]}>
+                {step === "replacing" ? "Saving your data…" : "Rebuilding portfolio…"}
+              </Text>
+              <Text style={[M.statusSub, { color: colors.mutedForeground }]}>
+                {step === "rebuilding"
+                  ? "Your portfolio site will be live in about 90 seconds."
+                  : "Just a moment…"}
+              </Text>
+              {step === "rebuilding" && (
+                <TouchableOpacity
+                  style={[M.doneBtn, { backgroundColor: colors.primary + "22", borderColor: colors.primary }]}
+                  onPress={handleClose}
+                >
+                  <Text style={[M.doneBtnText, { color: colors.primary }]}>Close (rebuilding in background)</Text>
+                </TouchableOpacity>
+              )}
+            </Animated.View>
+          )}
+
+          {/* ── ERROR ── */}
+          {step === "error" && (
+            <Animated.View entering={FadeIn.duration(300)} style={M.centeredContent}>
+              <View style={[M.errorIcon, { backgroundColor: "#FA6A6A22" }]}>
+                <Feather name="alert-circle" size={32} color="#FA6A6A" />
+              </View>
+              <Text style={[M.statusLabel, { color: colors.foreground }]}>Something went wrong</Text>
+              <Text style={[M.errorMsg, { color: colors.mutedForeground }]}>{error}</Text>
+              <BexoButton label="Try again" onPress={reset} />
+            </Animated.View>
+          )}
+        </ScrollView>
+      </View>
+    </Modal>
+  );
+}
+
+const M = StyleSheet.create({
+  container: { flex: 1 },
+  header: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingBottom: 14, borderBottomWidth: 1,
+  },
+  cancel: { fontSize: 15, width: 60 },
+  title:  { fontSize: 17, fontWeight: "700" },
+  content: { padding: 20, gap: 16, flexGrow: 1 },
+  desc: { fontSize: 14, lineHeight: 21 },
+  optionCard: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    padding: 16, borderRadius: 16, borderWidth: 1, overflow: "hidden",
+  },
+  optionIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  optionLabel: { fontSize: 15, fontWeight: "700" },
+  optionSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
+  centeredContent: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16, paddingVertical: 40 },
+  statusLabel: { fontSize: 18, fontWeight: "700", textAlign: "center" },
+  statusSub: { fontSize: 13, textAlign: "center", lineHeight: 20 },
+  progressBar: { width: "100%", height: 6, borderRadius: 3, overflow: "hidden" },
+  progressFill: { height: 6, borderRadius: 3 },
+  progressText: { fontSize: 12 },
+  summaryRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  summaryChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1 },
+  summaryChipText: { fontSize: 12, fontWeight: "600" },
+  mergeCard: {
+    flexDirection: "row", alignItems: "center", gap: 14,
+    padding: 16, borderRadius: 16, borderWidth: 1,
+  },
+  mergeLabel: { fontSize: 15, fontWeight: "700" },
+  mergeSub: { fontSize: 12, marginTop: 3, lineHeight: 17 },
+  doneBtn: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12, borderWidth: 1, marginTop: 8 },
+  doneBtnText: { fontSize: 13, fontWeight: "600" },
+  errorIcon: { width: 72, height: 72, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  errorMsg: { fontSize: 13, textAlign: "center", lineHeight: 20, maxWidth: 260 },
+});
+```
+
+---
+
+## SECTION 8 — FINAL VERIFICATION CHECKLIST
+
+Run through every item. Do not ship until all pass.
+
+**Auth & Identity:**
+- [ ] Phone OTP sends successfully (check network tab for 200 from `/auth/send-otp`)
+- [ ] OTP row appears in Supabase `otp_codes` table
+- [ ] Correct OTP code → session created → navigates to dashboard
+- [ ] Wrong OTP code → error message, OTP not deleted
+- [ ] Google login → redirects → session created → dashboard
+- [ ] Google user → Settings → "Link WhatsApp" → sends OTP → verifies → `phone_identities` row created
+- [ ] Phone user → Settings → "Link Email" → saves email → Supabase sends verification email
+- [ ] `phone_identities` and `profiles.phone` match after linking
+- [ ] Phone login after Google user linked phone → finds existing account (same dashboard)
+
+**Uploads:**
+- [ ] Pick avatar → compresses → uploads → CDN URL saved in `profiles.avatar_url`
+- [ ] Avatar appears immediately in dashboard header after upload
+- [ ] Pick PDF resume → auto-uploads to `resumes` bucket → parse starts automatically (no button click needed)
+- [ ] Upload progress bar visible during upload
+- [ ] Parse progress shown after upload completes
+- [ ] Parsed summary shows (N education, N experience, N projects, N skills)
+- [ ] "Use this data" → all data saved to Supabase tables (verify in Table Editor)
+- [ ] App refresh → all data still there (not just in memory)
+- [ ] Files appear in Supabase Storage under `{userId}/` folder for each bucket
+
+**Data persistence:**
+- [ ] Close app and reopen → profile data loads from Supabase (not blank)
+- [ ] Education/experience/projects/skills all persist after app restart
+- [ ] `fetchProfile` correctly loads all 4 sub-tables
+
+**Profile completion widget:**
+- [ ] Banner shows when score < 80%
+- [ ] Tapping banner opens `MissingInfoFlow`
+- [ ] Each field saves to Supabase immediately when completed
+- [ ] Avatar upload in widget works (not just saves local URI)
+- [ ] Section fields (education, etc.) navigate to correct tab in edit-profile
+- [ ] After completing all fields, banner disappears
+
+**Rebuild:**
+- [ ] Rebuild button → RebuildModal opens
+- [ ] "Upload new resume" → file picker → auto-upload → parse → summary shown
+- [ ] "Replace all" → deletes existing rows → inserts parsed → triggers build
+- [ ] "Add to existing" → upserts new data → triggers build
+- [ ] "Rebuild with current data" → triggers build immediately
+- [ ] Build status updates in real-time on dashboard
+
+**Edit Profile:**
+- [ ] All 5 tabs render and are accessible
+- [ ] Each section: add, edit (tap entry), delete (trash icon) all work
+- [ ] Data saved to Supabase immediately on modal Save
+- [ ] Institution/degree/field autocomplete suggests options as user types
+- [ ] Profile save shows success and navigates back
+
+**Home Screen:**
+- [ ] Loading spinner shown until profile is confirmed loaded
+- [ ] No double-fetch (only 1 request per table in network tab)
+- [ ] Portfolio status card: Live / Building / Generate correctly shown
+- [ ] Stats row shows real numbers
+- [ ] Quick action chips show correct counts and navigate to right tab
+- [ ] FAB navigates to update screen
+- [ ] Pull-to-refresh works
+
+# END OF PROMPT
