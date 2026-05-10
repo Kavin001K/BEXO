@@ -10,7 +10,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "com.mybexo",
+    "scheme": "mybexo",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
@@ -24,6 +24,7 @@
     },
     "android": {
       "package": "com.mybexo.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0A0A0F"
