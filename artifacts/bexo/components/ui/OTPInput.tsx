@@ -23,16 +23,38 @@ export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
   const inputs = useRef<(TextInput | null)[]>([]);
 
   const handleChange = (text: string, idx: number) => {
+    // Handle pasting: if text length > 1, assume it's a code
+    if (text.length > 1) {
+      const code = text.replace(/[^0-9]/g, "").slice(0, length);
+      const next = [...values];
+      for (let i = 0; i < code.length; i++) {
+        next[i] = code[i];
+      }
+      setValues(next);
+      onCodeChange?.(next.join(""));
+      
+      const lastIdx = Math.min(code.length - 1, length - 1);
+      inputs.current[lastIdx]?.focus();
+
+      if (code.length === length) {
+        onComplete(code);
+      }
+      return;
+    }
+
     const cleaned = text.replace(/[^0-9]/g, "").slice(-1);
     const next = [...values];
     next[idx] = cleaned;
     setValues(next);
     onCodeChange?.(next.join(""));
+
     if (cleaned && idx < length - 1) {
       inputs.current[idx + 1]?.focus();
     }
-    if (next.every(Boolean)) {
-      onComplete(next.join(""));
+
+    const fullCode = next.join("");
+    if (fullCode.length === length) {
+      onComplete(fullCode);
     }
   };
 
@@ -50,34 +72,34 @@ export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
 
   return (
     <View style={styles.row}>
-      {Array(length)
-        .fill(0)
-        .map((_, i) => (
-          <TextInput
-            key={i}
-            ref={(r) => {
-              inputs.current[i] = r;
-            }}
-            style={[
-              styles.box,
-              {
-                backgroundColor: colors.surface,
-                borderColor: values[i] ? colors.primary : colors.border,
-                color: colors.foreground,
-              },
-            ]}
-            value={values[i]}
-            onChangeText={(t) => handleChange(t, i)}
-            onKeyPress={(e) => handleKeyPress(e, i)}
-            keyboardType="number-pad"
-            maxLength={1}
-            textAlign="center"
-            selectionColor={colors.primary}
-            returnKeyType="next"
-            autoComplete="one-time-code"
-            textContentType="oneTimeCode"
-          />
-        ))}
+      {values.map((val, i) => (
+        <TextInput
+          key={i}
+          ref={(r) => {
+            inputs.current[i] = r;
+          }}
+          style={[
+            styles.box,
+            {
+              backgroundColor: colors.surface,
+              borderColor: val ? colors.primary : colors.border,
+              color: colors.foreground,
+            },
+          ]}
+          value={val}
+          onChangeText={(t) => handleChange(t, i)}
+          onKeyPress={(e) => handleKeyPress(e, i)}
+          keyboardType="number-pad"
+          maxLength={length} // Allow longer input for paste detection
+          textAlign="center"
+          selectionColor={colors.primary}
+          returnKeyType={i === length - 1 ? "done" : "next"}
+          autoComplete="one-time-code"
+          textContentType="oneTimeCode"
+          selectTextOnFocus
+          blurOnSubmit={i === length - 1}
+        />
+      ))}
     </View>
   );
 }
@@ -85,16 +107,19 @@ export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
 const styles = StyleSheet.create({
   row: {
     flexDirection: "row",
-    gap: 10,
+    gap: 12,
     justifyContent: "center",
+    marginVertical: 10,
   },
   box: {
-    width: 48,
-    height: 56,
-    borderRadius: 12,
+    width: 50,
+    height: 60,
+    borderRadius: 14,
     borderWidth: 1.5,
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
-    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
+    ...Platform.select({
+      web: { outlineStyle: "none" } as any,
+    }),
   },
 });

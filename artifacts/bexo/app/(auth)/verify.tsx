@@ -38,16 +38,20 @@ export default function VerifyScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    const tick = () => {
-      const secs = getOtpRemainingSeconds();
-      setRemaining(secs);
-      if (secs <= 0 && timerRef.current) {
-        clearInterval(timerRef.current);
-        timerRef.current = null;
+    // Reset remaining when otpSentAt changes
+    const diff = getOtpRemainingSeconds();
+    setRemaining(diff);
+
+    if (diff <= 0) return;
+
+    timerRef.current = setInterval(() => {
+      const currentRemaining = getOtpRemainingSeconds();
+      setRemaining(currentRemaining);
+      if (currentRemaining <= 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
       }
-    };
-    tick();
-    timerRef.current = setInterval(tick, 1000);
+    }, 1000);
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
@@ -66,19 +70,27 @@ export default function VerifyScreen() {
       setError(`Enter the ${OTP_LENGTH}-digit code`);
       return;
     }
-    if (isOtpExpired()) {
+    if (expired) {
       setError("This OTP has expired. Request a new one.");
       return;
     }
     setError("");
     setLoading(true);
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
+    if (Platform.OS !== "web") {
+      try {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } catch (e) {
+        // Ignore haptics errors
+      }
+    }
 
     try {
       const resp = await apiFetch("/auth/verify-otp", {
         method: "POST",
         body: JSON.stringify({ phone: phoneNumber, code }),
       });
+      
       const result = await resp.json();
       if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
@@ -89,7 +101,6 @@ export default function VerifyScreen() {
       });
       if (sessionErr) throw sessionErr;
 
-      // Auth state listener in useAuthStore handles navigation
       router.replace("/dashboard");
     } catch (e: any) {
       setError(e.message ?? "Invalid code. Try again.");
@@ -99,6 +110,7 @@ export default function VerifyScreen() {
   };
 
   const handleResend = async () => {
+    if (resending) return;
     setResending(true);
     setError("");
     setCode("");
@@ -109,8 +121,11 @@ export default function VerifyScreen() {
       });
       const result = await resp.json();
       if (!resp.ok) throw new Error(result.error ?? "Could not resend OTP");
+      
       setOtpSentAt(Date.now());
-      setRemaining(OTP_EXPIRY_SECS);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
     } catch (e: any) {
       setError(e.message ?? "Could not resend OTP");
     } finally {
@@ -156,7 +171,6 @@ export default function VerifyScreen() {
             <Feather name="arrow-left" size={20} color={colors.primary} />
           </TouchableOpacity>
 
-          {/* WhatsApp icon badge */}
           <View style={[styles.iconBadge, { backgroundColor: "#25D36622" }]}>
             <Feather name="message-circle" size={32} color="#25D366" />
           </View>
@@ -171,7 +185,6 @@ export default function VerifyScreen() {
             </Text>
           </Text>
 
-          {/* Countdown */}
           <View
             style={[
               styles.timerRow,

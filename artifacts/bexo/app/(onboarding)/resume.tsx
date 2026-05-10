@@ -225,7 +225,7 @@ export default function ResumeScreen() {
               <BexoButton
                 label={parsing ? "Merging…" : "Add to existing data"}
                 onPress={() => handleConfirmParsed("merge")}
-                variant="outline"
+                variant="secondary"
                 loading={parsing}
               />
             </View>

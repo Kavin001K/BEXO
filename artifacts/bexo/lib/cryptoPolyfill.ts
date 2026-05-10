@@ -43,7 +43,14 @@ if (Platform.OS !== "web") {
           algoMap[algorithm] ?? ExpoCrypto.CryptoDigestAlgorithm.SHA256;
         const inputBytes =
           data instanceof Uint8Array ? data : new Uint8Array(data);
-        return ExpoCrypto.digest(mapped, inputBytes);
+        
+        // Use digestAsync to get a hex string, then convert to ArrayBuffer
+        const hex = await ExpoCrypto.digestStringAsync(mapped, Buffer.from(inputBytes).toString('hex'), {
+          encoding: ExpoCrypto.CryptoEncoding.HEX
+        });
+        
+        const bytes = new Uint8Array(hex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+        return bytes.buffer as ArrayBuffer;
       },
     };
   }
