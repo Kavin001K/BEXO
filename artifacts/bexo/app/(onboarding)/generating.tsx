@@ -36,7 +36,6 @@ export default function GeneratingScreen() {
     usePortfolioStore();
 
   const [stepIdx, setStepIdx] = useState(0);
-  const [showDelayMessage, setShowDelayMessage] = useState(false);
   const pulseAnim = useRef(new Animated.Value(0.6)).current;
   const progressAnim = useRef(new Animated.Value(0)).current;
 
@@ -60,25 +59,21 @@ export default function GeneratingScreen() {
       useNativeDriver: false,
     }).start(() => {
       // Once the bar is fully loaded, take user to dashboard
-      // We pass a 'notified' param so the dashboard can show the notification
+      useProfileStore.getState().setOnboardingStep("completed");
       router.replace({ 
         pathname: "/dashboard", 
         params: { onboarding_complete: "true" } 
       });
     });
 
-    const delayTimer = setTimeout(() => {
-      setShowDelayMessage(true);
-    }, THREE_MINUTES);
-
     const failTimer = setTimeout(() => {
+      useProfileStore.getState().setOnboardingStep("completed");
       router.replace("/dashboard");
     }, FIVE_MINUTES);
 
     return () => {
       pulse.stop();
       clearInterval(interval);
-      clearTimeout(delayTimer);
       clearTimeout(failTimer);
     };
   }, []);
@@ -95,6 +90,7 @@ export default function GeneratingScreen() {
 
     if (!hasData) {
       console.warn("[Generating] Profile has no data — skipping build, going to dashboard.");
+      useProfileStore.getState().setOnboardingStep("completed");
       setTimeout(() => router.replace("/dashboard"), 1500);
       return;
     }
@@ -103,10 +99,9 @@ export default function GeneratingScreen() {
     const unsub = subscribeToBuilds(profile.id);
     return unsub;
   }, [profile?.id]);
-
   useEffect(() => {
-    // If the build actually finishes before our animation, we can skip ahead
     if (buildStatus === "done" && portfolioUrl) {
+      useProfileStore.getState().setOnboardingStep("completed");
       router.replace({ 
         pathname: "/dashboard", 
         params: { onboarding_complete: "true" } 
@@ -168,18 +163,7 @@ export default function GeneratingScreen() {
           {STEPS[stepIdx]}
         </Text>
 
-        {showDelayMessage && (
-          <View style={[styles.delayBanner, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.delayText, { color: colors.mutedForeground }]}>
-              This is taking longer than expected. Hang tight — we'll take you to your dashboard in a moment.
-            </Text>
-            <TouchableOpacity onPress={() => router.replace("/dashboard")}>
-              <Text style={[styles.delayAction, { color: colors.primary }]}>
-                Go to dashboard now →
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+
 
         <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <LinearGradient

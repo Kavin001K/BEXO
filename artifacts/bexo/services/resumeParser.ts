@@ -113,11 +113,9 @@ async function parseWithAI(pdfBase64: string): Promise<ParsedResume> {
     }
     console.log("[resumeParser] Text extraction successful.");
   } catch (e: any) {
-    console.warn(`[resumeParser] Extraction failed: ${e.message}. Attempting direct vision parse...`);
-    lastError = e.message;
-    // We used to fallback to Gemini here, but user wants ONLY DeepSeek.
-    // DeepSeek doesn't support vision, so we must throw if text extraction fails.
-    throw e;
+    console.error(`[resumeParser] Extraction failed: ${e.message}`);
+    lastError = sanitizeError(e);
+    throw new Error(lastError);
   }
 
   // Step 2: Parse structured JSON from text using DeepSeek

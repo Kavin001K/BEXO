@@ -154,9 +154,9 @@ export default function HandleScreen() {
               style={styles.logo} 
             />
             <View style={styles.stepRow}>
-              <View style={[styles.dot, { backgroundColor: colors.primary }]} />
               <View style={[styles.dot, { backgroundColor: colors.border }]} />
               <View style={[styles.dot, { backgroundColor: colors.border }]} />
+              <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
               <View style={[styles.dot, { backgroundColor: colors.border }]} />
             </View>
           </View>

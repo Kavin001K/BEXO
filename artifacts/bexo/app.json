@@ -12,6 +12,12 @@
     "icon": "./assets/images/icon.png",
     "scheme": "mybexo",
     "userInterfaceStyle": "dark",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/6c1ecc80-1e4f-4aa7-9f6f-6d6b4c4973fe"
+    },
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/icon.png",
@@ -46,7 +52,9 @@
       "expo-font",
       "expo-web-browser",
       "expo-image-picker",
-      "expo-document-picker"
+      "expo-document-picker",
+      "expo-file-system",
+      "expo-updates"
     ],
     "experiments": {
       "typedRoutes": true,

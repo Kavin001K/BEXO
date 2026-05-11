@@ -101,7 +101,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     try {
       const { data } = await supabase.auth.getSession();
-      set({ session: data.session, user: data.session?.user ?? null, isLoading: false });
+      const session = data.session;
+      set({ session, user: session?.user ?? null, isLoading: false });
+
+      if (session?.user) {
+        useProfileStore.getState().fetchProfile(session.user.id);
+      }
 
       supabase.auth.onAuthStateChange(async (event, session) => {
         set({ session, user: session?.user ?? null });
@@ -112,6 +117,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           if (isGoogleUser) {
             await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
           }
+          useProfileStore.getState().fetchProfile(user.id);
+        } else if (event === "SIGNED_OUT") {
+          useProfileStore.getState().reset();
         }
       });
     } catch {

@@ -26,7 +26,7 @@ BEXO is a premium, AI-powered portfolio platform for students and professionals.
 ├── app/               # Main application screens (Expo Router)
 │   ├── (auth)/        # Authentication flow (Login, Verify)
 │   ├── (main)/        # Post-login screens (Dashboard, Portfolio, Update)
-│   ├── (onboarding)/  # First-time user flow (Handle, Resume, Photo)
+│   ├── (onboarding)/  # First-time user flow (Contact, Photo, Handle, Resume)
 │   └── ...
 ├── assets/            # Fonts, images, and brand assets
 ├── components/        # Reusable UI components

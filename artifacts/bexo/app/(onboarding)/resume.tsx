@@ -97,8 +97,8 @@ export default function ResumeScreen() {
       }
 
       // Sync done, move forward
-      setOnboardingStep("photo");
-      router.push("/(onboarding)/photo");
+      setOnboardingStep("cards");
+      router.push("/(onboarding)/cards");
     } catch (e: any) {
       console.error("[ResumeScreen] Save error:", e);
       setError(sanitizeError(e));
@@ -109,8 +109,8 @@ export default function ResumeScreen() {
   };
 
   const handleSkip = () => {
-    setOnboardingStep("photo");
-    router.push("/(onboarding)/photo");
+    setOnboardingStep("cards");
+    router.push("/(onboarding)/cards");
   };
 
   const handleRetry = () => {
@@ -137,9 +137,9 @@ export default function ResumeScreen() {
       >
         <View style={styles.stepRow}>
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
-          <View style={[styles.dot, { backgroundColor: colors.primary }]} />
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
+          <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>Upload your resume</Text>
@@ -217,17 +217,12 @@ export default function ResumeScreen() {
               </View>
             </View>
 
-            <View style={{ gap: 12 }}>
+            <View style={{ marginTop: 8 }}>
               <BexoButton
-                label={parsing ? "Replacing profile…" : "Replace all existing data"}
+                label={parsing ? "Importing profile…" : "Import Data & Continue"}
                 onPress={() => handleConfirmParsed("replace")}
                 loading={parsing}
-              />
-              <BexoButton
-                label={parsing ? "Merging…" : "Add to existing data"}
-                onPress={() => handleConfirmParsed("merge")}
-                variant="secondary"
-                loading={parsing}
+                icon={<Feather name="arrow-right" size={16} color="#fff" />}
               />
             </View>
 

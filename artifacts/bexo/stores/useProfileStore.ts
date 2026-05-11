@@ -82,7 +82,7 @@ interface ProfileState {
   projects: Project[];
   skills: Skill[];
   isLoading: boolean;
-  onboardingStep: "handle" | "resume" | "photo" | "cards" | "generating" | "done";
+  onboardingStep: "contact" | "photo" | "handle" | "resume" | "cards" | "generating" | "completed";
   parsedResumeData: Partial<{
     full_name: string;
     headline: string;
@@ -134,7 +134,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
   projects: [],
   skills: [],
   isLoading: false,
-  onboardingStep: "handle",
+  onboardingStep: "contact",
   parsedResumeData: null,
 
   setProfile: (profile) => set({ profile }),
@@ -200,7 +200,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       }
 
       if (data) {
-        set({ profile: data, onboardingStep: "done" });
+        set({ profile: data, onboardingStep: "completed" });
         const [edu, exp, proj, skillsRes] = await Promise.all([
           supabase.from("education").select("*").eq("profile_id", data.id).order("start_year", { ascending: false }),
           supabase.from("experiences").select("*").eq("profile_id", data.id).order("start_date", { ascending: false }),
@@ -506,7 +506,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     projects: [],
     skills: [],
     isLoading: false,
-    onboardingStep: "handle",
+    onboardingStep: "contact",
     parsedResumeData: null,
   }),
 }));

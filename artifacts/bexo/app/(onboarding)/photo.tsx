@@ -79,8 +79,8 @@ export default function PhotoScreen() {
       }
       setUploading(false);
     }
-    setOnboardingStep("cards");
-    router.push("/(onboarding)/cards");
+    setOnboardingStep("handle");
+    router.push("/(onboarding)/handle");
   };
 
   return (
@@ -102,15 +102,10 @@ export default function PhotoScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.stepRow}>
-          {[0, 1, 2, 3].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                { backgroundColor: i === 2 ? colors.primary : colors.border },
-              ]}
-            />
-          ))}
+          <View style={[styles.dot, { backgroundColor: colors.border }]} />
+          <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
+          <View style={[styles.dot, { backgroundColor: colors.border }]} />
+          <View style={[styles.dot, { backgroundColor: colors.border }]} />
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>
@@ -181,8 +176,8 @@ export default function PhotoScreen() {
         <BexoButton
           label="Skip for now"
           onPress={() => {
-            setOnboardingStep("cards");
-            router.push("/(onboarding)/cards");
+            setOnboardingStep("handle");
+            router.push("/(onboarding)/handle");
           }}
           variant="ghost"
           disabled={uploading}

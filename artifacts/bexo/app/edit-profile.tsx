@@ -169,6 +169,7 @@ export default function EditProfileScreen() {
     linkedin_url: profile?.linkedin_url ?? "",
     github_url:   profile?.github_url   ?? "",
     email:        profile?.email        ?? "",
+    phone:        profile?.phone        ?? "",
   });
 
   // Avatar state
@@ -217,6 +218,7 @@ export default function EditProfileScreen() {
         linkedin_url: profile.linkedin_url ?? "",
         github_url:   profile.github_url   ?? "",
         email:        profile.email        ?? "",
+        phone:        profile.phone        ?? "",
       });
       setIsInitialized(true);
     }
@@ -334,6 +336,7 @@ export default function EditProfileScreen() {
                     linkedin_url: fresh.linkedin_url ?? "",
                     github_url:   fresh.github_url   ?? "",
                     email:        fresh.email        ?? "",
+                    phone:        fresh.phone        ?? "",
                   });
                 }
                 Alert.alert("Done!", "All data replaced with resume content. Review across tabs and save profile when ready.");
@@ -360,6 +363,7 @@ export default function EditProfileScreen() {
                     linkedin_url: fresh.linkedin_url ?? "",
                     github_url:   fresh.github_url   ?? "",
                     email:        fresh.email        ?? "",
+                    phone:        fresh.phone        ?? "",
                   });
                 }
                 Alert.alert("Done!", "New items from your resume have been added. Duplicates were automatically removed.");
@@ -626,6 +630,7 @@ export default function EditProfileScreen() {
                   { key: "headline",     label: "Headline",     placeholder: "A one-liner that defines you",       multiline: false },
                   { key: "bio",          label: "Bio",          placeholder: "Tell your story...",                 multiline: true  },
                   { key: "email",        label: "Email",        placeholder: "hello@you.com",                     multiline: false },
+                  { key: "phone",        label: "Phone",        placeholder: "+1 234 567 8900",                  multiline: false },
                   { key: "website",      label: "Website",      placeholder: "https://yoursite.com",              multiline: false },
                   { key: "linkedin_url", label: "LinkedIn URL", placeholder: "https://linkedin.com/in/you",        multiline: false },
                   { key: "github_url",   label: "GitHub URL",   placeholder: "https://github.com/you",            multiline: false },

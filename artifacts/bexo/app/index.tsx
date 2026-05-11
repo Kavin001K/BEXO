@@ -3,20 +3,28 @@ import React, { useEffect } from "react";
 import { View } from "react-native";
 
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useProfileStore } from "@/stores/useProfileStore";
 
 export default function RootIndex() {
   const session = useAuthStore((s) => s.session);
-  const isLoading = useAuthStore((s) => s.isLoading);
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
+  const profile = useProfileStore((s) => s.profile);
+  const isProfileLoading = useProfileStore((s) => s.isLoading);
+  const onboardingStep = useProfileStore((s) => s.onboardingStep);
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!isAuthLoading && !isProfileLoading) {
       if (session) {
-        router.replace("/(main)/dashboard");
+        if (profile?.handle && onboardingStep === "completed") {
+          router.replace("/(main)/dashboard");
+        } else {
+          router.replace("/(onboarding)/contact");
+        }
       } else {
         router.replace("/(auth)");
       }
     }
-  }, [isLoading, session]);
+  }, [isAuthLoading, isProfileLoading, session, profile?.handle, onboardingStep]);
 
   return <View style={{ flex: 1, backgroundColor: "#0A0A0F" }} />;
 }
