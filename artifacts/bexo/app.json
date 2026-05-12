@@ -54,7 +54,16 @@
       "expo-image-picker",
       "expo-document-picker",
       "expo-file-system",
-      "expo-updates"
+      "expo-updates",
+      "./plugins/withKotlinVersion",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "2.1.0"
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
