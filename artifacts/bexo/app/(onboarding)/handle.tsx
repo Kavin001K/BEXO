@@ -116,8 +116,8 @@ export default function HandleScreen() {
       
       const { setProfile } = useProfileStore.getState();
       setProfile(data);
-      setOnboardingStep("resume");
-      router.push("/(onboarding)/resume");
+      setOnboardingStep("dob");
+      router.push("/(onboarding)/dob");
     } catch (e: any) {
       setError(sanitizeError(e));
     } finally {

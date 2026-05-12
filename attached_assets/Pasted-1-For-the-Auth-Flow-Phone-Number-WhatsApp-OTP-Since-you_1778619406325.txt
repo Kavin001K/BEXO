@@ -1,0 +1,39 @@
+1. For the Auth Flow (Phone Number & WhatsApp OTP)
+
+Since you are bypassing Google/Email login for a strict phone-number approach, you want UI that makes entering a number and receiving a code feel instant and secure.
+
+Zepto, Swiggy, or Zomato: If you look at the top Indian quick-commerce and food delivery apps, their login screens are the gold standard for phone auth. They immediately focus the keyboard on the number pad, automatically detect country codes, and often have a seamless "Verify via WhatsApp" button that deep-links directly to WhatsApp or auto-reads the OTP.
+
+UI Takeaway: Keep it single-purpose. A large numeric keypad, clear typography, and a prominent "Send to WhatsApp" button.
+
+2. For the "Claim Your URL" & Theme Selection Flow
+
+This is the "Link-in-Bio" or personal portfolio space. These apps excel at making users feel like they are creating a brand.
+
+Bento (bento.me): This is arguably the best UI reference for BEXO's customization phase. Their onboarding makes claiming your URL (bento.me/username) feel highly rewarding. The way they handle profile picture uploads, theme selection, and customizing the page with a clean, drag-and-drop-style UI is incredibly smooth.
+
+Read.cv: This platform is essentially a highly aesthetic, modern version of a resume. Their mobile web onboarding for setting up a profile, choosing a minimalist theme, and adding a bio is top-notch. It leans into the "Industrial/Minimalist" UI which matches some of the agent skills in your codebase.
+
+UI Takeaway: Use live previews. When the user types their handle or selects a font/theme, show them a mockup of their website changing in real-time.
+
+3. For the Resume Parsing & Data Entry Flow
+
+Collecting heavy amounts of data (Education, Projects, Experience) on a mobile screen is risky because users get fatigued. These apps handle it well:
+
+LinkedIn (Mobile App): Look specifically at their "Add Experience" or "Add Education" modal screens. They use full-screen overlays with very clear input fields, native date wheels for start/end dates, and simple toggles for "I currently work here."
+
+Contra: This is a platform for freelancers. Their onboarding flow is incredible at asking for past projects, tools used, and skills. They break the data collection into bite-sized, gamified steps rather than one massive form.  
+
+Indeed (Resume Builder): For the specific "Upload Resume" parsing feature. When you upload a PDF to Indeed, it extracts the data and presents it back to you in an editable list.
+
+UI Takeaway: If they skip the resume upload, break the manual entry into a stepper or a progress bar (e.g., Step 1: Education, Step 2: Experience). Do not put all those fields on one long scrolling screen.
+
+Summary for your UI Research
+
+If you want to build the ultimate reference board (like a Figma mood board) for BEXO:
+
+Screenshot Zepto for the Login/OTP screen.
+
+Screenshot Contra or LinkedIn for the Forms (Experience, Education, Projects).
+
+Screenshot Bento.me for the Profile Photo, URL claiming, and Theme selection.

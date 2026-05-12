@@ -1,35 +1,25 @@
-import * as FileSystem from "expo-file-system/legacy";
 import * as ImageManipulator from "expo-image-manipulator";
-import { Platform } from "react-native";
 import { decode } from "base64-arraybuffer";
 import { supabase } from "@/lib/supabase";
 
 async function uriToBase64(uri: string): Promise<string> {
-  if (Platform.OS === "web") {
-    try {
-      const res = await fetch(uri);
-      const blob = await res.blob();
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result.split(",")[1] ?? result);
-        };
-        reader.onerror = (e) => reject(new Error(`FileReader error: ${e}`));
-        reader.readAsDataURL(blob);
-      });
-    } catch (e) {
-      console.error("[uriToBase64] Web fetch failed:", e);
-      // Fallback for some web environments if URI is already base64
-      if (uri.startsWith("data:")) return uri.split(",")[1];
-      throw e;
-    }
+  if (uri.startsWith("data:")) return uri.split(",")[1];
+  try {
+    const res = await fetch(uri);
+    const blob = await res.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        resolve(result.split(",")[1] ?? result);
+      };
+      reader.onerror = (e) => reject(new Error(`FileReader error: ${e}`));
+      reader.readAsDataURL(blob);
+    });
+  } catch (e) {
+    console.error("[uriToBase64] fetch failed:", e);
+    throw e;
   }
-  
-  // On native, use the standard FileSystem module
-  return FileSystem.readAsStringAsync(uri, {
-    encoding: "base64" as any,
-  });
 }
 
 /**

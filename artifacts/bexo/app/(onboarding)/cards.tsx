@@ -121,8 +121,8 @@ export default function CardsScreen() {
         }));
         await supabase.from("skills").upsert(skillRows, { onConflict: "profile_id,name" });
       }
-      setOnboardingStep("generating");
-      router.push("/(onboarding)/generating");
+      setOnboardingStep("theme");
+      router.push("/(onboarding)/theme");
     } catch {
       // non-critical
     } finally {

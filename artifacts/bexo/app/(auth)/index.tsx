@@ -1,8 +1,6 @@
-import { AntDesign, Feather } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Linking from "expo-linking";
 import { router } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import {
   Image,
@@ -20,54 +18,40 @@ import {
 import Animated, {
   FadeIn,
   FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/apiConfig";
-import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-WebBrowser.maybeCompleteAuthSession();
-
 const COUNTRY_CODES = [
-  { code: "+91", label: "India (+91)" },
-  { code: "+1",  label: "US (+1)" },
-  { code: "+44", label: "UK (+44)" },
-  { code: "+61", label: "AU (+61)" },
-  { code: "+49", label: "DE (+49)" },
-  { code: "+33", label: "FR (+33)" },
-  { code: "+81", label: "JP (+81)" },
-  { code: "+86", label: "CN (+86)" },
-  { code: "+55", label: "BR (+55)" },
-  { code: "+234",label: "NG (+234)" },
+  { code: "+91",  label: "India (+91)" },
+  { code: "+1",   label: "US (+1)" },
+  { code: "+44",  label: "UK (+44)" },
+  { code: "+61",  label: "AU (+61)" },
+  { code: "+49",  label: "DE (+49)" },
+  { code: "+33",  label: "FR (+33)" },
+  { code: "+81",  label: "JP (+81)" },
+  { code: "+86",  label: "CN (+86)" },
+  { code: "+55",  label: "BR (+55)" },
+  { code: "+234", label: "NG (+234)" },
 ];
 
 export default function LoginScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const setPhoneNumber = useAuthStore((s) => s.setPhoneNumber);
-  const setOtpSentAt  = useAuthStore((s) => s.setOtpSentAt);
-  const session       = useAuthStore((s) => s.session);
+  const setOtpSentAt   = useAuthStore((s) => s.setOtpSentAt);
+  const session        = useAuthStore((s) => s.session);
 
-  const [countryCode, setCountryCode] = useState("+91");
-  const [phone, setPhone]             = useState("");
-  const [loading, setLoading]         = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
+  const [countryCode, setCountryCode]         = useState("+91");
+  const [phone, setPhone]                     = useState("");
+  const [loading, setLoading]                 = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [error, setError]             = useState("");
+  const [error, setError]                     = useState("");
 
-  // Google button press scale
-  const googleScale = useSharedValue(1);
-  const googleAnimStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: googleScale.value }],
-  }));
-
-  // Navigate when session arrives — dashboard handles all routing decisions
   useEffect(() => {
     if (session?.user) {
       router.replace("/dashboard");
@@ -97,58 +81,6 @@ export default function LoginScreen() {
       setError(e.message ?? "Failed to send OTP via WhatsApp");
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Google sign-in via Supabase OAuth (server-side callback properly configured)
-  // Native: WebBrowser + exp:// redirect (covered by exp://** in Supabase URL config)
-  // Web: full-page redirect to Google → Supabase handles callback → redirects to app
-  const handleGoogleSignIn = async () => {
-    setGoogleLoading(true);
-    setError("");
-
-    try {
-      if (Platform.OS !== "web") {
-        // Native (Expo Go): deep-link redirect captured by WebBrowser
-        const redirectUrl = Linking.createURL("auth/callback");
-        const { data, error: oauthErr } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
-        });
-        if (oauthErr) throw oauthErr;
-        if (!data?.url) throw new Error("No OAuth URL returned");
-
-        console.log("OAuth URL generated:", data.url);
-
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-        if (result.type === "success" && result.url) {
-          const parsed = Linking.parse(result.url);
-          const code = parsed.queryParams?.code as string | undefined;
-          if (code) {
-            const { error: exchErr } = await supabase.auth.exchangeCodeForSession(code);
-            if (exchErr) throw exchErr;
-          }
-        }
-        // session change triggers routing via useEffect above
-        setGoogleLoading(false);
-      } else {
-        // Web: let Supabase do a full-page redirect (simplest, most reliable)
-        // Do NOT use skipBrowserRedirect: true on web — it causes COOP issues
-        const { error: oauthErr } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo:
-              typeof window !== "undefined"
-                ? window.location.origin + "/"
-                : undefined,
-          },
-        });
-        if (oauthErr) throw oauthErr;
-        // Page will navigate away — session is picked up by detectSessionInUrl: true
-      }
-    } catch (e: any) {
-      setError(e.message ?? "Google sign-in failed. Try again.");
-      setGoogleLoading(false);
     }
   };
 
@@ -196,6 +128,17 @@ export default function LoginScreen() {
           >
             Build a stunning student portfolio in minutes. Share it anywhere.
           </Animated.Text>
+
+          {/* WhatsApp badge */}
+          <Animated.View
+            entering={FadeInDown.delay(200).springify()}
+            style={[styles.whatsappBadge, { backgroundColor: "#25D366" + "18", borderColor: "#25D366" + "44" }]}
+          >
+            <View style={[styles.whatsappDot, { backgroundColor: "#25D366" }]} />
+            <Text style={[styles.whatsappText, { color: "#25D366" }]}>
+              Login via WhatsApp OTP
+            </Text>
+          </Animated.View>
 
           {/* Form */}
           <Animated.View entering={FadeInDown.delay(240).springify()} style={styles.form}>
@@ -287,49 +230,6 @@ export default function LoginScreen() {
             ) : null}
 
             <BexoButton label="Get OTP on WhatsApp" onPress={handleSendOTP} loading={loading} />
-
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={[styles.divLine, { backgroundColor: colors.border }]} />
-              <Text style={[styles.orText, { color: colors.mutedForeground }]}>or</Text>
-              <View style={[styles.divLine, { backgroundColor: colors.border }]} />
-            </View>
-
-            {/* Google button */}
-            <Animated.View style={googleAnimStyle}>
-              <TouchableOpacity
-                style={[
-                  styles.googleBtn,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: colors.border,
-                    opacity: googleLoading ? 0.6 : 1,
-                  },
-                ]}
-                onPress={handleGoogleSignIn}
-                onPressIn={() => {
-                  googleScale.value = withSpring(0.96, { stiffness: 400, damping: 20 });
-                }}
-                onPressOut={() => {
-                  googleScale.value = withSpring(1, { stiffness: 400, damping: 20 });
-                }}
-                disabled={googleLoading}
-                activeOpacity={1}
-              >
-                {googleLoading ? (
-                  <Text style={[styles.googleLabel, { color: colors.mutedForeground }]}>
-                    Signing in…
-                  </Text>
-                ) : (
-                  <>
-                    <AntDesign name="google" size={18} color={colors.foreground} />
-                    <Text style={[styles.googleLabel, { color: colors.foreground }]}>
-                      Continue with Google
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </Animated.View>
           </Animated.View>
 
           <Animated.Text
@@ -361,6 +261,22 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   sub: { fontSize: 15, lineHeight: 22 },
+  whatsappBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  whatsappDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  whatsappText: { fontSize: 13, fontWeight: "600" },
   form: { gap: 12 },
   phoneRow: {
     flexDirection: "row",
@@ -415,18 +331,5 @@ const styles = StyleSheet.create({
   },
   pickerLabel: { fontSize: 15, fontWeight: "500" },
   error: { fontSize: 13 },
-  divider: { flexDirection: "row", alignItems: "center", gap: 12 },
-  divLine: { flex: 1, height: 1 },
-  orText: { fontSize: 12 },
-  googleBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    height: 54,
-    borderRadius: 14,
-    borderWidth: 1,
-  },
-  googleLabel: { fontSize: 15, fontWeight: "600" },
   terms: { fontSize: 11, textAlign: "center", lineHeight: 16 },
 });

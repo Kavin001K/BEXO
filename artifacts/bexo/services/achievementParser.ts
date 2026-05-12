@@ -1,7 +1,19 @@
 import { apiFetch } from "@/lib/apiConfig";
-import { supabase } from "@/lib/supabase";
-import { decode } from "base64-arraybuffer";
-import * as FileSystem from "expo-file-system/legacy";
+
+async function uriToBase64(uri: string): Promise<string> {
+  if (uri.startsWith("data:")) return uri.split(",")[1];
+  const res = await fetch(uri);
+  const blob = await res.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1] ?? result);
+    };
+    reader.onerror = (e) => reject(new Error(`FileReader error: ${e}`));
+    reader.readAsDataURL(blob);
+  });
+}
 
 export interface ScannedAchievement {
   title: string;
@@ -27,9 +39,7 @@ export async function uploadAttachments(
   
   const attachments = await Promise.all(
     files.map(async (f) => {
-      const base64 = await FileSystem.readAsStringAsync(f.uri, {
-        encoding: "base64",
-      });
+      const base64 = await uriToBase64(f.uri);
       return { base64, mimeType: f.mimeType, fileName: f.name };
     })
   );
@@ -59,9 +69,7 @@ export async function scanAttachments(
   
   const attachments = await Promise.all(
     files.map(async (f) => {
-      const base64 = await FileSystem.readAsStringAsync(f.uri, {
-        encoding: "base64",
-      });
+      const base64 = await uriToBase64(f.uri);
       return { base64, mimeType: f.mimeType, fileName: f.name };
     })
   );

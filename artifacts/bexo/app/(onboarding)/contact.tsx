@@ -122,7 +122,7 @@ export default function ContactScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={[isGoogle ? "#6AFAFA18" : "#FA6AFA18", "transparent"]}
+        colors={[needsPhone ? "#6AFAFA18" : "#FA6AFA18", "transparent"]}
         style={styles.glow}
       />
       <KeyboardAvoidingView
@@ -147,17 +147,17 @@ export default function ContactScreen() {
           </View>
 
           <Text style={[styles.headline, { color: colors.foreground }]}>
-            {isGoogle ? "Verify your phone" : "Verify your email"}
+            {needsPhone ? "Verify your phone" : "Verify your email"}
           </Text>
           <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            {isGoogle 
+            {needsPhone
               ? "We need your phone number to secure your account and send important updates."
               : "We need your email to send you your portfolio analytics and career opportunities."}
           </Text>
 
           <View style={styles.field}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
-              {isGoogle ? "Phone Number" : "Email Address"}
+              {needsPhone ? "Phone Number" : "Email Address"}
             </Text>
             <View style={styles.inputContainer}>
               <View style={[styles.iconBox, { backgroundColor: colors.surface }]}>

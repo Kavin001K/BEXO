@@ -31,21 +31,28 @@ const { width: W, height: H } = Dimensions.get("window");
 const SCREENS = [
   {
     image: require("../../assets/images/Screen_1.png"),
+    headline: "Your Portfolio.\nYour Identity.",
+    subtitle: "Create a professional portfolio website in minutes.",
   },
   {
     image: require("../../assets/images/Screen_2.png"),
+    headline: "Upload Resume.\nLet AI Do The Work.",
+    subtitle: "We automatically extract projects, skills, experience and more.",
   },
   {
     image: require("../../assets/images/Screen_3.png"),
+    headline: "Stand Out\nOnline.",
+    subtitle: "Choose themes, fonts and your personal style.",
   },
   {
     image: require("../../assets/images/Screen_4.png"),
+    headline: "Launch Your\nPersonal Website.",
+    subtitle: "username.mybexo.com — live in minutes.",
   },
 ];
 
 function AnimatedDot({ active }: { active: boolean }) {
   const dotWidth = useSharedValue(active ? 28 : 8);
-  const colors = useColors();
 
   React.useEffect(() => {
     dotWidth.value = withSpring(active ? 28 : 8, { stiffness: 300, damping: 22 });
@@ -62,13 +69,11 @@ function AnimatedDot({ active }: { active: boolean }) {
 }
 
 export default function IntroScreen() {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
   const isLast = activeIdx === SCREENS.length - 1;
-
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -78,16 +83,15 @@ export default function IntroScreen() {
     }
   };
 
-  // Auto-scroll every 20 seconds
   React.useEffect(() => {
     const timer = setInterval(() => {
       const next = (activeIdx + 1) % SCREENS.length;
       scrollRef.current?.scrollTo({ x: next * W, animated: true });
       setActiveIdx(next);
-    }, 20000);
-
+    }, 5000);
     return () => clearInterval(timer);
   }, [activeIdx]);
+
   const goNext = () => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isLast) {
@@ -97,6 +101,8 @@ export default function IntroScreen() {
     const next = activeIdx + 1;
     scrollRef.current?.scrollTo({ x: next * W, animated: true });
   };
+
+  const current = SCREENS[activeIdx];
 
   return (
     <View style={[styles.container, { backgroundColor: "#08081A" }]}>
@@ -119,32 +125,27 @@ export default function IntroScreen() {
               style={styles.screenImage}
               resizeMode="cover"
             />
-            {/* Logo Overlay */}
-            <View style={[styles.logoContainer, { top: insets.top + 20 }]}>
-              <Image 
-                source={require("../../assets/images/icon.png")} 
-                style={styles.logo}
-                resizeMode="contain"
-              />
-            </View>
           </View>
         ))}
       </ScrollView>
 
-      {/* Bottom gradient overlay for controls */}
-      <LinearGradient
-        colors={["transparent", "rgba(8,8,26,0.7)", "rgba(8,8,26,0.95)"]}
-        style={styles.bottomGradient}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        pointerEvents="none"
-      />
+      {/* Top logo */}
+      <Animated.View
+        entering={FadeIn.duration(500)}
+        style={[styles.logoContainer, { top: insets.top + (Platform.OS === "web" ? 67 : 20) }]}
+      >
+        <Image
+          source={require("../../assets/images/icon.png")}
+          style={styles.logo}
+          resizeMode="contain"
+        />
+      </Animated.View>
 
       {/* Skip button */}
       {!isLast && (
         <Animated.View
           entering={FadeIn.duration(400)}
-          style={[styles.skipWrap, { top: insets.top + (Platform.OS === "web" ? 67 : 16) }]}
+          style={[styles.skipWrap, { top: insets.top + (Platform.OS === "web" ? 67 : 20) }]}
         >
           <TouchableOpacity
             style={styles.skipBtn}
@@ -156,11 +157,25 @@ export default function IntroScreen() {
         </Animated.View>
       )}
 
-      {/* Bottom controls */}
+      {/* Bottom gradient + content */}
+      <LinearGradient
+        colors={["transparent", "rgba(8,8,26,0.5)", "rgba(8,8,26,0.97)"]}
+        style={styles.bottomGradient}
+        start={{ x: 0.5, y: 0 }}
+        end={{ x: 0.5, y: 1 }}
+        pointerEvents="none"
+      />
+
       <Animated.View
-        entering={FadeInUp.delay(300).springify()}
+        entering={FadeInUp.delay(200).springify()}
         style={[styles.bottom, { paddingBottom: bottomPad + 12 }]}
       >
+        {/* Per-slide text */}
+        <View style={styles.textBlock}>
+          <Text style={styles.headline}>{current.headline}</Text>
+          <Text style={styles.subtitle}>{current.subtitle}</Text>
+        </View>
+
         {/* Dots */}
         <View style={styles.dots}>
           {SCREENS.map((_, i) => (
@@ -199,17 +214,20 @@ export default function IntroScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  screenImage: {
-    width: W,
-    height: H,
-  },
+  screenImage: { width: W, height: H },
   bottomGradient: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 200,
+    height: 380,
   },
+  logoContainer: {
+    position: "absolute",
+    left: 20,
+    zIndex: 10,
+  },
+  logo: { width: 80, height: 32 },
   skipWrap: {
     position: "absolute",
     right: 20,
@@ -234,20 +252,28 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: 28,
-    alignItems: "center",
-    gap: 24,
+    gap: 20,
+  },
+  textBlock: { gap: 8 },
+  headline: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.5,
+    lineHeight: 40,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.65)",
+    lineHeight: 22,
   },
   dots: {
     flexDirection: "row",
     gap: 6,
     alignItems: "center",
   },
-  ctaWrap: {
-    width: "100%",
-  },
-  nextBtnWrap: {
-    width: "100%",
-  },
+  ctaWrap: { width: "100%" },
+  nextBtnWrap: { width: "100%" },
   nextBtn: {
     height: 56,
     borderRadius: 16,
@@ -269,14 +295,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
     letterSpacing: 0.3,
-  },
-  logoContainer: {
-    position: "absolute",
-    left: 20,
-    zIndex: 10,
-  },
-  logo: {
-    width: 80,
-    height: 32,
   },
 });

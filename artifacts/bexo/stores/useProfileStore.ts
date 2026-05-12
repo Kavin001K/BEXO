@@ -59,6 +59,9 @@ export interface Profile {
   email_verified?: boolean;
   is_published: boolean;
   portfolio_theme: string;
+  dob?: string | null;
+  portfolio_font?: string | null;
+  website_preference?: string | null;
   rebuild_preferences?: string | null;
 }
 
@@ -82,7 +85,7 @@ interface ProfileState {
   projects: Project[];
   skills: Skill[];
   isLoading: boolean;
-  onboardingStep: "contact" | "photo" | "handle" | "resume" | "cards" | "generating" | "completed";
+  onboardingStep: "contact" | "photo" | "handle" | "dob" | "resume" | "cards" | "theme" | "font" | "preference" | "generating" | "completed";
   parsedResumeData: Partial<{
     full_name: string;
     headline: string;

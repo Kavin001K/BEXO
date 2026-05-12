@@ -110,7 +110,7 @@ export default function ResumeScreen() {
 
   const handleSkip = () => {
     setOnboardingStep("cards");
-    router.push("/(onboarding)/cards");
+    router.push("/(onboarding)/manual");
   };
 
   const handleRetry = () => {

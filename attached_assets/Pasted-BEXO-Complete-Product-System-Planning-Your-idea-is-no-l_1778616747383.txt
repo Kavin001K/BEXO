@@ -1,0 +1,350 @@
+BEXO — Complete Product & System Planning
+Your idea is no longer just a portfolio app.
+It is becoming an AI-powered identity + portfolio operating system for students and professionals.
+The onboarding flow must feel:
+Fast
+Premium
+Intelligent
+Human
+Trustworthy
+The biggest mistake would be making it feel like a boring form-filling app.
+So the architecture should be:
+“Minimal questions → AI helps → User reviews → Portfolio instantly generated.”
+1. CORE PRODUCT FLOW
+First-Time User Journey
+Install App
+   ↓
+Onboarding Screens
+   ↓
+WhatsApp OTP Login
+   ↓
+Collect Email
+   ↓
+Upload Profile Photo
+   ↓
+Name + Username URL
+   ↓
+DOB → Calculate Age
+   ↓
+Resume Upload?
+   ↓
+YES → AI Parse Resume
+NO  → Manual Information Collection
+   ↓
+AI Extract + User Review/Edit
+   ↓
+Theme Selection
+   ↓
+Font Selection
+   ↓
+Website Preference Input
+   ↓
+Portfolio Generation
+   ↓
+Dashboard
+2. APP EXPERIENCE DESIGN
+The app should behave like:
+Notion
+LinkedIn
+Framer
+Canva
+Resume.io
+combined into one simple experience.
+3. ONBOARDING SCREENS PLAN
+You only need 4–5 onboarding screens.
+Screen 1 — Identity
+Headline:
+“Your Portfolio. Your Identity.”
+Subtitle:
+Create a professional portfolio website in minutes.
+Visual:
+Animated portfolio preview
+Dynamic templates
+CTA:
+Get Started
+Screen 2 — AI Resume Intelligence
+Headline:
+“Upload Resume. Let AI Do The Work.”
+Subtitle:
+We automatically extract projects, skills, experience and more.
+Visual:
+Resume scanning animation
+Screen 3 — Personal Branding
+Headline:
+“Stand Out Online.”
+Subtitle:
+Choose themes, fonts and your personal style.
+Screen 4 — Your Own Website
+Headline:
+“Launch Your Personal Website Instantly.”
+Subtitle:
+username.mybexo.com
+4. LOGIN SYSTEM (IMPORTANT)
+Remove:
+Google Login
+Email Login
+Password Login
+Keep ONLY:
+WhatsApp OTP Login
+Recommended Login Architecture
+Step 1
+Enter phone number
+Step 2
+Backend sends OTP using:
+Meta WhatsApp Cloud API
+Step 3
+User enters 4-digit OTP
+Step 4
+JWT session created
+Recommended Backend Stack
+Authentication
+WhatsApp Cloud API
+JWT
+Refresh Tokens
+Database
+PostgreSQL or MongoDB
+File Storage
+Cloudinary
+OR
+AWS S3
+Resume AI
+OpenAI
+LangChain
+OCR Parser
+5. EMAIL COLLECTION
+After successful login:
+Screen:
+“Add Your Email”
+Rules:
+Required
+Unique email validation
+OTP verification optional
+Why?
+Recovery
+Contact section
+Notifications
+6. PROFILE PHOTO SCREEN
+Important UX Rule
+Do NOT force upload.
+Instead:
+Skip?
+⚠ Portfolios with profile photos perform better.
+Options:
+Camera
+Gallery
+Backend:
+Compress image automatically
+Store optimized versions
+7. NAME & URL SYSTEM
+Inputs
+Full Name
+Kavinbalaji S K
+Username
+kavin
+Generated:
+kavin.mybexo.com
+URL Validation Rules
+Must:
+Be unique
+Lowercase
+No spaces
+No special characters
+Show live validation:
+✓ Available
+✗ Already Taken
+8. DOB SYSTEM
+Input:
+Date Picker
+Automatically calculate:
+Age
+Experience level suggestions
+Example:
+DOB: 12/05/2004
+Age: 21
+9. RESUME SYSTEM (MOST IMPORTANT FEATURE)
+This is the core of BEXO.
+Resume Upload UX
+Upload Resume
+PDF / DOCX
+OR
+Skip & Enter Manually
+Resume Processing Pipeline
+Resume Upload
+   ↓
+OCR/Text Extraction
+   ↓
+AI Structuring
+   ↓
+JSON Generation
+   ↓
+Auto Fill Sections
+   ↓
+User Review
+   ↓
+Save to Database
+AI SHOULD EXTRACT
+About
+Education
+Projects
+Experience
+Skills
+Research
+Contact Information
+VERY IMPORTANT UX
+After AI extraction:
+DO NOT auto-save immediately.
+Instead show:
+We found these details.
+Review and edit before continuing.
+This builds:
+Trust
+Accuracy
+Premium feeling
+10. EDUCATION MODULE
+Fields
+Institution
+Percentage / CGPA
+Course
+Start Date
+End Date
+Checkbox:
+☑ Still Studying
+If checked:
+Disable end date
+About Education
+Textarea
+Database Structure
+education: [
+  {
+    institution: "",
+    cgpa: "",
+    course: "",
+    startDate: "",
+    endDate: "",
+    stillStudying: false,
+    about: ""
+  }
+]
+11. PROJECTS MODULE
+Fields
+Title
+Subtitle (Optional)
+About
+Tags
+Example:
+React, AI, UI/UX
+Attachments
+Allow:
+Image
+PDF
+Smart Feature Suggestion
+Auto-detect:
+GitHub links
+Tech stack
+Demo links
+from resume text.
+12. EXPERIENCE MODULE
+Fields
+Company
+Role
+Start Date
+End Date
+Checkbox:
+☑ Still Working
+Achievements
+Dynamic list:
++ Add Achievement
+13. SKILLS MODULE
+UX
+Searchable skill selector.
+Example:
+React
+Python
+Node.js
+UI Design
+Statistics
+Allow:
++ Add Custom Skill
+14. RESEARCH MODULE
+Fields
+Title
+Subtitle
+About
+Attachments:
+Image
+DOC
+PDF
+15. CONTACT MODULE
+Fields
+Phone Number
+(auto-filled from login)
+Email
+(auto-filled)
+Address
+Area
+City
+Pincode
+16. ABOUT YOURSELF SCREEN
+Freeform textarea.
+Prompt examples:
+“Tell us what makes you unique.”
+“Your goals, interests or story.”
+This helps AI personalize:
+Portfolio copy
+Hero sections
+Bio
+17. THEME SYSTEM
+This is EXTREMELY important.
+You should NOT ask:
+“Choose theme”
+Instead show:
+Visual Categories
+Minimal
+Corporate
+Creative
+Developer
+Dark Modern
+Futuristic
+Elegant
+with live previews.
+18. FONT SYSTEM
+Do not expose technical font names.
+Instead:
+Modern
+Professional
+Creative
+Classic
+Bold
+Internally map to:
+Inter
+Poppins
+Playfair
+Montserrat
+Space Grotesk
+19. WEBSITE PREFERENCE SCREEN
+Ask:
+How do you want your portfolio to feel?
+Examples:
+Minimal
+Premium
+Creative
+Dark
+Corporate
+AI-themed
+Startup-like
+AI uses this to:
+Select layout
+Color palette
+Typography
+Animations
+20. FINAL AI GENERATION
+After onboarding:
+Generating Your Portfolio...
+AI creates:
+Homepage
+About section
+Projects section
+Skill visualization
+SEO metadata
+Social preview
+Personal branding

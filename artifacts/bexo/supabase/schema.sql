@@ -26,11 +26,21 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   resume_url    TEXT,
   email         TEXT,
   phone         TEXT,
-  is_published  BOOLEAN     NOT NULL DEFAULT FALSE,
-  portfolio_theme TEXT      NOT NULL DEFAULT 'default',
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  is_published        BOOLEAN     NOT NULL DEFAULT FALSE,
+  portfolio_theme     TEXT        NOT NULL DEFAULT 'default',
+  dob                 DATE,
+  portfolio_font      TEXT        NOT NULL DEFAULT 'modern',
+  website_preference  TEXT,
+  phone_verified      BOOLEAN     NOT NULL DEFAULT FALSE,
+  email_verified      BOOLEAN     NOT NULL DEFAULT FALSE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Unique constraint for skills upsert (profile_id + name)
+-- This supports ON CONFLICT in bulk skill saves
+CREATE UNIQUE INDEX IF NOT EXISTS skills_profile_id_name_key
+  ON public.skills(profile_id, name);
 
 -- Automatic profile creation on signup (resilient — won't crash on duplicates)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
