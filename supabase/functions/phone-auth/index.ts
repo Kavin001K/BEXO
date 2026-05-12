@@ -88,7 +88,23 @@ serve(async (req) => {
 
     // ── SEND OTP ──
     if (action === "send") {
-      // Clean up old codes for this phone
+      // 1. Rate limiting: Check if an OTP was sent recently (last 30s)
+      const { data: recent, error: recentErr } = await adminClient
+        .from("otp_codes")
+        .select("created_at")
+        .eq("phone", phone)
+        .gte("created_at", new Date(Date.now() - 30 * 1000).toISOString())
+        .maybeSingle();
+
+      if (recentErr) throw recentErr;
+      if (recent) {
+        return new Response(JSON.stringify({ error: "Please wait 30 seconds before requesting another code." }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      // 2. Clean up old codes for this phone
       await adminClient
         .from("otp_codes")
         .delete()

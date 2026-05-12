@@ -3,11 +3,11 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Platform, ScrollView,
   StyleSheet, Text, TouchableOpacity, View,
 } from "react-native";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
@@ -34,6 +34,27 @@ export default function ResumeScreen() {
   const [stage,        setStage]            = useState<Stage>("idle");
   const [parsing,      setParsing]          = useState(false);
   const [error,        setError]            = useState("");
+  const [parsingMessage, setParsingMessage] = useState("AI is reading your resume…");
+
+  const PARSING_MESSAGES = [
+    "Scanning document...",
+    "Extracting timeline...",
+    "Formatting skills...",
+    "Structuring education...",
+    "Almost there...",
+  ];
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (stage === "parsing") {
+      let idx = 0;
+      interval = setInterval(() => {
+        idx = (idx + 1) % PARSING_MESSAGES.length;
+        setParsingMessage(PARSING_MESSAGES[idx]);
+      }, 2500);
+    }
+    return () => clearInterval(interval);
+  }, [stage]);
 
   const pickDocument = async () => {
     try {
@@ -78,8 +99,10 @@ export default function ResumeScreen() {
 
     } catch (e: any) {
       console.error("[ResumeScreen] Error:", e);
-      setError(sanitizeError(e));
-      setStage("error");
+      // Graceful degradation: move to manual with what we have
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      setOnboardingStep("cards");
+      router.push("/(onboarding)/manual");
     }
   };
 
@@ -131,9 +154,8 @@ export default function ResumeScreen() {
         style={styles.glow}
         start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
       />
-      <ScrollView
+      <KeyboardAwareScrollViewCompat
         contentContainerStyle={[styles.scroll, { paddingTop: topPad, paddingBottom: bottomPad }]}
-        showsVerticalScrollIndicator={false}
       >
         <View style={styles.stepRow}>
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
@@ -142,9 +164,9 @@ export default function ResumeScreen() {
           <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
         </View>
 
-        <Text style={[styles.headline, { color: colors.foreground }]}>Upload your resume</Text>
+        <Text style={[styles.headline, { color: colors.foreground }]}>Got a resume?</Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          AI will extract your experience, education, skills, and projects automatically.
+          Upload it and we'll fill out your profile automatically. Like magic.
         </Text>
 
         {/* Idle: drop zone */}
@@ -157,7 +179,7 @@ export default function ResumeScreen() {
             <View style={[styles.uploadIcon, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Feather name="upload-cloud" size={28} color={colors.mutedForeground} />
             </View>
-            <Text style={[styles.dropLabel, { color: colors.foreground }]}>Tap to upload PDF</Text>
+            <Text style={[styles.dropLabel, { color: colors.foreground }]}>Pick your PDF</Text>
             <Text style={[styles.dropHint, { color: colors.mutedForeground }]}>Max 10MB · PDF only</Text>
           </TouchableOpacity>
         )}
@@ -178,7 +200,7 @@ export default function ResumeScreen() {
         {stage === "parsing" && (
           <Animated.View entering={FadeInDown.springify()} style={[styles.progressCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <ActivityIndicator size="large" color="#6AFAD0" />
-            <Text style={[styles.stageLabel, { color: colors.foreground }]}>AI is reading your resume…</Text>
+            <Text style={[styles.stageLabel, { color: colors.foreground }]}>{parsingMessage}</Text>
             <View style={[styles.progressTrack, { backgroundColor: colors.border }]}>
               <View style={[styles.progressFill, { width: `${parseProgress}%` as any, backgroundColor: "#6AFAD0" }]} />
             </View>
@@ -192,7 +214,7 @@ export default function ResumeScreen() {
               <View style={[styles.summaryIcon, { backgroundColor: "#6AFAD022" }]}>
                 <Feather name="check-circle" size={22} color="#6AFAD0" />
               </View>
-              <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Resume parsed!</Text>
+              <Text style={[styles.summaryTitle, { color: colors.foreground }]}>Success! We've read your resume.</Text>
               <View style={styles.summaryChips}>
                 {parsedData.education?.length > 0 && (
                   <View style={[styles.chip, { backgroundColor: colors.primary + "22" }]}>
@@ -219,7 +241,7 @@ export default function ResumeScreen() {
 
             <View style={{ marginTop: 8 }}>
               <BexoButton
-                label={parsing ? "Importing profile…" : "Import Data & Continue"}
+                label={parsing ? "Importing profile…" : "Looks good, let's go"}
                 onPress={() => handleConfirmParsed("replace")}
                 loading={parsing}
                 icon={<Feather name="arrow-right" size={16} color="#fff" />}
@@ -227,7 +249,7 @@ export default function ResumeScreen() {
             </View>
 
             <TouchableOpacity style={styles.changeBtn} onPress={pickDocument}>
-              <Text style={[styles.changeBtnText, { color: colors.mutedForeground }]}>Upload a different file</Text>
+              <Text style={[styles.changeBtnText, { color: colors.mutedForeground }]}>Wait, let me pick another one</Text>
             </TouchableOpacity>
           </Animated.View>
         )}
@@ -265,7 +287,7 @@ export default function ResumeScreen() {
         {stage === "idle" && (
           <BexoButton label="Skip for now" onPress={handleSkip} variant="ghost" />
         )}
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }

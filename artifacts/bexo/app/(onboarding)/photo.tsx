@@ -12,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
@@ -91,7 +92,7 @@ export default function PhotoScreen() {
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       />
-      <ScrollView
+      <KeyboardAwareScrollViewCompat
         contentContainerStyle={[
           styles.scroll,
           {
@@ -99,7 +100,6 @@ export default function PhotoScreen() {
             paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
           },
         ]}
-        showsVerticalScrollIndicator={false}
       >
         <View style={styles.stepRow}>
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
@@ -109,10 +109,10 @@ export default function PhotoScreen() {
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>
-          Add a profile photo
+          Let's put a face to the name
         </Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          A photo makes your portfolio 3x more likely to be viewed.
+          Show your best self. A friendly photo helps people trust your work.
         </Text>
 
         {/* Avatar */}
@@ -145,7 +145,7 @@ export default function PhotoScreen() {
           >
             <Feather name="image" size={20} color={colors.foreground} />
             <Text style={[styles.photoBtnText, { color: colors.foreground }]}>
-              Choose from Library
+              Choose from my gallery
             </Text>
           </TouchableOpacity>
 
@@ -157,7 +157,7 @@ export default function PhotoScreen() {
             >
               <Feather name="camera" size={20} color={colors.foreground} />
               <Text style={[styles.photoBtnText, { color: colors.foreground }]}>
-                Take a Photo
+                Take a quick selfie
               </Text>
             </TouchableOpacity>
           )}
@@ -182,7 +182,7 @@ export default function PhotoScreen() {
           variant="ghost"
           disabled={uploading}
         />
-      </ScrollView>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }

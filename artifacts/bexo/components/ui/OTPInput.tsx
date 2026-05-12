@@ -15,9 +15,10 @@ interface Props {
   length?: number;
   onComplete: (code: string) => void;
   onCodeChange?: (code: string) => void;
+  autoFocus?: boolean;
 }
 
-export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
+export function OTPInput({ length = 4, onComplete, onCodeChange, autoFocus = false }: Props) {
   const colors = useColors();
   const [values, setValues] = useState<string[]>(Array(length).fill(""));
   const inputs = useRef<(TextInput | null)[]>([]);
@@ -99,6 +100,7 @@ export function OTPInput({ length = 4, onComplete, onCodeChange }: Props) {
           selectTextOnFocus
           blurOnSubmit={i === length - 1}
           cursorColor={colors.primary}
+          autoFocus={autoFocus && i === 0}
         />
       ))}
     </View>

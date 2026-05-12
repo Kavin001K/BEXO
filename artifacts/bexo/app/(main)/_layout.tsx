@@ -28,9 +28,7 @@ function NativeTabLayout() {
   );
 }
 
-function ClassicTabLayout() {
-  const colors = useColors();
-  const colorScheme = useColorScheme();
+function ClassicTabLayout({ colors, colorScheme }: { colors: any; colorScheme: any }) {
   const isDark = colorScheme === "dark";
   const isIOS = Platform.OS === "ios";
   const isWeb = Platform.OS === "web";
@@ -102,6 +100,9 @@ function ClassicTabLayout() {
 }
 
 export default function MainLayout() {
+  const colors = useColors();
+  const colorScheme = useColorScheme();
+
   if (isLiquidGlassAvailable()) return <NativeTabLayout />;
-  return <ClassicTabLayout />;
+  return <ClassicTabLayout colors={colors} colorScheme={colorScheme} />;
 }

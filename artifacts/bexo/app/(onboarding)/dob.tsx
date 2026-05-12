@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -92,126 +93,119 @@ export default function DobScreen() {
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+      <KeyboardAwareScrollViewCompat
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
+            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
+          },
+        ]}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            {
-              paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
-              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+        {/* Step indicator */}
+        <View style={styles.stepRow}>
+          {[0, 1, 2, 3, 4].map((i) => (
+            <View
+              key={i}
+              style={[
+                styles.dot,
+                { backgroundColor: i < 3 ? colors.primary : colors.border, opacity: i < 3 ? 0.5 : 1 },
+                i === 3 && { backgroundColor: colors.primary, opacity: 1, width: 30 },
+              ]}
+            />
+          ))}
+        </View>
+
+        <Animated.Text
+          entering={FadeInDown.springify()}
+          style={[styles.headline, { color: colors.foreground }]}
         >
-          {/* Step indicator */}
-          <View style={styles.stepRow}>
-            {[0, 1, 2, 3, 4].map((i) => (
-              <View
-                key={i}
-                style={[
-                  styles.dot,
-                  { backgroundColor: i < 3 ? colors.primary : colors.border, opacity: i < 3 ? 0.5 : 1 },
-                  i === 3 && { backgroundColor: colors.primary, opacity: 1, width: 30 },
-                ]}
-              />
-            ))}
+          When's your birthday?
+        </Animated.Text>
+        <Animated.Text
+          entering={FadeInDown.delay(60).springify()}
+          style={[styles.sub, { color: colors.mutedForeground }]}
+        >
+          Help us personalize your portfolio. Don't worry, you can hide this later.
+        </Animated.Text>
+
+        {/* Date inputs */}
+        <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.dateRow}>
+          <View style={[styles.dateField, { flex: 1 }]}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Day</Text>
+            <TextInput
+              style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
+              placeholder="DD"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={2}
+              value={day}
+              onChangeText={(t) => { setDay(t.replace(/\D/g, "")); setError(""); }}
+              selectionColor={colors.primary}
+            />
           </View>
 
-          <Animated.Text
+          <View style={[styles.dateField, { flex: 1 }]}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Month</Text>
+            <TextInput
+              style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
+              placeholder="MM"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={2}
+              value={month}
+              onChangeText={(t) => { setMonth(t.replace(/\D/g, "")); setError(""); }}
+              selectionColor={colors.primary}
+            />
+          </View>
+
+          <View style={[styles.dateField, { flex: 2 }]}>
+            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Year</Text>
+            <TextInput
+              style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
+              placeholder="YYYY"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="number-pad"
+              maxLength={4}
+              value={year}
+              onChangeText={(t) => { setYear(t.replace(/\D/g, "")); setError(""); }}
+              selectionColor={colors.primary}
+            />
+          </View>
+        </Animated.View>
+
+        {/* Live age display */}
+        {isValid && age !== null && (
+          <Animated.View
             entering={FadeInDown.springify()}
-            style={[styles.headline, { color: colors.foreground }]}
+            style={[styles.ageBadge, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
           >
-            Your date of birth
-          </Animated.Text>
-          <Animated.Text
-            entering={FadeInDown.delay(60).springify()}
-            style={[styles.sub, { color: colors.mutedForeground }]}
-          >
-            We use this to personalize your portfolio experience.
-          </Animated.Text>
-
-          {/* Date inputs */}
-          <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.dateRow}>
-            <View style={[styles.dateField, { flex: 1 }]}>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Day</Text>
-              <TextInput
-                style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-                placeholder="DD"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="number-pad"
-                maxLength={2}
-                value={day}
-                onChangeText={(t) => { setDay(t.replace(/\D/g, "")); setError(""); }}
-                selectionColor={colors.primary}
-              />
-            </View>
-
-            <View style={[styles.dateField, { flex: 1 }]}>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Month</Text>
-              <TextInput
-                style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-                placeholder="MM"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="number-pad"
-                maxLength={2}
-                value={month}
-                onChangeText={(t) => { setMonth(t.replace(/\D/g, "")); setError(""); }}
-                selectionColor={colors.primary}
-              />
-            </View>
-
-            <View style={[styles.dateField, { flex: 2 }]}>
-              <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Year</Text>
-              <TextInput
-                style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-                placeholder="YYYY"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="number-pad"
-                maxLength={4}
-                value={year}
-                onChangeText={(t) => { setYear(t.replace(/\D/g, "")); setError(""); }}
-                selectionColor={colors.primary}
-              />
-            </View>
+            <Feather name="user" size={16} color={colors.primary} />
+            <Text style={[styles.ageText, { color: colors.primary }]}>
+              Age {age}
+            </Text>
           </Animated.View>
+        )}
 
-          {/* Live age display */}
-          {isValid && age !== null && (
-            <Animated.View
-              entering={FadeInDown.springify()}
-              style={[styles.ageBadge, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
-            >
-              <Feather name="user" size={16} color={colors.primary} />
-              <Text style={[styles.ageText, { color: colors.primary }]}>
-                Age {age}
-              </Text>
-            </Animated.View>
-          )}
+        {error ? (
+          <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
+        ) : null}
 
-          {error ? (
-            <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
-          ) : null}
-
-          <View style={{ gap: 10, marginTop: 8 }}>
-            <BexoButton
-              label="Continue"
-              onPress={handleContinue}
-              loading={loading}
-              disabled={!isValid}
-            />
-            <BexoButton
-              label="Skip for now"
-              onPress={handleSkip}
-              variant="ghost"
-              disabled={loading}
-            />
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <View style={{ gap: 10, marginTop: 8 }}>
+          <BexoButton
+            label="Continue"
+            onPress={handleContinue}
+            loading={loading}
+            disabled={!isValid}
+          />
+          <BexoButton
+            label="Skip for now"
+            onPress={handleSkip}
+            variant="ghost"
+            disabled={loading}
+          />
+        </View>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }

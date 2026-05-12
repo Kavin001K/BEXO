@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
@@ -19,6 +19,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { apiFetch } from "@/lib/apiConfig";
+import { sanitizeError } from "@/lib/errorUtils";
 
 const COUNTRY_CODES = [
   { code: "+91", label: "India (+91)" },
@@ -41,16 +43,50 @@ export default function CollectPhoneScreen() {
   const [phone, setPhone] = useState("");
   const [showPicker, setShowPicker] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (cooldown > 0) {
+      timerRef.current = setInterval(() => {
+        setCooldown((c) => Math.max(0, c - 1));
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [cooldown]);
 
   const fullPhone = `${countryCode}${phone.replace(/\D/g, "")}`;
 
-  const handleContinue = () => {
+  const handleContinue = async () => {
     if (!phone || phone.replace(/\D/g, "").length < 7) {
       setError("Enter a valid phone number");
       return;
     }
-    setCollectedPhone(fullPhone);
-    router.replace("/dashboard");
+    if (cooldown > 0) return;
+
+    setError("");
+    setLoading(true);
+    try {
+      const resp = await apiFetch("/auth/send-otp", {
+        method: "POST",
+        body: JSON.stringify({ phone: fullPhone }),
+      });
+      const result = await resp.json();
+      if (!resp.ok) throw new Error(result.error ?? "Failed to send OTP");
+
+      setCollectedPhone(fullPhone);
+      setCooldown(30); // 30s cooldown
+      router.push("/(auth)/verify");
+    } catch (e: any) {
+      setError(sanitizeError(e));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -151,7 +187,13 @@ export default function CollectPhoneScreen() {
             <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
           ) : null}
 
-          <BexoButton label="Continue" onPress={handleContinue} icon={<Feather name="arrow-right" size={16} color="#fff" />} />
+          <BexoButton
+            label={cooldown > 0 ? `Resend in ${cooldown}s` : (loading ? "Sending..." : "Send OTP on WhatsApp")}
+            onPress={handleContinue}
+            loading={loading}
+            disabled={cooldown > 0}
+            icon={cooldown === 0 && <Feather name="arrow-right" size={16} color="#fff" />}
+          />
 
           <TouchableOpacity onPress={() => router.replace("/dashboard")}>
             <Text style={[styles.skip, { color: colors.mutedForeground }]}>Skip for now</Text>

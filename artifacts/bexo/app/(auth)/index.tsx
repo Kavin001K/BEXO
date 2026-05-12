@@ -119,14 +119,14 @@ export default function LoginScreen() {
             entering={FadeInDown.delay(80).springify()}
             style={[styles.headline, { color: colors.foreground }]}
           >
-            Your portfolio,{"\n"}your identity.
+            Your work deserves{"\n"}a beautiful home.
           </Animated.Text>
 
           <Animated.Text
             entering={FadeInDown.delay(160).springify()}
             style={[styles.sub, { color: colors.mutedForeground }]}
           >
-            Build a stunning student portfolio in minutes. Share it anywhere.
+            Create a stunning portfolio in seconds. Show the world what you're capable of.
           </Animated.Text>
 
           {/* WhatsApp badge */}
@@ -136,7 +136,7 @@ export default function LoginScreen() {
           >
             <View style={[styles.whatsappDot, { backgroundColor: "#25D366" }]} />
             <Text style={[styles.whatsappText, { color: "#25D366" }]}>
-              Login via WhatsApp OTP
+              Fast login with WhatsApp
             </Text>
           </Animated.View>
 
@@ -160,7 +160,7 @@ export default function LoginScreen() {
               </TouchableOpacity>
               <TextInput
                 style={[styles.phoneInput, { color: colors.foreground }]}
-                placeholder="Phone number"
+                placeholder="Mobile number"
                 placeholderTextColor={colors.mutedForeground}
                 keyboardType="phone-pad"
                 value={phone}
@@ -229,7 +229,7 @@ export default function LoginScreen() {
               </Animated.Text>
             ) : null}
 
-            <BexoButton label="Get OTP on WhatsApp" onPress={handleSendOTP} loading={loading} />
+            <BexoButton label="Send me the code" onPress={handleSendOTP} loading={loading} />
           </Animated.View>
 
           <Animated.Text

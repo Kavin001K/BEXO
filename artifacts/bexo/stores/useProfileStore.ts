@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import type { ParsedResume } from "@/services/resumeParser";
 import { sanitizeError } from "@/lib/errorUtils";
@@ -130,7 +132,9 @@ interface ProfileState {
   reset: () => void;
 }
 
-export const useProfileStore = create<ProfileState>((set, get) => ({
+export const useProfileStore = create<ProfileState>()(
+  persist(
+    (set, get) => ({
   profile: null,
   education: [],
   experiences: [],
@@ -508,8 +512,22 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     experiences: [],
     projects: [],
     skills: [],
-    isLoading: false,
     onboardingStep: "contact",
     parsedResumeData: null,
+    isLoading: false,
   }),
-}));
+    }),
+    {
+      name: "bexo-profile-storage",
+      storage: createJSONStorage(() => AsyncStorage),
+      partialize: (state) => ({
+        onboardingStep: state.onboardingStep,
+        profile: state.profile,
+        education: state.education,
+        experiences: state.experiences,
+        projects: state.projects,
+        skills: state.skills,
+      }),
+    }
+  )
+);

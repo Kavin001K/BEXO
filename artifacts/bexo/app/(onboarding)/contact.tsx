@@ -13,6 +13,7 @@ import {
   View,
   TouchableOpacity,
 } from "react-native";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
@@ -125,84 +126,87 @@ export default function ContactScreen() {
         colors={[needsPhone ? "#6AFAFA18" : "#FA6AFA18", "transparent"]}
         style={styles.glow}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+      <KeyboardAwareScrollViewCompat
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingTop: insets.top + 60,
+            paddingBottom: insets.bottom + 20,
+          },
+        ]}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            {
-              paddingTop: insets.top + 60,
-              paddingBottom: insets.bottom + 20,
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.stepRow}>
-            <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
-            <View style={[styles.dot, { backgroundColor: colors.border }]} />
-            <View style={[styles.dot, { backgroundColor: colors.border }]} />
-            <View style={[styles.dot, { backgroundColor: colors.border }]} />
-          </View>
+        <View style={styles.stepRow}>
+          <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
+          <View style={[styles.dot, { backgroundColor: colors.border }]} />
+          <View style={[styles.dot, { backgroundColor: colors.border }]} />
+          <View style={[styles.dot, { backgroundColor: colors.border }]} />
+        </View>
 
-          <Text style={[styles.headline, { color: colors.foreground }]}>
-            {needsPhone ? "Verify your phone" : "Verify your email"}
-          </Text>
-          <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            {needsPhone
-              ? "We need your phone number to secure your account and send important updates."
-              : "We need your email to send you your portfolio analytics and career opportunities."}
-          </Text>
+        <Text style={[styles.headline, { color: colors.foreground }]}>
+          {needsPhone ? "How can we reach you?" : "What's your email?"}
+        </Text>
+        <Text style={[styles.sub, { color: colors.mutedForeground }]}>
+          {needsPhone
+            ? "We'll send a quick verification code to keep your account secure."
+            : "We'll send you updates about your site and new opportunities."}
+        </Text>
 
-          <View style={styles.field}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
-              {needsPhone ? "Phone Number" : "Email Address"}
-            </Text>
-            <View style={styles.inputContainer}>
-              <View style={[styles.iconBox, { backgroundColor: colors.surface }]}>
-                <Feather 
-                  name={needsPhone ? "phone" : "mail"} 
-                  size={18} 
-                  color={colors.primary} 
-                />
-              </View>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: error ? colors.accent : colors.border,
-                    color: colors.foreground,
-                  },
-                ]}
-                placeholder={needsPhone ? "+1 234 567 8900" : "you@example.com"}
-                placeholderTextColor={colors.mutedForeground}
-                value={value}
-                onChangeText={(t) => { setValue(t); setError(""); }}
-                keyboardType={needsPhone ? "phone-pad" : "email-address"}
-                autoCapitalize="none"
-                autoCorrect={false}
-                selectionColor={colors.primary}
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
+            {needsPhone ? "Phone Number" : "Email Address"}
+          </Text>
+          <View style={styles.inputContainer}>
+            <View style={[styles.iconBox, { backgroundColor: colors.surface }]}>
+              <Feather 
+                name={needsPhone ? "phone" : "mail"} 
+                size={18} 
+                color={colors.primary} 
               />
             </View>
-            {error ? (
-              <Text style={[styles.errorText, { color: colors.accent }]}>{error}</Text>
-            ) : null}
-          </View>
-
-          <View style={{ marginTop: 20 }}>
-            <BexoButton
-              label="Continue"
-              onPress={handleContinue}
-              loading={loading}
+            <TextInput
+              style={[
+                styles.input,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: error ? colors.accent : colors.border,
+                  color: colors.foreground,
+                },
+              ]}
+              placeholder={needsPhone ? "+1 234 567 8900" : "you@example.com"}
+              placeholderTextColor={colors.mutedForeground}
+              value={value}
+              onChangeText={(t) => { setValue(t); setError(""); }}
+              keyboardType={needsPhone ? "phone-pad" : "email-address"}
+              autoCapitalize="none"
+              autoCorrect={false}
+              selectionColor={colors.primary}
             />
-            <Text style={[styles.info, { color: colors.mutedForeground }]}>
-              Step 1 of 4: Contact Verification
-            </Text>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+          {error ? (
+            <Text style={[styles.errorText, { color: colors.accent }]}>{error}</Text>
+          ) : null}
+        </View>
+
+        <View style={{ marginTop: 20 }}>
+          <BexoButton
+            label="Continue"
+            onPress={handleContinue}
+            loading={loading}
+          />
+          <Text style={[styles.info, { color: colors.mutedForeground }]}>
+            Step 1 of 4: Contact Verification
+          </Text>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.signOutBtn} 
+          onPress={() => useAuthStore.getState().signOut()}
+        >
+          <Text style={[styles.signOutText, { color: colors.mutedForeground }]}>
+            Sign Out & Start Fresh
+          </Text>
+        </TouchableOpacity>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }
@@ -238,4 +242,6 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 13, fontWeight: "500", marginLeft: 4 },
   info: { textAlign: "center", marginTop: 16, fontSize: 12, fontWeight: "600", opacity: 0.5 },
+  signOutBtn: { marginTop: 20, paddingVertical: 12, alignItems: "center" },
+  signOutText: { fontSize: 13, fontWeight: "600", textDecorationLine: "underline" },
 });

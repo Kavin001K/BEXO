@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 
 export type BuildStatus = "idle" | "queued" | "building" | "done" | "failed";
@@ -53,7 +55,9 @@ interface PortfolioState {
 
 const N8N_WEBHOOK_URL = process.env.EXPO_PUBLIC_N8N_WEBHOOK_URL ?? "";
 
-export const usePortfolioStore = create<PortfolioState>((set, get) => ({
+export const usePortfolioStore = create<PortfolioState>()(
+  persist(
+    (set, get) => ({
   buildStatus: "idle",
   currentBuild: null,
   portfolioUrl: null,
@@ -225,4 +229,12 @@ export const usePortfolioStore = create<PortfolioState>((set, get) => ({
       supabase.removeChannel(channel);
     };
   },
+}), {
+  name: "bexo-portfolio-storage",
+  storage: createJSONStorage(() => AsyncStorage),
+  partialize: (state) => ({
+    portfolioUrl: state.portfolioUrl,
+    updates: state.updates,
+    analytics: state.analytics,
+  }),
 }));

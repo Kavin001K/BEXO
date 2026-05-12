@@ -178,16 +178,6 @@ export default function DashboardScreen() {
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
 
-  if (!dashboardReady) {
-    return (
-      <View style={[S.loadingScreen, { backgroundColor: colors.background }]}>
-        <Animated.View entering={FadeIn.duration(400)} style={S.loadingInner}>
-          <Text style={[S.loadingText, { color: colors.mutedForeground }]}>Loading your portfolio…</Text>
-        </Animated.View>
-      </View>
-    );
-  }
-
   const firstName = useMemo(() => profile?.full_name?.split(" ")[0] ?? "Student", [profile?.full_name]);
   const greeting = useMemo(() => {
     const hours = new Date().getHours();
@@ -195,6 +185,16 @@ export default function DashboardScreen() {
     if (hours < 18) return "Good afternoon";
     return "Good evening";
   }, []);
+
+  if (!dashboardReady) {
+    return (
+      <View style={[S.loadingScreen, { backgroundColor: colors.background }]}>
+        <Animated.View entering={FadeIn.duration(400)} style={S.loadingInner}>
+          <Text style={[S.loadingText, { color: colors.mutedForeground }]}>We're building your site...</Text>
+        </Animated.View>
+      </View>
+    );
+  }
 
   const isLive     = buildStatus === "done" && !!portfolioUrl;
   const isBuilding = buildStatus === "building" || buildStatus === "queued";
@@ -257,7 +257,7 @@ export default function DashboardScreen() {
                 <View style={S.liveInfo}>
                   <View style={S.liveStatusRow}>
                     <LiveDot color="#6AFAD0" />
-                    <Text style={S.liveLabel}>Portfolio Live</Text>
+                    <Text style={S.liveLabel}>Your site is live!</Text>
                   </View>
                   <Text style={S.liveUrl}>{profile?.handle}.mybexo.com</Text>
                 </View>
@@ -274,7 +274,7 @@ export default function DashboardScreen() {
           ) : isBuilding ? (
             <View style={[S.buildingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <LiveDot color={colors.primary} />
-              <Text style={[S.buildingText, { color: colors.mutedForeground }]}>Building your portfolio…</Text>
+              <Text style={[S.buildingText, { color: colors.mutedForeground }]}>We're building your site...</Text>
             </View>
           ) : (
             <TouchableOpacity
@@ -290,8 +290,8 @@ export default function DashboardScreen() {
                 <Feather name="globe" size={20} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[S.bpLabel, { color: colors.foreground }]}>Generate Portfolio</Text>
-                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>Build your live site in 90 seconds</Text>
+                <Text style={[S.bpLabel, { color: colors.foreground }]}>Launch Your Website</Text>
+                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>Ready to show the world? It only takes 90 seconds.</Text>
               </View>
               <Feather name="arrow-right" size={16} color={colors.primary} />
             </TouchableOpacity>

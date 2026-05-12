@@ -208,6 +208,7 @@ export default function VerifyScreen() {
             length={OTP_LENGTH}
             onComplete={(c) => setCode(c)}
             onCodeChange={(c) => setCode(c)}
+            autoFocus
           />
 
           {error ? (

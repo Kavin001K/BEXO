@@ -1,9 +1,10 @@
 import { Router } from "express";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const router = Router();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY ?? "" });
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? "");
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 /**
  * POST /api/onboarding/generate-bullets
@@ -31,17 +32,15 @@ Rules:
 
 Return ONLY a JSON array of 5 strings, no markdown, no extra text.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 400,
-    });
-
-    const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const raw = response.text().trim();
+    
     let bullets: string[] = [];
     try {
-      bullets = JSON.parse(raw);
+      // Handle potential markdown code blocks in Gemini response
+      const clean = raw.replace(/```json\n?|\n?```/g, "").trim();
+      bullets = JSON.parse(clean);
       if (!Array.isArray(bullets)) bullets = [];
     } catch {
       const lines = raw.split("\n").filter((l) => l.trim().startsWith('"') || l.trim().startsWith("-") || l.trim().match(/^\d\./));

@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
@@ -36,8 +37,20 @@ export default function HandleScreen() {
   const [available, setAvailable] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [isManualHandle, setIsManualHandle] = useState(false);
 
   const slug = handle.toLowerCase().replace(/[^a-z0-9-]/g, "");
+
+  // Auto-generate handle from name
+  React.useEffect(() => {
+    if (!isManualHandle && fullName) {
+      const suggested = fullName.toLowerCase().split(" ")[0].replace(/[^a-z0-9-]/g, "");
+      if (suggested.length >= 3) {
+        setHandle(suggested);
+        checkAvailability(suggested);
+      }
+    }
+  }, [fullName]);
 
   const checkAvailability = async (val: string) => {
     const clean = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -56,6 +69,7 @@ export default function HandleScreen() {
   };
 
   const handleChange = (val: string) => {
+    setIsManualHandle(true);
     setHandle(val);
     setAvailable(null);
     if (val.length >= 3) checkAvailability(val);
@@ -133,116 +147,118 @@ export default function HandleScreen() {
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+      <KeyboardAwareScrollViewCompat
+        contentContainerStyle={[
+          styles.scroll,
+          {
+            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 20),
+            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
+          },
+        ]}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            {
-              paddingTop: insets.top + (Platform.OS === "web" ? 67 : 20),
-              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.headerRow}>
-            <Image 
-              source={require("../../assets/images/icon.png")} 
-              style={styles.logo} 
-            />
-            <View style={styles.stepRow}>
-              <View style={[styles.dot, { backgroundColor: colors.border }]} />
-              <View style={[styles.dot, { backgroundColor: colors.border }]} />
-              <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
-              <View style={[styles.dot, { backgroundColor: colors.border }]} />
-            </View>
+        <View style={styles.headerRow}>
+          <Image 
+            source={require("../../assets/images/icon.png")} 
+            style={styles.logo} 
+          />
+          <View style={styles.stepRow}>
+            <View style={[styles.dot, { backgroundColor: colors.border }]} />
+            <View style={[styles.dot, { backgroundColor: colors.border }]} />
+            <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
+            <View style={[styles.dot, { backgroundColor: colors.border }]} />
           </View>
+        </View>
 
-          <Text style={[styles.headline, { color: colors.foreground }]}>
-            Claim your handle
-          </Text>
-          <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            This becomes your permanent portfolio URL. Choose wisely.
-          </Text>
+        <Text style={[styles.headline, { color: colors.foreground }]}>
+          Own Your Website
+        </Text>
+        <Text style={[styles.sub, { color: colors.mutedForeground }]}>
+          This is where the world will find your work. Make it yours.
+        </Text>
 
-          {/* Full name */}
-          <View style={styles.field}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Full Name</Text>
+        {/* Full name */}
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>What's your name?</Text>
+          <TextInput
+            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
+            placeholder="Kavin"
+            placeholderTextColor={colors.mutedForeground}
+            value={fullName}
+            onChangeText={setFullName}
+            autoCapitalize="words"
+            autoComplete="name"
+            selectionColor={colors.primary}
+          />
+        </View>
+
+        {/* Handle */}
+        <View style={styles.field}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>My URL</Text>
+          <View style={styles.handleRow}>
             <TextInput
-              style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="Kavin Kumar"
+              style={[
+                styles.input,
+                styles.handleInput,
+                {
+                  backgroundColor: colors.surface,
+                  borderColor: available === false
+                    ? colors.accent
+                    : available
+                    ? colors.mint
+                    : colors.border,
+                  color: colors.foreground,
+                },
+              ]}
+              placeholder="kavin.mybexo.com"
               placeholderTextColor={colors.mutedForeground}
-              value={fullName}
-              onChangeText={setFullName}
-              autoCapitalize="words"
-              autoComplete="name"
+              value={handle}
+              onChangeText={handleChange}
+              autoCapitalize="none"
+              autoCorrect={false}
               selectionColor={colors.primary}
             />
-          </View>
-
-          {/* Handle */}
-          <View style={styles.field}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Your Handle</Text>
-            <View style={styles.handleRow}>
-              <TextInput
-                style={[
-                  styles.input,
-                  styles.handleInput,
-                  {
-                    backgroundColor: colors.surface,
-                    borderColor: available === false
-                      ? colors.accent
-                      : available
-                      ? colors.mint
-                      : colors.border,
-                    color: colors.foreground,
-                  },
-                ]}
-                placeholder="kavin"
-                placeholderTextColor={colors.mutedForeground}
-                value={handle}
-                onChangeText={handleChange}
-                autoCapitalize="none"
-                autoCorrect={false}
-                selectionColor={colors.primary}
-              />
-              <View style={styles.statusIcon}>
-                {checking ? (
-                  <ActivityIndicator size="small" color={colors.mutedForeground} />
-                ) : available === true ? (
-                  <Feather name="check-circle" size={18} color={colors.mint} />
-                ) : available === false ? (
-                  <Feather name="x-circle" size={18} color={colors.accent} />
-                ) : null}
-              </View>
+            <View style={styles.statusIcon}>
+              {checking ? (
+                <ActivityIndicator size="small" color={colors.mutedForeground} />
+              ) : available === true ? (
+                <Feather name="check-circle" size={18} color={colors.mint} />
+              ) : available === false ? (
+                <Feather name="x-circle" size={18} color={colors.accent} />
+              ) : null}
             </View>
           </View>
+        </View>
 
-          {/* Preview URL */}
-          {slug.length >= 3 && (
-            <View style={[styles.urlPreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Feather name="link" size={14} color={colors.mutedForeground} />
-              <Text style={[styles.urlText, { color: colors.primary }]}>
-                {slug}.mybexo.com
-              </Text>
-            </View>
-          )}
+        {/* Preview URL */}
+        {slug.length >= 3 && (
+          <View style={[styles.urlPreview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Feather name="link" size={14} color={colors.mutedForeground} />
+            <Text style={[styles.urlText, { color: colors.primary }]}>
+              {slug}.mybexo.com
+            </Text>
+          </View>
+        )}
 
-          {error ? (
-            <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
-          ) : null}
+        {error ? (
+          <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
+        ) : null}
 
-          <BexoButton
-            label="Continue"
-            onPress={handleContinue}
-            loading={loading}
-            disabled={!available || !fullName.trim()}
-          />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        <BexoButton
+          label="Continue"
+          onPress={handleContinue}
+          loading={loading}
+          disabled={!available || !fullName.trim()}
+        />
+
+        <TouchableOpacity 
+          style={styles.signOutBtn} 
+          onPress={() => useAuthStore.getState().signOut()}
+        >
+          <Text style={[styles.signOutText, { color: colors.mutedForeground }]}>
+            Sign Out & Start Fresh
+          </Text>
+        </TouchableOpacity>
+      </KeyboardAwareScrollViewCompat>
     </View>
   );
 }
@@ -254,11 +270,11 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    height: 280,
+    height: 300,
   },
   scroll: {
-    paddingHorizontal: 28,
-    gap: 18,
+    paddingHorizontal: 30,
+    gap: 20,
   },
   headerRow: {
     flexDirection: "row",
@@ -273,47 +289,71 @@ const styles = StyleSheet.create({
   },
   stepRow: {
     flexDirection: "row",
-    gap: 6,
+    gap: 8,
+    marginBottom: 10,
   },
   dot: {
-    width: 20,
-    height: 4,
-    borderRadius: 2,
+    height: 6,
+    borderRadius: 3,
   },
-  headline: { fontSize: 30, fontWeight: "800", letterSpacing: -0.4 },
-  sub: { fontSize: 14, lineHeight: 21 },
-  field: { gap: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: "600", letterSpacing: 0.5, textTransform: "uppercase" },
+  headline: {
+    fontSize: 32,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  sub: {
+    fontSize: 16,
+    lineHeight: 24,
+    opacity: 0.8,
+    marginBottom: 10,
+  },
+  field: {
+    gap: 10,
+  },
+  fieldLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
   input: {
-    height: 52,
-    borderRadius: 14,
+    height: 54,
+    borderRadius: 15,
     borderWidth: 1,
-    paddingHorizontal: 16,
-    fontSize: 15,
+    paddingHorizontal: 20,
+    fontSize: 16,
+    fontWeight: "600",
     ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
-  handleRow: { position: "relative" },
-  handleInput: { paddingRight: 48 },
+  handleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  handleInput: {
+    flex: 1,
+  },
   statusIcon: {
-    position: "absolute",
-    right: 16,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center",
+    width: 24,
+    alignItems: "center",
   },
   urlPreview: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 10,
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
   },
   urlText: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
   },
-  error: { fontSize: 13 },
+  error: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  signOutBtn: { marginTop: 20, paddingVertical: 12, alignItems: "center" },
+  signOutText: { fontSize: 13, fontWeight: "600", textDecorationLine: "underline" },
 });

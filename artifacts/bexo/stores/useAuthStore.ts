@@ -1,6 +1,8 @@
 import { Session, User } from "@supabase/supabase-js";
 import { router } from "expo-router";
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { useProfileStore } from "./useProfileStore";
 
@@ -55,7 +57,9 @@ async function handleGoogleAccountMergeCheck(
   }
 }
 
-export const useAuthStore = create<AuthState>((set, get) => ({
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
   session: null,
   user: null,
   isLoading: true,
@@ -100,7 +104,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
     try {
-      const { data } = await supabase.auth.getSession();
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        console.error("[BEXO Auth] Initialization error:", error.message);
+        // If the refresh token is invalid/not found, sign out to clear local state
+        if (error.message.includes("Refresh Token") || error.message.includes("not found")) {
+          await supabase.auth.signOut();
+          set(RESET_STATE);
+          return;
+        }
+      }
+
       const session = data.session;
       set({ session, user: session?.user ?? null, isLoading: false });
 
@@ -118,12 +133,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
           }
           useProfileStore.getState().fetchProfile(user.id);
-        } else if (event === "SIGNED_OUT") {
-          useProfileStore.getState().reset();
+        } else if (event === "SIGNED_OUT" || event === "USER_UPDATED") {
+          // USER_UPDATED can happen on auth errors too
+          if (event === "SIGNED_OUT") {
+            useProfileStore.getState().reset();
+          }
         }
       });
-    } catch {
+    } catch (err: any) {
+      console.error("[BEXO Auth] Unexpected init failure:", err);
       set({ isLoading: false });
     }
   },
+}), {
+  name: "bexo-auth-storage",
+  storage: createJSONStorage(() => AsyncStorage),
+  partialize: (state) => ({
+    phoneNumber: state.phoneNumber,
+    collectedEmail: state.collectedEmail,
+    collectedPhone: state.collectedPhone,
+    otpSentAt: state.otpSentAt,
+  }),
 }));

@@ -1,7 +1,7 @@
 import { Router, raw } from "express";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import OpenAI from "openai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const router = Router();
 
@@ -20,6 +20,9 @@ const r2 = new S3Client({
   },
   forcePathStyle: true,
 });
+
+const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? "");
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // Public base URL for the R2 bucket (if a custom domain is configured on the bucket, use that instead)
 const R2_PUBLIC_BASE = process.env.R2_PUBLIC_URL ?? `${R2_ENDPOINT}/${R2_BUCKET_NAME}`;
@@ -101,25 +104,24 @@ router.post("/parse-pdf", raw({ type: "*/*", limit: "15mb" }), async (req, res) 
       return;
     }
 
-    // Dynamic import to avoid crash if pdf-parse is not installed yet
-    let pdfParse;
-    try {
-      pdfParse = (await import("pdf-parse")).default;
-    } catch (e) {
-      console.error("pdf-parse not installed:", e);
-      res.status(500).json({ error: "pdf-parse library not installed. Please run `pnpm install` in api-server." });
-      return;
-    }
-
-    const data = await pdfParse(req.body);
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          data: req.body.toString("base64"),
+          mimeType: "application/pdf"
+        }
+      },
+      "Extract all text from this PDF document as accurately as possible."
+    ]);
+    const response = await result.response;
+    const text = response.text();
     
     res.json({
       success: true,
-      text: data.text,
-      numPages: data.numpages
+      text: text,
     });
   } catch (err: any) {
-    console.error("[Storage] PDF parsing failed:", err);
+    console.error("[Storage] Gemini PDF parsing failed:", err);
     res.status(500).json({ error: err.message ?? "Failed to parse PDF" });
   }
 });
@@ -162,31 +164,15 @@ router.post("/parse-resume", async (req, res) => {
       return;
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    if (!process.env.GOOGLE_API_KEY) {
       res.status(500).json({ error: "AI service not configured on the server." });
       return;
     }
 
-    const openai = new OpenAI({ apiKey });
-
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert resume parser. You will receive the full text of a resume and must extract all structured data into JSON. Output ONLY valid JSON.",
-        },
-        {
-          role: "user",
-          content: `Here is the full text of a resume:\n\n---\n${text}\n---\n\n${EXTRACTION_PROMPT}`,
-        },
-      ],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
-    });
-
-    const raw = completion.choices[0]?.message?.content ?? "{}";
+    const result = await model.generateContent(`Here is the full text of a resume:\n\n---\n${text}\n---\n\n${EXTRACTION_PROMPT}`);
+    const response = await result.response;
+    const raw = response.text().trim();
+    
     const clean = raw
       .replace(/^[\s\S]*?({[\s\S]*})[\s\S]*$/, "$1")
       .replace(/```json\n?|\n?```/g, "")
@@ -264,13 +250,10 @@ router.post("/generate-bio", async (req, res) => {
       return;
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    if (!process.env.GOOGLE_API_KEY) {
       res.status(500).json({ error: "AI service not configured on the server." });
       return;
     }
-
-    const openai = new OpenAI({ apiKey });
 
     const prompt = `Write a professional 2-3 sentence bio in first person for a student portfolio.
 Name: ${full_name}
@@ -281,13 +264,10 @@ Recent experience: ${experience ?? ""}
 
 Return ONLY the bio text, no quotes, no extra text.`;
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-    });
-
-    const bio = (completion.choices[0]?.message?.content ?? "").trim();
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const bio = response.text().trim();
+    
     res.json({ success: true, bio });
   } catch (err: any) {
     console.error("[Storage] Bio generation failed:", err);

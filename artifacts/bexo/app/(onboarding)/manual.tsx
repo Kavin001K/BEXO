@@ -1,23 +1,23 @@
 import React, { useCallback, useRef, useState } from "react";
 import {
-  Animated,
   Dimensions,
   FlatList,
-  KeyboardAvoidingView,
-  Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { YearPickerSheet } from "@/components/YearPickerSheet";
+import { MonthPickerSheet } from "@/components/MonthPickerSheet";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
@@ -175,53 +175,8 @@ const CR = StyleSheet.create({
   label: { fontSize: 14, fontWeight: "600" },
 });
 
-// ─── YearPickerModal ──────────────────────────────────────────────────────────
-function YearPickerModal({ visible, onClose, value, onChange, accentColor, allowPresent }: {
-  visible: boolean; onClose: () => void; value: string; onChange: (v: string) => void;
-  accentColor: string; allowPresent?: boolean;
-}) {
-  const items = allowPresent ? ["Present", ...YEARS] : YEARS;
-  const selIdx = Math.max(0, items.indexOf(value));
-  return (
-    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
-      <TouchableOpacity style={YP.overlay} onPress={onClose} activeOpacity={1}>
-        <View style={YP.sheet} onStartShouldSetResponder={() => true}>
-          <View style={[YP.handle, { backgroundColor: accentColor }]} />
-          <Text style={YP.title}>Select Year</Text>
-          <FlatList
-            data={items}
-            keyExtractor={(x) => x}
-            style={{ maxHeight: 260 }}
-            initialScrollIndex={selIdx > 1 ? selIdx - 2 : 0}
-            getItemLayout={(_, idx) => ({ length: 52, offset: 52 * idx, index: idx })}
-            showsVerticalScrollIndicator={false}
-            renderItem={({ item }) => {
-              const sel = item === value;
-              return (
-                <TouchableOpacity
-                  onPress={() => { onChange(item); if (Platform.OS !== "web") Haptics.selectionAsync(); onClose(); }}
-                  style={[YP.row, sel && { backgroundColor: accentColor + "22" }]}
-                >
-                  <Text style={[YP.rowTxt, sel && { color: accentColor, fontWeight: "800" }]}>{item}</Text>
-                  {sel && <View style={[YP.dot, { backgroundColor: accentColor }]} />}
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-}
-const YP = StyleSheet.create({
-  overlay: { flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.65)" },
-  sheet:   { backgroundColor: "#111118", borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: 24, paddingBottom: 52 },
-  handle:  { width: 36, height: 4, borderRadius: 2, alignSelf: "center", marginBottom: 16, opacity: 0.7 },
-  title:   { fontSize: 16, fontWeight: "700", color: "#fff", marginBottom: 10, textAlign: "center" },
-  row:     { height: 52, flexDirection: "row", justifyContent: "center", alignItems: "center", borderRadius: 12, gap: 8 },
-  rowTxt:  { fontSize: 18, color: "rgba(255,255,255,0.55)", fontWeight: "500" },
-  dot:     { width: 6, height: 6, borderRadius: 3 },
-});
+// YearPickerModal removed in favor of YearPickerSheet
+
 
 // ─── MonthGrid ────────────────────────────────────────────────────────────────
 function MonthGrid({ value, onChange, accentColor }: { value: string; onChange: (v: string) => void; accentColor: string }) {
@@ -385,47 +340,49 @@ const EC = StyleSheet.create({
 });
 
 // ─── DateRangeRow — for education year picking ────────────────────────────────
-function EduDateRow({ edu, setEdu, color, eduYearPickerFor, setEduYearPickerFor }: {
+function EduDateRow({ edu, setEdu, color, eduYearPickerFor, setEduYearPickerFor, yearSheetRef }: {
   edu: EduEntry; setEdu: (e: EduEntry) => void; color: string;
   eduYearPickerFor: "start" | "end" | null; setEduYearPickerFor: (v: "start" | "end" | null) => void;
+  yearSheetRef: React.RefObject<BottomSheetModal>;
 }) {
+  const handlePress = (v: "start" | "end") => {
+    setEduYearPickerFor(v);
+    yearSheetRef.current?.present();
+  };
+
   return (
-    <>
-      <View style={{ flexDirection: "row", gap: 12 }}>
-        <TouchableOpacity style={[S.yearBtn, { borderColor: edu.start_year ? color + "88" : "rgba(255,255,255,0.12)" }]} onPress={() => setEduYearPickerFor("start")}>
-          <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700", letterSpacing: 0.5 }}>FROM</Text>
-          <Text style={{ fontSize: 24, fontWeight: "800", color: edu.start_year ? "#fff" : "rgba(255,255,255,0.2)" }}>{edu.start_year || "Year"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[S.yearBtn, { borderColor: edu.end_year ? color + "88" : "rgba(255,255,255,0.12)" }]} onPress={() => setEduYearPickerFor("end")}>
-          <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700", letterSpacing: 0.5 }}>TO</Text>
-          <Text style={{ fontSize: 24, fontWeight: "800", color: edu.end_year ? (edu.end_year === "Present" ? color : "#fff") : "rgba(255,255,255,0.2)" }}>{edu.end_year || "Year"}</Text>
-        </TouchableOpacity>
-      </View>
-      <YearPickerModal
-        visible={eduYearPickerFor !== null}
-        onClose={() => setEduYearPickerFor(null)}
-        value={eduYearPickerFor === "start" ? edu.start_year : edu.end_year}
-        onChange={(v) => setEdu(eduYearPickerFor === "start" ? { ...edu, start_year: v } : { ...edu, end_year: v })}
-        accentColor={color}
-        allowPresent={eduYearPickerFor === "end"}
-      />
-    </>
+    <View style={{ flexDirection: "row", gap: 12 }}>
+      <TouchableOpacity style={[S.yearBtn, { borderColor: edu.start_year ? color + "88" : "rgba(255,255,255,0.12)" }]} onPress={() => handlePress("start")}>
+        <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700", letterSpacing: 0.5 }}>FROM</Text>
+        <Text style={{ fontSize: 24, fontWeight: "800", color: edu.start_year ? "#fff" : "rgba(255,255,255,0.2)" }}>{edu.start_year || "Year"}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={[S.yearBtn, { borderColor: edu.end_year ? color + "88" : "rgba(255,255,255,0.12)" }]} onPress={() => handlePress("end")}>
+        <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700", letterSpacing: 0.5 }}>TO</Text>
+        <Text style={{ fontSize: 24, fontWeight: "800", color: edu.end_year ? (edu.end_year === "Present" ? color : "#fff") : "rgba(255,255,255,0.2)" }}>{edu.end_year || "Year"}</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 // ─── ExpDateSection ───────────────────────────────────────────────────────────
-function ExpDateSection({ exp, setExp, color }: { exp: ExpEntry; setExp: (e: ExpEntry) => void; color: string }) {
-  const [monthPickerFor, setMonthPickerFor] = useState<"start" | "end" | null>(null);
-  const [yearPickerFor,  setYearPickerFor ] = useState<"start" | "end" | null>(null);
+function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMonthPickerFor, setYearPickerFor }: {
+  exp: ExpEntry; setExp: (e: ExpEntry) => void; color: string;
+  monthSheetRef: React.RefObject<BottomSheetModal>;
+  yearSheetRef: React.RefObject<BottomSheetModal>;
+  setMonthPickerFor: (v: "start" | "end" | null) => void;
+  setYearPickerFor: (v: "start" | "end" | null) => void;
+}) {
+  const openMonth = (v: "start" | "end") => { setMonthPickerFor(v); monthSheetRef.current?.present(); };
+  const openYear  = (v: "start" | "end") => { setYearPickerFor(v);  yearSheetRef.current?.present();  };
 
   return (
-    <ScrollView showsVerticalScrollIndicator={false}>
+    <View>
       <Text style={S.fieldLabel}>Start Date</Text>
       <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-        <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.start_month ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => setMonthPickerFor("start")}>
+        <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.start_month ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openMonth("start")}>
           <Text style={[S.monthYearTxt, { color: exp.start_month ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.start_month || "Month"}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.start_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => setYearPickerFor("start")}>
+        <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.start_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("start")}>
           <Text style={[S.monthYearTxt, { color: exp.start_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.start_year || "Year"}</Text>
         </TouchableOpacity>
       </View>
@@ -442,39 +399,16 @@ function ExpDateSection({ exp, setExp, color }: { exp: ExpEntry; setExp: (e: Exp
         <>
           <Text style={[S.fieldLabel, { marginTop: 16 }]}>End Date</Text>
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.end_month ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => setMonthPickerFor("end")}>
+            <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.end_month ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openMonth("end")}>
               <Text style={[S.monthYearTxt, { color: exp.end_month ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.end_month || "Month"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.end_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => setYearPickerFor("end")}>
+            <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.end_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("end")}>
               <Text style={[S.monthYearTxt, { color: exp.end_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.end_year || "Year"}</Text>
             </TouchableOpacity>
           </View>
         </>
       )}
-
-      {/* Month picker modal */}
-      <Modal transparent animationType="slide" visible={monthPickerFor !== null} onRequestClose={() => setMonthPickerFor(null)}>
-        <TouchableOpacity style={YP.overlay} onPress={() => setMonthPickerFor(null)} activeOpacity={1}>
-          <View style={[YP.sheet, { paddingBottom: 44 }]} onStartShouldSetResponder={() => true}>
-            <View style={[YP.handle, { backgroundColor: color }]} />
-            <Text style={YP.title}>Select Month</Text>
-            <MonthGrid
-              value={monthPickerFor === "start" ? exp.start_month : exp.end_month}
-              onChange={(v) => { setExp(monthPickerFor === "start" ? { ...exp, start_month: v } : { ...exp, end_month: v }); setMonthPickerFor(null); }}
-              accentColor={color}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      <YearPickerModal
-        visible={yearPickerFor !== null}
-        onClose={() => setYearPickerFor(null)}
-        value={yearPickerFor === "start" ? exp.start_year : exp.end_year}
-        onChange={(v) => setExp(yearPickerFor === "start" ? { ...exp, start_year: v } : { ...exp, end_year: v })}
-        accentColor={color}
-      />
-    </ScrollView>
+    </View>
   );
 }
 
@@ -507,6 +441,15 @@ export default function ManualEntryScreen() {
 
   // Save state
   const [saving, setSaving] = useState(false);
+
+  // BottomSheet Refs
+  const yearSheetRef  = useRef<BottomSheetModal>(null);
+  const monthSheetRef = useRef<BottomSheetModal>(null);
+
+  // Picker States (Lifted for Sheets)
+  const [expYearPickerFor,   setExpYearPickerFor]   = useState<"start" | "end" | null>(null);
+  const [expMonthPickerFor,  setExpMonthPickerFor]  = useState<"start" | "end" | null>(null);
+
 
   // Transition animation
   const translateX = useRef(new Animated.Value(0)).current;
@@ -678,28 +621,34 @@ export default function ManualEntryScreen() {
     if (sectionIdx === 0) {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="Where did you study?" sub="University, college, or institution name" />
+          <QuestionHeader section={sec} title="Tell us about your studies" sub="University, college, or institution name" />
           <GlassInput value={edu.institution} onChangeText={(v) => setEdu({ ...edu, institution: v })} placeholder="e.g. MIT, Stanford, BITS Pilani…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
         </View>
       );
       if (stepIdx === 1) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="What degree?" sub="Select the type of qualification" />
+          <QuestionHeader section={sec} title="What did you graduate with?" sub="Select the type of qualification" />
           <ChipRow options={DEGREES} value={edu.degree} onChange={(v) => setEdu({ ...edu, degree: v })} accentColor={color} />
         </View>
       );
       if (stepIdx === 2) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="Your field of study?" sub="Major, specialisation or subject — optional" />
+          <QuestionHeader section={sec} title="What was your major?" sub="Major, specialisation or subject — optional" />
           <GlassInput value={edu.field} onChangeText={(v) => setEdu({ ...edu, field: v })} placeholder="e.g. Computer Science, Design, Finance…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={handleNext} />
         </View>
       );
-      if (stepIdx === 3) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="When were you there?" sub="Your study period" />
-          <EduDateRow edu={edu} setEdu={setEdu} color={color} eduYearPickerFor={eduYearPickerFor} setEduYearPickerFor={setEduYearPickerFor} />
+          <QuestionHeader section={sec} title="When was this?" sub="Your study period" />
+          <EduDateRow 
+            edu={edu} 
+            setEdu={setEdu} 
+            color={color} 
+            eduYearPickerFor={eduYearPickerFor} 
+            setEduYearPickerFor={setEduYearPickerFor}
+            yearSheetRef={yearSheetRef}
+          />
         </View>
-      );
+
       if (stepIdx === 4) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub="Looks great — want to add another?" />
@@ -721,26 +670,33 @@ export default function ManualEntryScreen() {
     if (sectionIdx === 1) {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="Which company?" sub="Most recent or most relevant first" />
+          <QuestionHeader section={sec} title="Where did you work?" sub="Most recent or most relevant first" />
           <GlassInput value={exp.company} onChangeText={(v) => setExp({ ...exp, company: v })} placeholder="e.g. Google, Figma, Startup Inc, Freelance…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
         </View>
       );
       if (stepIdx === 1) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="Your role?" sub="Official title at this company" />
+          <QuestionHeader section={sec} title="What was your job title?" sub="Official title at this company" />
           <GlassInput value={exp.role} onChangeText={(v) => setExp({ ...exp, role: v })} placeholder="e.g. Product Designer, SWE Intern, CTO…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
         </View>
       );
-      if (stepIdx === 2) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="When were you there?" sub="Select start and end dates" />
-          <ExpDateSection exp={exp} setExp={setExp} color={color} />
+          <QuestionHeader section={sec} title="When was this?" sub="Select start and end dates" />
+          <ExpDateSection 
+            exp={exp} 
+            setExp={setExp} 
+            color={color}
+            monthSheetRef={monthSheetRef}
+            yearSheetRef={yearSheetRef}
+            setMonthPickerFor={setExpMonthPickerFor}
+            setYearPickerFor={setExpYearPickerFor}
+          />
         </View>
-      );
+
       if (stepIdx === 3) return (
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={S.stepWrap}>
-            <QuestionHeader section={sec} title="What did you do?" sub="Key achievements — or let AI write it" />
+            <QuestionHeader section={sec} title="What were your big wins?" sub="Key achievements — or let AI write it" />
             <GlassInput value={exp.description} onChangeText={(v) => setExp({ ...exp, description: v })} placeholder="e.g. Led redesign of checkout flow, reducing drop-off by 32%…" accentColor={color} multiline />
             <AIBulletsPanel role={exp.role} company={exp.company} accentColor={color} onAddBullet={(b) => setExp((e) => ({ ...e, description: e.description ? `${e.description}\n• ${b}` : `• ${b}` }))} />
           </View>
@@ -767,13 +723,13 @@ export default function ManualEntryScreen() {
     if (sectionIdx === 2) {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="What did you build?" sub="A project you're proud of" />
+          <QuestionHeader section={sec} title="What's a project you're proud of?" sub="A project you've built" />
           <GlassInput value={proj.title} onChangeText={(v) => setProj({ ...proj, title: v })} placeholder="e.g. Portfolio App, E-Commerce Site, CLI Tool…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
         </View>
       );
       if (stepIdx === 1) return (
         <View style={S.stepWrap}>
-          <QuestionHeader section={sec} title="Describe it" sub="What it does, who it's for, why you built it" />
+          <QuestionHeader section={sec} title="Tell us more about it" sub="What it does, who it's for, why you built it" />
           <GlassInput value={proj.description} onChangeText={(v) => setProj({ ...proj, description: v })} placeholder="A short, punchy description…" accentColor={color} multiline autoFocus />
         </View>
       );
@@ -814,7 +770,7 @@ export default function ManualEntryScreen() {
     // ── SKILLS ─────────────────────────────────────────────────────────────────
     if (sectionIdx === 3) return (
       <View style={[S.stepWrap, { flex: 1 }]}>
-        <QuestionHeader section={sec} title="Your skills" sub={`Tap everything that applies  ·  ${skills.length} selected`} />
+        <QuestionHeader section={sec} title="What are you great at?" sub={`Tap everything that applies  ·  ${skills.length} selected`} />
         <SkillCategoryGrid selected={skills} onChange={setSkills} accentColor={color} />
       </View>
     );
@@ -836,7 +792,7 @@ export default function ManualEntryScreen() {
         />
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+      <KeyboardAwareScrollViewCompat style={{ flex: 1 }}>
         <View style={[S.inner, { paddingTop: topPad, paddingBottom: botPad }]}>
 
           {/* ── Header ── */}
@@ -902,7 +858,40 @@ export default function ManualEntryScreen() {
           </View>
 
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollViewCompat>
+
+      {/* ── Modals / Sheets ── */}
+      <YearPickerSheet
+        ref={yearSheetRef}
+        accentColor={color}
+        allowPresent={sectionIdx === 0 ? eduYearPickerFor === "end" : false}
+        value={
+          sectionIdx === 0
+            ? eduYearPickerFor === "start" ? edu.start_year : edu.end_year
+            : expYearPickerFor === "start" ? exp.start_year : exp.end_year
+        }
+        onChange={(v) => {
+          if (sectionIdx === 0) {
+            setEdu(eduYearPickerFor === "start" ? { ...edu, start_year: v } : { ...edu, end_year: v });
+          } else {
+            setExp(expYearPickerFor === "start" ? { ...exp, start_year: v } : { ...exp, end_year: v });
+          }
+        }}
+        onClose={() => {
+          setEduYearPickerFor(null);
+          setExpYearPickerFor(null);
+        }}
+      />
+
+      <MonthPickerSheet
+        ref={monthSheetRef}
+        accentColor={color}
+        value={expMonthPickerFor === "start" ? exp.start_month : exp.end_month}
+        onChange={(v) => {
+          setExp(expMonthPickerFor === "start" ? { ...exp, start_month: v } : { ...exp, end_month: v });
+        }}
+        onClose={() => setExpMonthPickerFor(null)}
+      />
     </View>
   );
 }
