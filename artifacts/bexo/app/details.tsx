@@ -5,7 +5,8 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
-import React, { useEffect, useState } from "react";
+import { BottomSheetModal } from "@gorhom/bottom-sheet";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +23,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { YearPickerSheet } from "@/components/YearPickerSheet";
+import { MonthYearSpinnerField } from "@/components/datetime/MonthYearSpinnerField";
 import { useColors } from "@/hooks/useColors";
+import { formatMonthYear, normalizeExperienceIso } from "@/lib/dateWheel";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { uploadAttachments } from "@/services/achievementParser";
@@ -61,6 +65,8 @@ export default function DetailsScreen() {
   const [date, setDate] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
 
+  const yearSheetRef = useRef<BottomSheetModal>(null);
+
   useEffect(() => {
     let found: any = null;
     if (type === "update") {
@@ -88,7 +94,7 @@ export default function DetailsScreen() {
         setTitle(found.company);
         setSubTitle(found.role);
         setDescription(found.description);
-        setDate(found.start_date);
+        setDate(normalizeExperienceIso(found.start_date) || found.start_date || "");
       } else if (type === "project") {
         setTitle(found.title);
         setDescription(found.description);
@@ -394,18 +400,35 @@ export default function DetailsScreen() {
             {/* Date */}
             {(date || isEditing) && (type === "education" || type === "experience") && (
               <View style={styles.section}>
-                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>Date / Year</Text>
+                <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>
+                  {type === "experience" ? "Start (month & year)" : "Year"}
+                </Text>
                 {isEditing ? (
-                  <TextInput
-                    style={[styles.input, { color: colors.foreground, backgroundColor: colors.surface }]}
-                    value={date}
-                    onChangeText={setDate}
-                    placeholder="e.g. 2024 or Oct 2023"
-                  />
+                  type === "education" ? (
+                    <TouchableOpacity
+                      style={[styles.input, { backgroundColor: colors.surface }]}
+                      onPress={() => yearSheetRef.current?.present()}
+                      activeOpacity={0.75}
+                    >
+                      <Text style={{ color: date ? colors.foreground : colors.mutedForeground, fontSize: 15, fontWeight: "600" }}>
+                        {date || "Select year"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <MonthYearSpinnerField
+                      value={normalizeExperienceIso(date)}
+                      onChange={setDate}
+                      placeholder="Month & year"
+                      minimumDate={new Date(1980, 0, 1)}
+                      maximumDate={new Date()}
+                    />
+                  )
                 ) : (
                   <View style={styles.row}>
                     <Feather name="calendar" size={14} color={colors.mutedForeground} />
-                    <Text style={[styles.dateText, { color: colors.mutedForeground }]}>{date}</Text>
+                    <Text style={[styles.dateText, { color: colors.mutedForeground }]}>
+                      {type === "experience" ? formatMonthYear(date) || date : date}
+                    </Text>
                   </View>
                 )}
               </View>
@@ -481,6 +504,18 @@ export default function DetailsScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <YearPickerSheet
+        ref={yearSheetRef}
+        accentColor={colors.primary}
+        allowPresent={false}
+        value={
+          date && /^\d+$/.test(String(date).trim())
+            ? String(date).trim()
+            : String(new Date().getFullYear())
+        }
+        onChange={(v) => setDate(v)}
+      />
     </View>
   );
 }

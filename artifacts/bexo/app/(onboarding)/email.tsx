@@ -32,9 +32,14 @@ export default function EmailScreen() {
   const [error, setError] = useState("");
 
   const handleContinue = async () => {
-    if (!email || !email.includes("@")) {
+    const trimmedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
       setError("Please enter a valid email address");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       return;
     }
 
@@ -42,18 +47,29 @@ export default function EmailScreen() {
     setError("");
 
     try {
+      // 1. Update the profiles table
       const { error: updateError } = await supabase
         .from("profiles")
-        .update({ email })
+        .update({ email: trimmedEmail })
         .eq("user_id", user?.id);
 
       if (updateError) throw updateError;
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // 2. We could also try to update auth.users, but that might trigger 
+      // an email confirmation which we might not want right now if we want to stay in flow.
+      // For now, updating profiles is enough for the "BEXO ID".
+
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+      
+      // Navigate to photo
       router.push("/(onboarding)/photo");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     } finally {
       setLoading(false);
     }

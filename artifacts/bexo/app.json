@@ -63,7 +63,8 @@
             "kotlinVersion": "2.1.0"
           }
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,

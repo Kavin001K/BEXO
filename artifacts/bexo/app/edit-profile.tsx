@@ -38,6 +38,9 @@ import {
   type Skill,
 } from "@/stores/useProfileStore";
 import { showErrorAlert } from "@/lib/errorUtils";
+import { formatMonthYear, normalizeExperienceIso } from "@/lib/dateWheel";
+import { MonthYearSpinnerField } from "@/components/datetime/MonthYearSpinnerField";
+import { YearWheelOverlay } from "@/components/datetime/YearWheelOverlay";
 
 type TabId = "profile" | "education" | "experience" | "projects" | "skills";
 
@@ -64,6 +67,8 @@ const EMPTY_PROJECT: Project = {
 const EMPTY_SKILL: Skill = {
   name: "", category: "Technical", level: "intermediate",
 };
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const SKILL_CATEGORIES = [
   "Programming Languages", "Frameworks", "Tools", "Databases",
@@ -211,6 +216,9 @@ export default function EditProfileScreen() {
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  const [eduYearTarget, setEduYearTarget] = useState<"start" | "end" | null>(null);
+  const [eduYearWheelVisible, setEduYearWheelVisible] = useState(false);
 
   // Sync form when profile loads
   React.useEffect(() => {
@@ -398,7 +406,15 @@ export default function EditProfileScreen() {
 
   // ---- Experience ----
   const openAddExperience    = () => { setEditingExpId(null); setExpForm(EMPTY_EXPERIENCE); setExpModalVisible(true); };
-  const openEditExperience   = (e: Experience) => { setEditingExpId(e.id ?? null); setExpForm(e); setExpModalVisible(true); };
+  const openEditExperience   = (e: Experience) => {
+    setEditingExpId(e.id ?? null);
+    setExpForm({
+      ...e,
+      start_date: normalizeExperienceIso(e.start_date),
+      end_date: e.end_date ? normalizeExperienceIso(e.end_date) : null,
+    });
+    setExpModalVisible(true);
+  };
   const handleSaveExperience = async () => {
     if (!expForm.company.trim() || !expForm.role.trim()) return;
     await saveExperience({ ...expForm, id: editingExpId ?? undefined });
@@ -712,7 +728,8 @@ export default function EditProfileScreen() {
                     <Text style={[styles.entryTitle, { color: colors.foreground }]}>{exp.role}</Text>
                     <Text style={[styles.entrySub, { color: colors.primary }]}>{exp.company}</Text>
                     <Text style={[styles.entryMeta, { color: colors.mutedForeground }]}>
-                      {exp.start_date} — {exp.is_current ? "Present" : exp.end_date ?? ""}
+                      {(exp.start_date ? formatMonthYear(exp.start_date) || exp.start_date : "—")} —{" "}
+                      {exp.is_current ? "Present" : exp.end_date ? formatMonthYear(exp.end_date) || exp.end_date : ""}
                     </Text>
                     {exp.description ? (
                       <Text style={[styles.entryDesc, { color: colors.mutedForeground }]} numberOfLines={2}>
@@ -838,7 +855,7 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
-            <View style={[styles.field, { zIndex: 300 }]}>
+            <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Institution</Text>
               <AutocompleteInput
                 value={eduForm.institution}
@@ -848,7 +865,7 @@ export default function EditProfileScreen() {
                 inputStyle={inputStyle}
               />
             </View>
-            <View style={[styles.field, { zIndex: 200 }]}>
+            <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Degree</Text>
               <AutocompleteInput
                 value={eduForm.degree}
@@ -858,7 +875,7 @@ export default function EditProfileScreen() {
                 inputStyle={inputStyle}
               />
             </View>
-            <View style={[styles.field, { zIndex: 100 }]}>
+            <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Field</Text>
               <AutocompleteInput
                 value={eduForm.field}
@@ -871,19 +888,33 @@ export default function EditProfileScreen() {
             <View style={styles.rowFields}>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Start Year</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder="2020"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={eduForm.start_year ? String(eduForm.start_year) : ""}
-                  onChangeText={(v) => setEduForm((f) => ({ ...f, start_year: parseInt(v) || 0 }))}
-                  keyboardType="numeric" selectionColor={colors.primary} />
+                <TouchableOpacity
+                  style={[styles.input, styles.pickerTrigger, inputStyle]}
+                  onPress={() => {
+                    setEduYearTarget("start");
+                    setEduYearWheelVisible(true);
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 15 }}>
+                    {eduForm.start_year ? String(eduForm.start_year) : "Select year"}
+                  </Text>
+                  <Feather name="chevron-down" size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
               </View>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>End Year</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder="2024"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={eduForm.end_year ? String(eduForm.end_year) : ""}
-                  onChangeText={(v) => { const n = parseInt(v); setEduForm((f) => ({ ...f, end_year: isNaN(n) ? null : n })); }}
-                  keyboardType="numeric" selectionColor={colors.primary} />
+                <TouchableOpacity
+                  style={[styles.input, styles.pickerTrigger, inputStyle]}
+                  onPress={() => {
+                    setEduYearTarget("end");
+                    setEduYearWheelVisible(true);
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 15 }}>
+                    {eduForm.end_year == null ? "Present" : String(eduForm.end_year)}
+                  </Text>
+                  <Feather name="chevron-down" size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.field}>
@@ -893,6 +924,35 @@ export default function EditProfileScreen() {
                 onChangeText={(v) => setEduForm((f) => ({ ...f, gpa: v || null }))} selectionColor={colors.primary} />
             </View>
           </ScrollView>
+
+          <YearWheelOverlay
+            attachMode="layer"
+            visible={eduYearWheelVisible}
+            onClose={() => {
+              setEduYearWheelVisible(false);
+              setEduYearTarget(null);
+            }}
+            accentColor={colors.primary}
+            allowPresent={eduYearTarget === "end"}
+            value={
+              eduYearTarget === "start"
+                ? String(eduForm.start_year || CURRENT_YEAR)
+                : eduForm.end_year == null
+                  ? "Present"
+                  : String(eduForm.end_year)
+            }
+            onChange={(v) => {
+              if (eduYearTarget === "start") {
+                const y = parseInt(v, 10);
+                if (Number.isFinite(y)) setEduForm((f) => ({ ...f, start_year: y }));
+              } else if (v === "Present") {
+                setEduForm((f) => ({ ...f, end_year: null }));
+              } else {
+                const y = parseInt(v, 10);
+                setEduForm((f) => ({ ...f, end_year: Number.isFinite(y) ? y : null }));
+              }
+            }}
+          />
         </View>
       </Modal>
 
@@ -925,17 +985,24 @@ export default function EditProfileScreen() {
             <View style={styles.rowFields}>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Start Date</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder="Jan 2023"
-                  placeholderTextColor={colors.mutedForeground} value={expForm.start_date}
-                  onChangeText={(v) => setExpForm((f) => ({ ...f, start_date: v }))} selectionColor={colors.primary} />
+                <MonthYearSpinnerField
+                  value={expForm.start_date}
+                  onChange={(iso) => setExpForm((f) => ({ ...f, start_date: iso }))}
+                  placeholder="Month & year"
+                  minimumDate={new Date(1980, 0, 1)}
+                  maximumDate={new Date()}
+                />
               </View>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>End Date</Text>
-                <TextInput style={[styles.input, expForm.is_current && styles.inputDisabled, inputStyle]}
-                  placeholder="Dec 2023" placeholderTextColor={colors.mutedForeground}
+                <MonthYearSpinnerField
                   value={expForm.is_current ? "" : (expForm.end_date ?? "")}
-                  onChangeText={(v) => setExpForm((f) => ({ ...f, end_date: v }))}
-                  editable={!expForm.is_current} selectionColor={colors.primary} />
+                  onChange={(iso) => setExpForm((f) => ({ ...f, end_date: iso }))}
+                  placeholder="Month & year"
+                  disabled={expForm.is_current}
+                  minimumDate={new Date(1980, 0, 1)}
+                  maximumDate={new Date()}
+                />
               </View>
             </View>
             <View style={styles.switchRow}>
@@ -1192,7 +1259,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1,
   },
   levelLabel: { fontSize: 12, fontWeight: "600" },
-  modalContainer: { flex: 1 },
+  modalContainer: { flex: 1, position: "relative" },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1,

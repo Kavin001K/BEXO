@@ -437,6 +437,12 @@ export const useProfileStore = create<ProfileState>()(
       if (parsed.full_name) profileUpdates.full_name = parsed.full_name;
       if (parsed.headline)  profileUpdates.headline  = parsed.headline;
       if (parsed.bio)       profileUpdates.bio       = parsed.bio;
+      if (parsed.email)       profileUpdates.email       = parsed.email;
+      if (parsed.phone)       profileUpdates.phone       = parsed.phone;
+      if (parsed.location)    profileUpdates.location    = parsed.location;
+      if (parsed.website)     profileUpdates.website     = parsed.website;
+      if (parsed.linkedin_url) profileUpdates.linkedin_url = parsed.linkedin_url;
+      if (parsed.github_url)  profileUpdates.github_url  = parsed.github_url;
 
       await get().updateProfile(profileUpdates);
 
@@ -490,6 +496,9 @@ export const useProfileStore = create<ProfileState>()(
       if (parsed.email     && !profile.email?.trim())     profileUpdates.email     = parsed.email;
       if (parsed.phone     && !profile.phone?.trim())     profileUpdates.phone     = parsed.phone;
       if (parsed.location  && !profile.location?.trim())  profileUpdates.location  = parsed.location;
+      if (parsed.website     && !profile.website?.trim())     profileUpdates.website     = parsed.website;
+      if (parsed.linkedin_url && !profile.linkedin_url?.trim()) profileUpdates.linkedin_url = parsed.linkedin_url;
+      if (parsed.github_url  && !profile.github_url?.trim())  profileUpdates.github_url  = parsed.github_url;
 
       if (Object.keys(profileUpdates).length > 1) { // more than just resume_url
         await get().updateProfile(profileUpdates);

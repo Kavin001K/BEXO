@@ -101,14 +101,17 @@ export default function VerifyScreen() {
       const result = await resp.json();
       if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
-      const { access_token, refresh_token, isNewUser } = result;
+      const { access_token, refresh_token, user } = result;
       const { error: sessionErr } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
       if (sessionErr) throw sessionErr;
 
-      if (isNewUser) {
+      // Check if user needs to provide a real email
+      const isFakeEmail = user?.email?.endsWith("@bexo.local");
+      
+      if (result.isNewUser || isFakeEmail) {
         router.replace("/(onboarding)/email");
       } else {
         router.replace("/dashboard");
