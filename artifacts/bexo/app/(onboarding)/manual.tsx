@@ -73,35 +73,28 @@ const COMMON_TECH = [
 // ─── Types ────────────────────────────────────────────────────────────────────
 type EduEntry  = { institution: string; degree: string; field: string; start_year: string; end_year: string; description: string };
 type ExpEntry  = { company: string; role: string; start_month: string; start_year: string; end_month: string; end_year: string; is_current: boolean; description: string };
-type ProjEntry = { title: string; subtitle: string; description: string; tech_stack: string[]; live_url: string; github_url: string; image_url: string };
+type ProjEntry = { id?: string; title: string; description: string; tech_stack: string[]; live_url: string; github_url: string; image_url: string };
 type ResEntry  = { title: string; subtitle: string; description: string; image_url: string };
 type ContactEntry = { phone: string; email: string; address: string };
 
 const newEdu  = (): EduEntry  => ({ institution: "", degree: "", field: "", start_year: "", end_year: "", description: "" });
 const newExp  = (): ExpEntry  => ({ company: "", role: "", start_month: "", start_year: "", end_month: "", end_year: "", is_current: false, description: "" });
-const newProj = (): ProjEntry => ({ title: "", subtitle: "", description: "", tech_stack: [], live_url: "", github_url: "", image_url: "" });
+const newProj = (): ProjEntry => ({ title: "", description: "", tech_stack: [], live_url: "", github_url: "", image_url: "" });
 const newRes  = (): ResEntry  => ({ title: "", subtitle: "", description: "", image_url: "" });
 const newContact = (): ContactEntry => ({ phone: "", email: "", address: "" });
 
-// ─── SegmentedProgress ────────────────────────────────────────────────────────
 function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: number; stepIdx: number; totalSteps: number }) {
+  const sec = SECTIONS[sectionIdx];
+  const fill = Math.min((stepIdx + 1) / Math.max(totalSteps, 1), 1);
+  
   return (
-    <View style={{ flexDirection: "row", gap: 5 }}>
-      {SECTIONS.map((sec, i) => {
-        const done   = i < sectionIdx;
-        const active = i === sectionIdx;
-        const fill   = done ? 1 : active ? Math.min((stepIdx + 1) / Math.max(totalSteps, 1), 1) : 0;
-        return (
-          <View key={sec.id} style={{ flex: 1, gap: 3 }}>
-            <View style={{ height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-              <RNAnimated.View style={{ width: `${fill * 100}%` as any, height: 3, borderRadius: 2, backgroundColor: sec.color }} />
-            </View>
-            <Text style={{ fontSize: 8, fontWeight: "700", color: active ? sec.color : (done ? sec.color + "80" : "rgba(255,255,255,0.25)"), textAlign: "center", letterSpacing: 0.4, textTransform: "uppercase" }}>
-              {sec.label}
-            </Text>
-          </View>
-        );
-      })}
+    <View style={{ flex: 1, gap: 6 }}>
+      <Text style={{ fontSize: 10, fontWeight: "900", color: sec.color, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: -2 }}>
+        {sec.label}
+      </Text>
+      <View style={{ height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+        <RNAnimated.View style={{ width: `${fill * 100}%` as any, height: 4, borderRadius: 2, backgroundColor: sec.color }} />
+      </View>
     </View>
   );
 }
@@ -452,7 +445,15 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ManualEntryScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, setOnboardingStep, updateProfile } = useProfileStore();
+  const { 
+    profile, 
+    setOnboardingStep, 
+    updateProfile,
+    education,
+    experiences,
+    projects,
+    research 
+  } = useProfileStore();
 
   // Section & step
   const [sectionIdx, setSectionIdx] = useState(0);
@@ -743,7 +744,8 @@ export default function ManualEntryScreen() {
   };
 
   const handleFinish = async () => {
-    if (saving) return;
+    // We don't block by 'saving' here because proceedToNextSection might have set it
+    // instead we just do one final sync
     haptic("medium");
     setSaving(true);
     const store = useProfileStore.getState();
@@ -927,7 +929,7 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub="Looks great — want to add another?" />
           <View style={{ gap: 12 }}>
-            {useProfileStore.getState().education.map((item, idx) => (
+            {education.map((item, idx) => (
               <EntryCard
                 key={item.id || idx}
                 label="Education"
@@ -995,7 +997,7 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={`${exp.role} at ${exp.company}`} />
           <View style={{ gap: 12 }}>
-            {useProfileStore.getState().experiences.map((item, idx) => (
+            {experiences.map((item, idx) => (
               <EntryCard
                 key={item.id || idx}
                 label="Experience"
@@ -1085,7 +1087,7 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={proj.title} />
           <View style={{ gap: 12 }}>
-            {useProfileStore.getState().projects.map((item, idx) => (
+            {projects.map((item, idx) => (
               <EntryCard
                 key={item.id || idx}
                 label="Project"
@@ -1094,7 +1096,6 @@ export default function ManualEntryScreen() {
                 onEdit={() => {
                   setProj({
                     ...item,
-                    subtitle: item.subtitle || "",
                     github_url: item.github_url || "",
                     live_url: item.live_url || "",
                     image_url: item.image_url || "",
@@ -1180,7 +1181,7 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={res.title} />
           <View style={{ gap: 12 }}>
-            {useProfileStore.getState().research.map((item, idx) => (
+            {research.map((item, idx) => (
               <EntryCard
                 key={item.id || idx}
                 label="Research"

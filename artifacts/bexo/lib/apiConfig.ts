@@ -10,8 +10,20 @@ import Constants from "expo-constants";
  * 3. Auto-detect: use Expo's debuggerHost IP for native, localhost for web
  */
 function getApiBaseUrl(): string {
-  // 1. If an explicit PRODUCTION or remote URL is provided, use it as TOP priority.
-  // We check for https to distinguish it from local development overrides.
+  // 1. For native dev (iOS/Android), prioritize auto-detecting the LAN IP.
+  // This is CRITICAL because the local server has the latest AI fixes.
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ?? 
+    (Constants as any).manifest?.debuggerHost;
+  
+  if (debuggerHost && !process.env.EXPO_PUBLIC_FORCE_PROD) {
+    const ip = debuggerHost.split(":")[0]; 
+    const url = `http://${ip}:3000`;
+    console.log(`[API] Auto-detected local backend: ${url}`);
+    return url;
+  }
+
+  // 2. If an explicit PRODUCTION or remote URL is provided, use it.
   if (
     process.env.EXPO_PUBLIC_API_BASE_URL &&
     process.env.EXPO_PUBLIC_API_BASE_URL.startsWith("https")
@@ -19,7 +31,7 @@ function getApiBaseUrl(): string {
     return process.env.EXPO_PUBLIC_API_BASE_URL;
   }
 
-  // 2. If we are on web, localhost is fine for dev.
+  // 3. If we are on web, localhost is fine for dev.
   if (Platform.OS === "web") {
     return process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
   }
