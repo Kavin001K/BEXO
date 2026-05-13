@@ -15,34 +15,18 @@ export default function RootIndex() {
   useEffect(() => {
     if (!isAuthLoading && !isProfileLoading) {
       if (session) {
-        const isEmailVerified = profile?.email_verified || false;
-        
         if (onboardingStep === "completed") {
           router.replace("/(main)/dashboard");
-        } else if (!isEmailVerified || onboardingStep === "email") {
-          router.replace("/(onboarding)/contact");
         } else {
-          // Map remaining steps
-          const stepRoutes: Record<string, string> = {
-            photo: "/(onboarding)/photo",
-            handle: "/(onboarding)/handle",
-            dob: "/(onboarding)/dob",
-            resume: "/(onboarding)/resume",
-            manual: "/(onboarding)/manual",
-            theme: "/(onboarding)/theme",
-            font: "/(onboarding)/font",
-            preference: "/(onboarding)/preference",
-            generating: "/(onboarding)/generating",
-          };
-          
-          const targetRoute = stepRoutes[onboardingStep] || "/(onboarding)/handle";
-          router.replace(targetRoute as any);
+          // Always start onboarding at the contact screen to ensure 
+          // email collection/verification is the first thing they see.
+          router.replace("/(onboarding)/contact");
         }
       } else {
         router.replace("/(auth)");
       }
     }
-  }, [isAuthLoading, isProfileLoading, session, onboardingStep, profile?.email_verified]);
+  }, [isAuthLoading, isProfileLoading, session, onboardingStep]);
 
   return <View style={{ flex: 1, backgroundColor: "#0A0A0F" }} />;
 }
