@@ -47,3 +47,11 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Env and secrets (never commit real keys or DATABASE_URL)
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local state (machine-specific; may include pooler URLs)
+supabase/.temp/
