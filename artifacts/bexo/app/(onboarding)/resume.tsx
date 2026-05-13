@@ -5,7 +5,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  StyleSheet, Text, TouchableOpacity, View,
+  StyleSheet, Text, TouchableOpacity, View, Platform,
 } from "react-native";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -101,7 +101,7 @@ export default function ResumeScreen() {
       console.error("[ResumeScreen] Error:", e);
       // Graceful degradation: move to manual with what we have
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      setOnboardingStep("cards");
+      setOnboardingStep("manual");
       router.push("/(onboarding)/manual");
     }
   };
@@ -120,8 +120,9 @@ export default function ResumeScreen() {
       }
 
       // Sync done, move forward
-      setOnboardingStep("cards");
-      router.push("/(onboarding)/cards");
+      // Sync done, move to manual entry for review/edit
+      setOnboardingStep("manual");
+      router.push("/(onboarding)/manual");
     } catch (e: any) {
       console.error("[ResumeScreen] Save error:", e);
       setError(sanitizeError(e));
@@ -132,7 +133,7 @@ export default function ResumeScreen() {
   };
 
   const handleSkip = () => {
-    setOnboardingStep("cards");
+    setOnboardingStep("manual");
     router.push("/(onboarding)/manual");
   };
 

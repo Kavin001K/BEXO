@@ -13,6 +13,16 @@ export interface Education {
   start_year: number;
   end_year?: number | null;
   gpa?: string | null;
+  description?: string | null;
+}
+
+export interface Research {
+  id?: string;
+  title: string;
+  subtitle?: string | null;
+  description: string;
+  image_url?: string | null;
+  file_url?: string | null;
 }
 
 export interface Experience {
@@ -65,6 +75,7 @@ export interface Profile {
   portfolio_font?: string | null;
   website_preference?: string | null;
   rebuild_preferences?: string | null;
+  address?: string | null;
 }
 
 export interface CompletionResult {
@@ -86,8 +97,9 @@ interface ProfileState {
   experiences: Experience[];
   projects: Project[];
   skills: Skill[];
+  research: Research[];
   isLoading: boolean;
-  onboardingStep: "contact" | "photo" | "handle" | "dob" | "resume" | "cards" | "theme" | "font" | "preference" | "generating" | "completed";
+  onboardingStep: "email" | "photo" | "handle" | "dob" | "resume" | "manual" | "about" | "theme" | "font" | "preference" | "generating" | "completed";
   parsedResumeData: Partial<{
     full_name: string;
     headline: string;
@@ -96,6 +108,7 @@ interface ProfileState {
     experiences: Experience[];
     projects: Project[];
     skills: Skill[];
+    research: Research[];
   }> | null;
 
   setProfile: (profile: Profile) => void;
@@ -119,6 +132,8 @@ interface ProfileState {
   deleteProject: (id: string) => Promise<void>;
   saveSkill: (skill: Skill) => Promise<void>;
   deleteSkill: (id: string) => Promise<void>;
+  saveResearch: (res: Research) => Promise<void>;
+  deleteResearch: (id: string) => Promise<void>;
   getCompletionResult: () => CompletionResult;
 
   // ─── New bulk methods ───
@@ -126,6 +141,7 @@ interface ProfileState {
   bulkSaveExperiences: (items: Experience[]) => Promise<void>;
   bulkSaveProjects: (items: Project[]) => Promise<void>;
   bulkSaveSkills: (items: Skill[]) => Promise<void>;
+  bulkSaveResearch: (items: Research[]) => Promise<void>;
   replaceAllDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
   mergeDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
   refreshFromDB: () => Promise<void>;
@@ -140,8 +156,9 @@ export const useProfileStore = create<ProfileState>()(
   experiences: [],
   projects: [],
   skills: [],
+  research: [],
   isLoading: false,
-  onboardingStep: "contact",
+  onboardingStep: "email",
   parsedResumeData: null,
 
   setProfile: (profile) => set({ profile }),
@@ -152,6 +169,7 @@ export const useProfileStore = create<ProfileState>()(
   setExperiences: (experiences) => set({ experiences }),
   setProjects: (projects) => set({ projects }),
   setSkills: (skills) => set({ skills }),
+  setResearch: (research) => set({ research }),
 
   addEducation: (edu) => set((s) => ({ education: [...s.education, edu] })),
   addExperience: (exp) => set((s) => ({ experiences: [...s.experiences, exp] })),
@@ -208,17 +226,19 @@ export const useProfileStore = create<ProfileState>()(
 
       if (data) {
         set({ profile: data, onboardingStep: "completed" });
-        const [edu, exp, proj, skillsRes] = await Promise.all([
+        const [edu, exp, proj, skillsRes, resRes] = await Promise.all([
           supabase.from("education").select("*").eq("profile_id", data.id).order("start_year", { ascending: false }),
           supabase.from("experiences").select("*").eq("profile_id", data.id).order("start_date", { ascending: false }),
           supabase.from("projects").select("*").eq("profile_id", data.id),
           supabase.from("skills").select("*").eq("profile_id", data.id),
+          supabase.from("research").select("*").eq("profile_id", data.id),
         ]);
         set({
           education:   edu.data   ?? [],
           experiences: exp.data   ?? [],
           projects:    proj.data  ?? [],
           skills:      skillsRes.data ?? [],
+          research:    resRes.data ?? [],
           isLoading:   false,
         });
       } else {
@@ -310,8 +330,35 @@ export const useProfileStore = create<ProfileState>()(
     }
   },
   deleteSkill: async (id) => {
-    await supabase.from("skills").delete().eq("id", id);
-    set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }));
+    const { error } = await supabase.from("skills").delete().eq("id", id);
+    if (error) throw error;
+    set((s) => ({ skills: s.skills.filter((x) => x.id !== id) }));
+  },
+
+  saveResearch: async (res) => {
+    const { profile } = get();
+    if (!profile) return;
+    const { error } = await supabase
+      .from("research")
+      .upsert({ ...res, profile_id: profile.id });
+    if (error) throw error;
+    await get().refreshFromDB();
+  },
+
+  deleteResearch: async (id) => {
+    const { error } = await supabase.from("research").delete().eq("id", id);
+    if (error) throw error;
+    set((s) => ({ research: s.research.filter((x) => x.id !== id) }));
+  },
+
+  bulkSaveResearch: async (items) => {
+    const { profile } = get();
+    if (!profile) return;
+    const { error } = await supabase
+      .from("research")
+      .upsert(items.map((x) => ({ ...x, profile_id: profile.id })));
+    if (error) throw error;
+    await get().refreshFromDB();
   },
 
   // ─── New: Bulk save methods ───────────────────────────────────────────
@@ -396,19 +443,21 @@ export const useProfileStore = create<ProfileState>()(
         supabase.from("experiences").delete().eq("profile_id", pid),
         supabase.from("projects").delete().eq("profile_id", pid),
         supabase.from("skills").delete().eq("profile_id", pid),
+        supabase.from("research").delete().eq("profile_id", pid),
       ]);
 
       // 3. Insert NEW data using bulk helpers (to ensure local state sync)
       console.log("[ProfileStore] replaceAllData: Inserting new records...");
       
       // Clear local state first to be safe
-      set({ education: [], experiences: [], projects: [], skills: [] });
+      set({ education: [], experiences: [], projects: [], skills: [], research: [] });
 
       const tasks: Promise<any>[] = [];
       if (parsed.education?.length)   tasks.push(get().bulkSaveEducation(parsed.education));
       if (parsed.experiences?.length) tasks.push(get().bulkSaveExperiences(parsed.experiences));
       if (parsed.projects?.length)    tasks.push(get().bulkSaveProjects(parsed.projects));
       if (parsed.skills?.length)      tasks.push(get().bulkSaveSkills(parsed.skills));
+      if (parsed.research?.length)    tasks.push(get().bulkSaveResearch(parsed.research));
 
       await Promise.all(tasks);
 
@@ -434,6 +483,9 @@ export const useProfileStore = create<ProfileState>()(
       if (parsed.full_name && !profile.full_name?.trim()) profileUpdates.full_name = parsed.full_name;
       if (parsed.headline  && !profile.headline?.trim())  profileUpdates.headline  = parsed.headline;
       if (parsed.bio       && !profile.bio?.trim())       profileUpdates.bio       = parsed.bio;
+      if (parsed.email     && !profile.email?.trim())     profileUpdates.email     = parsed.email;
+      if (parsed.phone     && !profile.phone?.trim())     profileUpdates.phone     = parsed.phone;
+      if (parsed.address   && !profile.address?.trim())   profileUpdates.address   = parsed.address;
 
       if (Object.keys(profileUpdates).length > 1) { // more than just resume_url
         await get().updateProfile(profileUpdates);
@@ -466,10 +518,18 @@ export const useProfileStore = create<ProfileState>()(
         )
       );
 
+      const existingRes = get().research;
+      const newRes = (parsed.research ?? []).filter(pr =>
+        !existingRes.some(er =>
+          er.title.toLowerCase().trim() === pr.title.toLowerCase().trim()
+        )
+      );
+
       const tasks: Promise<any>[] = [];
       if (newEdu.length > 0)   tasks.push(get().bulkSaveEducation(newEdu));
       if (newExp.length > 0)   tasks.push(get().bulkSaveExperiences(newExp));
       if (newProj.length > 0)  tasks.push(get().bulkSaveProjects(newProj));
+      if (newRes.length > 0)   tasks.push(get().bulkSaveResearch(newRes));
       if (parsed.skills?.length) tasks.push(get().bulkSaveSkills(parsed.skills)); // upsert handles skills
 
       await Promise.all(tasks);
@@ -485,26 +545,22 @@ export const useProfileStore = create<ProfileState>()(
    * Re-fetch all data from DB to ensure local state is authoritative.
    */
   refreshFromDB: async () => {
-    const profile = get().profile;
+    const { profile } = get();
     if (!profile) return;
-
-    console.log("[ProfileStore] refreshFromDB: Syncing from database...");
-    const [profRes, edu, exp, proj, skillsRes] = await Promise.all([
-      supabase.from("profiles").select("*").eq("id", profile.id).single(),
+    const [edu, exp, proj, sk, res] = await Promise.all([
       supabase.from("education").select("*").eq("profile_id", profile.id).order("start_year", { ascending: false }),
       supabase.from("experiences").select("*").eq("profile_id", profile.id).order("start_date", { ascending: false }),
       supabase.from("projects").select("*").eq("profile_id", profile.id),
       supabase.from("skills").select("*").eq("profile_id", profile.id),
+      supabase.from("research").select("*").eq("profile_id", profile.id),
     ]);
-
     set({
-      profile:     profRes.data ?? profile,
-      education:   edu.data     ?? [],
-      experiences: exp.data     ?? [],
-      projects:    proj.data    ?? [],
-      skills:      skillsRes.data ?? [],
+      education: edu.data ?? [],
+      experiences: exp.data ?? [],
+      projects: proj.data ?? [],
+      skills: sk.data ?? [],
+      research: res.data ?? [],
     });
-    console.log("[ProfileStore] refreshFromDB: Done.");
   },
   reset: () => set({
     profile: null,
@@ -512,7 +568,8 @@ export const useProfileStore = create<ProfileState>()(
     experiences: [],
     projects: [],
     skills: [],
-    onboardingStep: "contact",
+    research: [],
+    onboardingStep: "email",
     parsedResumeData: null,
     isLoading: false,
   }),
@@ -527,6 +584,7 @@ export const useProfileStore = create<ProfileState>()(
         experiences: state.experiences,
         projects: state.projects,
         skills: state.skills,
+        research: state.research,
       }),
     }
   )

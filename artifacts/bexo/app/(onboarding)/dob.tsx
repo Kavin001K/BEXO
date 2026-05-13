@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -34,6 +34,10 @@ export default function DobScreen() {
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const { setOnboardingStep, updateProfile } = useProfileStore();
+
+  const dayRef   = useRef<TextInput>(null);
+  const monthRef = useRef<TextInput>(null);
+  const yearRef  = useRef<TextInput>(null);
 
   const [day, setDay]     = useState("");
   const [month, setMonth] = useState("");
@@ -134,27 +138,43 @@ export default function DobScreen() {
           <View style={[styles.dateField, { flex: 1 }]}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Day</Text>
             <TextInput
+              ref={dayRef}
               style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
               placeholder="DD"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="number-pad"
               maxLength={2}
               value={day}
-              onChangeText={(t) => { setDay(t.replace(/\D/g, "")); setError(""); }}
+              onChangeText={(t) => {
+                const val = t.replace(/\D/g, "");
+                setDay(val);
+                setError("");
+                if (val.length === 2) monthRef.current?.focus();
+              }}
               selectionColor={colors.primary}
+              autoFocus
             />
           </View>
 
           <View style={[styles.dateField, { flex: 1 }]}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Month</Text>
             <TextInput
+              ref={monthRef}
               style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
               placeholder="MM"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="number-pad"
               maxLength={2}
               value={month}
-              onChangeText={(t) => { setMonth(t.replace(/\D/g, "")); setError(""); }}
+              onChangeText={(t) => {
+                const val = t.replace(/\D/g, "");
+                setMonth(val);
+                setError("");
+                if (val.length === 2) yearRef.current?.focus();
+              }}
+              onKeyPress={({ nativeEvent }) => {
+                if (nativeEvent.key === "Backspace" && !month) dayRef.current?.focus();
+              }}
               selectionColor={colors.primary}
             />
           </View>
@@ -162,14 +182,23 @@ export default function DobScreen() {
           <View style={[styles.dateField, { flex: 2 }]}>
             <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Year</Text>
             <TextInput
+              ref={yearRef}
               style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
               placeholder="YYYY"
               placeholderTextColor={colors.mutedForeground}
               keyboardType="number-pad"
               maxLength={4}
               value={year}
-              onChangeText={(t) => { setYear(t.replace(/\D/g, "")); setError(""); }}
+              onChangeText={(t) => {
+                setYear(t.replace(/\D/g, ""));
+                setError("");
+              }}
+              onKeyPress={({ nativeEvent }) => {
+                if (nativeEvent.key === "Backspace" && !year) monthRef.current?.focus();
+              }}
               selectionColor={colors.primary}
+              returnKeyType="done"
+              onSubmitEditing={isValid ? handleContinue : undefined}
             />
           </View>
         </Animated.View>

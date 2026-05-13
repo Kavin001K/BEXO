@@ -4,6 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  Alert,
   Image,
   Platform,
   ScrollView,
@@ -176,8 +177,21 @@ export default function PhotoScreen() {
         <BexoButton
           label="Skip for now"
           onPress={() => {
-            setOnboardingStep("handle");
-            router.push("/(onboarding)/handle");
+            Alert.alert(
+              "Keep going?",
+              "A portfolio with a friendly photo is much more likely to be seen. You can always add one later in your settings.",
+              [
+                { 
+                  text: "Skip anyway", 
+                  style: "destructive",
+                  onPress: () => {
+                    setOnboardingStep("handle");
+                    router.push("/(onboarding)/handle");
+                  }
+                },
+                { text: "Add photo", style: "default" }
+              ]
+            );
           }}
           variant="ghost"
           disabled={uploading}

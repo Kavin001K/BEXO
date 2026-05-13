@@ -45,6 +45,7 @@ export default function LoginScreen() {
   const setPhoneNumber = useAuthStore((s) => s.setPhoneNumber);
   const setOtpSentAt   = useAuthStore((s) => s.setOtpSentAt);
   const session        = useAuthStore((s) => s.session);
+  const hasSeenWalkthrough = useAuthStore((s) => s.hasSeenWalkthrough);
 
   const [countryCode, setCountryCode]         = useState("+91");
   const [phone, setPhone]                     = useState("");
@@ -53,10 +54,14 @@ export default function LoginScreen() {
   const [error, setError]                     = useState("");
 
   useEffect(() => {
+    if (!hasSeenWalkthrough) {
+      router.replace("/(auth)/walkthrough");
+      return;
+    }
     if (session?.user) {
       router.replace("/dashboard");
     }
-  }, [session]);
+  }, [session, hasSeenWalkthrough]);
 
   const fullPhone = `${countryCode}${phone.replace(/\D/g, "")}`;
 

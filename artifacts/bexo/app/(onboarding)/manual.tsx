@@ -28,11 +28,16 @@ const { width: W, height: SCREEN_H } = Dimensions.get("window");
 
 // ─── Section config ───────────────────────────────────────────────────────────
 const SECTIONS = [
-  { id: 0, label: "Education",  icon: "book-open" as const,  color: "#8B7CF8" },
-  { id: 1, label: "Experience", icon: "briefcase"  as const,  color: "#FABD6A" },
-  { id: 2, label: "Projects",   icon: "code"       as const,  color: "#6AFAD0" },
-  { id: 3, label: "Skills",     icon: "zap"        as const,  color: "#6AB8FA" },
+  { id: 0, label: "About",      icon: "user"       as const,  color: "#FA6AB8" },
+  { id: 1, label: "Education",  icon: "book-open" as const,  color: "#8B7CF8" },
+  { id: 2, label: "Experience", icon: "briefcase"  as const,  color: "#FABD6A" },
+  { id: 3, label: "Projects",   icon: "code"       as const,  color: "#6AFAD0" },
+  { id: 4, label: "Skills",     icon: "zap"        as const,  color: "#6AB8FA" },
+  { id: 5, label: "Research",   icon: "search"     as const,  color: "#FAD06A" },
+  { id: 6, label: "Contact",    icon: "mail"       as const,  color: "#6AFA6A" },
 ];
+
+const STEPS = [2, 5, 5, 4, 1, 4, 2]; // Steps per section (including review steps)
 
 const DEGREES = ["Bachelor's", "Master's", "MBA", "PhD", "Associate's", "Diploma", "High School", "Bootcamp", "Certificate", "Other"];
 const MONTHS  = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -57,13 +62,17 @@ const COMMON_TECH = [
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type EduEntry  = { institution: string; degree: string; field: string; start_year: string; end_year: string };
+type EduEntry  = { institution: string; degree: string; field: string; start_year: string; end_year: string; description: string };
 type ExpEntry  = { company: string; role: string; start_month: string; start_year: string; end_month: string; end_year: string; is_current: boolean; description: string };
-type ProjEntry = { title: string; description: string; tech_stack: string[]; live_url: string; github_url: string };
+type ProjEntry = { title: string; subtitle: string; description: string; tech_stack: string[]; live_url: string; github_url: string; image_url: string };
+type ResEntry  = { title: string; subtitle: string; description: string; image_url: string };
+type ContactEntry = { phone: string; email: string; address: string };
 
-const newEdu  = (): EduEntry  => ({ institution: "", degree: "", field: "", start_year: "", end_year: "" });
+const newEdu  = (): EduEntry  => ({ institution: "", degree: "", field: "", start_year: "", end_year: "", description: "" });
 const newExp  = (): ExpEntry  => ({ company: "", role: "", start_month: "", start_year: "", end_month: "", end_year: "", is_current: false, description: "" });
-const newProj = (): ProjEntry => ({ title: "", description: "", tech_stack: [], live_url: "", github_url: "" });
+const newProj = (): ProjEntry => ({ title: "", subtitle: "", description: "", tech_stack: [], live_url: "", github_url: "", image_url: "" });
+const newRes  = (): ResEntry  => ({ title: "", subtitle: "", description: "", image_url: "" });
+const newContact = (): ContactEntry => ({ phone: "", email: "", address: "" });
 
 // ─── SegmentedProgress ────────────────────────────────────────────────────────
 function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: number; stepIdx: number; totalSteps: number }) {
@@ -422,6 +431,9 @@ export default function ManualEntryScreen() {
   // Section & step
   const [sectionIdx, setSectionIdx] = useState(0);
   const [stepIdx,    setStepIdx   ] = useState(0);
+  // About
+  const [headline, setHeadline] = useState(profile?.headline || "");
+  const [bio,      setBio     ] = useState(profile?.bio      || "");
 
   // Education
   const [eduEntries,       setEduEntries      ] = useState<EduEntry[]>([]);
@@ -431,6 +443,8 @@ export default function ManualEntryScreen() {
   // Experience
   const [expEntries, setExpEntries] = useState<ExpEntry[]>([]);
   const [exp,        setExp       ] = useState<ExpEntry>(newExp());
+  const [expYearPickerFor, setExpYearPickerFor] = useState<"start" | "end" | null>(null);
+  const [expMonthPickerFor, setExpMonthPickerFor] = useState<"start" | "end" | null>(null);
 
   // Projects
   const [projEntries, setProjEntries] = useState<ProjEntry[]>([]);
@@ -439,6 +453,17 @@ export default function ManualEntryScreen() {
   // Skills
   const [skills, setSkills] = useState<string[]>([]);
 
+  // Research
+  const [resEntries, setResEntries] = useState<ResEntry[]>([]);
+  const [res,        setRes       ] = useState<ResEntry>(newRes());
+
+  // Contact
+  const [contact, setContact] = useState<ContactEntry>({
+    phone: profile?.phone || "",
+    email: profile?.email || "",
+    address: "",
+  });
+
   // Save state
   const [saving, setSaving] = useState(false);
 
@@ -446,9 +471,6 @@ export default function ManualEntryScreen() {
   const yearSheetRef  = useRef<BottomSheetModal>(null);
   const monthSheetRef = useRef<BottomSheetModal>(null);
 
-  // Picker States (Lifted for Sheets)
-  const [expYearPickerFor,   setExpYearPickerFor]   = useState<"start" | "end" | null>(null);
-  const [expMonthPickerFor,  setExpMonthPickerFor]  = useState<"start" | "end" | null>(null);
 
 
   // Transition animation
@@ -514,39 +536,69 @@ export default function ManualEntryScreen() {
 
   const addAnotherEntry = (section: number) => {
     haptic("medium");
-    if (section === 0) { setEduEntries((e) => [...e, edu]); setEdu(newEdu()); }
-    if (section === 1) { setExpEntries((e) => [...e, exp]); setExp(newExp()); }
-    if (section === 2) { setProjEntries((e) => [...e, proj]); setProj(newProj()); }
+    if (section === 1) { setEduEntries((e) => [...e, edu]); setEdu(newEdu()); }
+    if (section === 2) { setExpEntries((e) => [...e, exp]); setExp(newExp()); }
+    if (section === 3) { setProjEntries((e) => [...e, proj]); setProj(newProj()); }
+    if (section === 5) { setResEntries((e) => [...e, res]); setRes(newRes()); }
     transition("fwd", () => setStepIdx(0));
   };
 
   const proceedToNextSection = () => {
     haptic("medium");
-    if (sectionIdx === 0 && edu.institution.trim()) setEduEntries((e) => [...e, edu]);
-    if (sectionIdx === 1 && exp.company.trim())     setExpEntries((e) => [...e, exp]);
-    if (sectionIdx === 2 && proj.title.trim())      setProjEntries((e) => [...e, proj]);
-    if (sectionIdx === 0) setEdu(newEdu());
-    if (sectionIdx === 1) setExp(newExp());
-    if (sectionIdx === 2) setProj(newProj());
-    if (sectionIdx < 3) {
-      transition("fwd", () => { setSectionIdx((s) => s + 1); setStepIdx(0); });
+    
+    // Final check for each section to save the "currently being edited" item if it's valid
+    if (sectionIdx === 1 && edu.institution.trim()) {
+      setEduEntries((e) => [...e, edu]);
+      setEdu(newEdu());
+    }
+    if (sectionIdx === 2 && exp.company.trim()) {
+      setExpEntries((e) => [...e, exp]);
+      setExp(newExp());
+    }
+    if (sectionIdx === 3 && proj.title.trim()) {
+      setProjEntries((e) => [...e, proj]);
+      setProj(newProj());
+    }
+    if (sectionIdx === 5 && res.title.trim()) {
+      setResEntries((e) => [...e, res]);
+      setRes(newRes());
+    }
+
+    if (sectionIdx < 6) {
+      transition("fwd", () => { 
+        setSectionIdx((s) => s + 1); 
+        setStepIdx(0); 
+      });
+    } else {
+      handleFinish();
     }
   };
 
   const handleFinish = async () => {
     setSaving(true);
     haptic("medium");
+    const finalEdu   = sectionIdx >= 1 && edu.institution.trim() ? [...eduEntries, edu] : eduEntries;
+    const finalExp   = sectionIdx >= 2 && exp.company.trim()     ? [...expEntries, exp] : expEntries;
+    const finalProj  = sectionIdx >= 3 && proj.title.trim()      ? [...projEntries, proj] : projEntries;
     const finalSkills = skills;
-    const finalEdu   = sectionIdx >= 0 && edu.institution.trim() ? [...eduEntries, edu] : eduEntries;
-    const finalExp   = sectionIdx >= 1 && exp.company.trim()     ? [...expEntries, exp] : expEntries;
-    const finalProj  = sectionIdx >= 2 && proj.title.trim()      ? [...projEntries, proj] : projEntries;
+    const finalRes   = sectionIdx >= 5 && res.title.trim()       ? [...resEntries, res] : resEntries;
+
     try {
       const pid = profile?.id;
       if (pid) {
+        // Save About & Contact info
+        await supabase.from("profiles").update({
+          headline,
+          bio,
+          phone: contact.phone || profile.phone,
+          email: contact.email || profile.email,
+          address: contact.address,
+        }).eq("id", pid);
+
         if (finalEdu.length > 0) {
           await supabase.from("education").insert(finalEdu.map((e) => ({
             profile_id: pid, institution: e.institution, degree: e.degree,
-            field_of_study: e.field,
+            field: e.field, description: e.description,
             start_year: e.start_year ? Number(e.start_year) : null,
             end_year: e.end_year && e.end_year !== "Present" ? Number(e.end_year) : null,
           })));
@@ -569,45 +621,62 @@ export default function ManualEntryScreen() {
         if (finalSkills.length > 0) {
           await supabase.from("skills").insert(finalSkills.map((s) => ({ profile_id: pid, name: s })));
         }
+        if (finalRes.length > 0) {
+          await supabase.from("research").insert(finalRes.map((r) => ({
+            profile_id: pid, title: r.title, subtitle: r.subtitle, description: r.description,
+          })));
+        }
       }
     } catch (err) {
       console.error("[Manual] Save error:", err);
     } finally {
       setSaving(false);
-      setOnboardingStep("cards");
-      router.push("/(onboarding)/cards");
+      setOnboardingStep("theme");
+      router.push("/(onboarding)/theme");
     }
   };
 
   // ── Validation ──
-  const isReviewStep  = sectionIdx < 3 && stepIdx === STEPS[sectionIdx] - 1;
-  const isSkillsStep  = sectionIdx === 3;
+  const isReviewStep  = (sectionIdx === 1 && stepIdx === 4) || (sectionIdx === 2 && stepIdx === 4) || (sectionIdx === 3 && stepIdx === 4) || (sectionIdx === 5 && stepIdx === 3);
+  const isSkillsStep  = sectionIdx === 4;
   const canContinue   = (() => {
     if (isReviewStep || isSkillsStep) return true;
     if (sectionIdx === 0) {
+      if (stepIdx === 0) return headline.trim().length > 0;
+      if (stepIdx === 1) return bio.trim().length > 0;
+    }
+    if (sectionIdx === 1) {
       if (stepIdx === 0) return edu.institution.trim().length > 0;
       if (stepIdx === 1) return edu.degree.length > 0;
       if (stepIdx === 2) return true;
       if (stepIdx === 3) return edu.start_year.length > 0;
     }
-    if (sectionIdx === 1) {
+    if (sectionIdx === 2) {
       if (stepIdx === 0) return exp.company.trim().length > 0;
       if (stepIdx === 1) return exp.role.trim().length > 0;
       if (stepIdx === 2) return exp.start_year.length > 0;
       if (stepIdx === 3) return true;
     }
-    if (sectionIdx === 2) {
+    if (sectionIdx === 3) {
       if (stepIdx === 0) return proj.title.trim().length > 0;
       if (stepIdx === 1) return proj.description.trim().length > 0;
       if (stepIdx === 2) return true;
       if (stepIdx === 3) return true;
+    }
+    if (sectionIdx === 5) {
+      if (stepIdx === 0) return res.title.trim().length > 0;
+      if (stepIdx === 1) return res.description.trim().length > 0;
+      if (stepIdx === 2) return true;
+    }
+    if (sectionIdx === 6) {
+      if (stepIdx === 0) return contact.email.trim().includes("@"); // Email
+      if (stepIdx === 1) return true; // Address
     }
     return true;
   })();
 
   // ── Next handler ──
   const handleNext = () => {
-    // On second-to-last step (before review), go to review
     if (!isReviewStep && !isSkillsStep && stepIdx === STEPS[sectionIdx] - 2) {
       goToReview();
     } else if (!isReviewStep && !isSkillsStep) {
@@ -617,8 +686,24 @@ export default function ManualEntryScreen() {
 
   // ── Step content ──
   const renderContent = () => {
-    // ── EDUCATION ──────────────────────────────────────────────────────────────
+    // ── ABOUT ────────────────────────────────────────────────────────────────
     if (sectionIdx === 0) {
+      if (stepIdx === 0) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="What's your headline?" sub="A short, catchy summary of who you are" />
+          <GlassInput value={headline} onChangeText={setHeadline} placeholder="e.g. Product Designer at BEXO" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
+        </View>
+      );
+      if (stepIdx === 1) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Tell us more" sub="A brief bio for your profile" />
+          <GlassInput value={bio} onChangeText={setBio} placeholder="I love building products that people use every day…" accentColor={color} multiline autoFocus />
+        </View>
+      );
+    }
+
+    // ── EDUCATION ──────────────────────────────────────────────────────────────
+    if (sectionIdx === 1) {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Tell us about your studies" sub="University, college, or institution name" />
@@ -637,6 +722,7 @@ export default function ManualEntryScreen() {
           <GlassInput value={edu.field} onChangeText={(v) => setEdu({ ...edu, field: v })} placeholder="e.g. Computer Science, Design, Finance…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={handleNext} />
         </View>
       );
+      if (stepIdx === 3) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="When was this?" sub="Your study period" />
           <EduDateRow 
@@ -648,7 +734,7 @@ export default function ManualEntryScreen() {
             yearSheetRef={yearSheetRef}
           />
         </View>
-
+      );
       if (stepIdx === 4) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub="Looks great — want to add another?" />
@@ -658,7 +744,7 @@ export default function ManualEntryScreen() {
             accentColor={color}
             onEdit={() => transition("bwd", () => setStepIdx(0))}
           />
-          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(0)}>
+          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(1)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another education</Text>
           </TouchableOpacity>
@@ -667,7 +753,7 @@ export default function ManualEntryScreen() {
     }
 
     // ── EXPERIENCE ─────────────────────────────────────────────────────────────
-    if (sectionIdx === 1) {
+    if (sectionIdx === 2) {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Where did you work?" sub="Most recent or most relevant first" />
@@ -680,6 +766,7 @@ export default function ManualEntryScreen() {
           <GlassInput value={exp.role} onChangeText={(v) => setExp({ ...exp, role: v })} placeholder="e.g. Product Designer, SWE Intern, CTO…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
         </View>
       );
+      if (stepIdx === 2) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="When was this?" sub="Select start and end dates" />
           <ExpDateSection 
@@ -692,7 +779,7 @@ export default function ManualEntryScreen() {
             setYearPickerFor={setExpYearPickerFor}
           />
         </View>
-
+      );
       if (stepIdx === 3) return (
         <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           <View style={S.stepWrap}>
@@ -711,7 +798,7 @@ export default function ManualEntryScreen() {
             accentColor={color}
             onEdit={() => transition("bwd", () => setStepIdx(0))}
           />
-          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(1)}>
+          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(2)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another role</Text>
           </TouchableOpacity>
@@ -720,7 +807,7 @@ export default function ManualEntryScreen() {
     }
 
     // ── PROJECTS ───────────────────────────────────────────────────────────────
-    if (sectionIdx === 2) {
+    if (sectionIdx === 3) {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="What's a project you're proud of?" sub="A project you've built" />
@@ -759,7 +846,7 @@ export default function ManualEntryScreen() {
             accentColor={color}
             onEdit={() => transition("bwd", () => setStepIdx(0))}
           />
-          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(2)}>
+          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(3)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another project</Text>
           </TouchableOpacity>
@@ -768,12 +855,65 @@ export default function ManualEntryScreen() {
     }
 
     // ── SKILLS ─────────────────────────────────────────────────────────────────
-    if (sectionIdx === 3) return (
+    if (sectionIdx === 4) return (
       <View style={[S.stepWrap, { flex: 1 }]}>
         <QuestionHeader section={sec} title="What are you great at?" sub={`Tap everything that applies  ·  ${skills.length} selected`} />
         <SkillCategoryGrid selected={skills} onChange={setSkills} accentColor={color} />
       </View>
     );
+
+    // ── RESEARCH ───────────────────────────────────────────────────────────────
+    if (sectionIdx === 5) {
+      if (stepIdx === 0) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Any research work?" sub="Title of your research paper or project" />
+          <GlassInput value={res.title} onChangeText={(v) => setRes({ ...res, title: v })} placeholder="e.g. AI in Healthcare, Crypto Analysis…" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
+        </View>
+      );
+      if (stepIdx === 1) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="What was it about?" sub="A brief summary of your research" />
+          <GlassInput value={res.description} onChangeText={(v) => setRes({ ...res, description: v })} placeholder="Summary of findings, methodology…" accentColor={color} multiline autoFocus />
+        </View>
+      );
+      if (stepIdx === 2) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Subtitle?" sub="A short catchy subtitle — optional" />
+          <GlassInput value={res.subtitle} onChangeText={(v) => setRes({ ...res, subtitle: v })} placeholder="e.g. Published in Nature, 2024" accentColor={color} autoFocus returnKeyType="done" onSubmitEditing={handleNext} />
+        </View>
+      );
+      if (stepIdx === 3) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Saved!" sub={res.title} />
+          <EntryCard
+            label="Research"
+            lines={[res.title, res.subtitle, res.description]}
+            accentColor={color}
+            onEdit={() => transition("bwd", () => setStepIdx(0))}
+          />
+          <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(5)}>
+            <Feather name="plus" size={15} color={color} />
+            <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another research</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // ── CONTACT ────────────────────────────────────────────────────────────────
+    if (sectionIdx === 6) {
+      if (stepIdx === 0) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Work email?" sub="Your professional email address" />
+          <GlassInput value={contact.email} onChangeText={(v) => setContact({ ...contact, email: v })} placeholder="e.g. kavin@bexo.com" accentColor={color} keyboardType="email-address" autoCapitalize="none" autoFocus returnKeyType="next" onSubmitEditing={handleNext} />
+        </View>
+      );
+      if (stepIdx === 1) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Where are you based?" sub="City, Country or full address" />
+          <GlassInput value={contact.address} onChangeText={(v) => setContact({ ...contact, address: v })} placeholder="e.g. San Francisco, CA" accentColor={color} autoFocus returnKeyType="done" onSubmitEditing={handleNext} />
+        </View>
+      );
+    }
 
     return null;
   };
@@ -805,7 +945,7 @@ export default function ManualEntryScreen() {
             </View>
             <View style={[S.badge, { backgroundColor: color + "1A", borderColor: color + "44" }]}>
               <Feather name={sec.icon} size={11} color={color} />
-              <Text style={{ fontSize: 11, color, fontWeight: "700", marginLeft: 4 }}>{sectionIdx + 1}/4</Text>
+              <Text style={{ fontSize: 11, color, fontWeight: "700", marginLeft: 4 }}>{sectionIdx + 1}/7</Text>
             </View>
           </View>
 
@@ -821,7 +961,7 @@ export default function ManualEntryScreen() {
               <View style={{ width: "100%", gap: 10 }}>
                 <TouchableOpacity onPress={proceedToNextSection} style={S.primaryBtnWrap}>
                   <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
-                    <Text style={S.primaryBtnTxt}>{sectionIdx < 3 ? `Next: ${SECTIONS[sectionIdx + 1].label}` : "All done!"}</Text>
+                    <Text style={S.primaryBtnTxt}>{sectionIdx < 6 ? `Next: ${SECTIONS[sectionIdx + 1].label}` : "Finish"}</Text>
                     <Feather name="arrow-right" size={16} color="#fff" />
                   </LinearGradient>
                 </TouchableOpacity>
@@ -833,10 +973,10 @@ export default function ManualEntryScreen() {
 
             {/* Skills section footer */}
             {isSkillsStep && (
-              <TouchableOpacity onPress={handleFinish} disabled={saving} style={[S.primaryBtnWrap, saving && { opacity: 0.55 }]}>
+              <TouchableOpacity onPress={proceedToNextSection} style={S.primaryBtnWrap}>
                 <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
-                  <Text style={S.primaryBtnTxt}>{saving ? "Saving profile…" : `Finish  ·  ${skills.length} skill${skills.length !== 1 ? "s" : ""} added`}</Text>
-                  <Feather name={saving ? "loader" : "check"} size={16} color="#fff" />
+                  <Text style={S.primaryBtnTxt}>{`Next: ${SECTIONS[sectionIdx + 1].label}`}</Text>
+                  <Feather name="arrow-right" size={16} color="#fff" />
                 </LinearGradient>
               </TouchableOpacity>
             )}
@@ -864,17 +1004,32 @@ export default function ManualEntryScreen() {
       <YearPickerSheet
         ref={yearSheetRef}
         accentColor={color}
-        allowPresent={sectionIdx === 0 ? eduYearPickerFor === "end" : false}
+        allowPresent={sectionIdx === 1 ? eduYearPickerFor === "end" : (expYearPickerFor === "end" && !exp.is_current)}
         value={
-          sectionIdx === 0
+          sectionIdx === 1
             ? eduYearPickerFor === "start" ? edu.start_year : edu.end_year
             : expYearPickerFor === "start" ? exp.start_year : exp.end_year
         }
         onChange={(v) => {
-          if (sectionIdx === 0) {
+          if (sectionIdx === 1) {
             setEdu(eduYearPickerFor === "start" ? { ...edu, start_year: v } : { ...edu, end_year: v });
+            if (eduYearPickerFor === "start" && !edu.end_year) {
+              setTimeout(() => {
+                setEduYearPickerFor("end");
+                yearSheetRef.current?.present();
+              }, 400);
+            }
           } else {
             setExp(expYearPickerFor === "start" ? { ...exp, start_year: v } : { ...exp, end_year: v });
+            // If picked start year, move to end month if not current
+            if (expYearPickerFor === "start" && !exp.is_current && !exp.end_month) {
+              setTimeout(() => {
+                setExpMonthPickerFor("end");
+                monthSheetRef.current?.present();
+              }, 400);
+            } else if (expYearPickerFor === "end" && !exp.end_year) {
+              // already set end year, just dismiss (handled by sheet)
+            }
           }
         }}
         onClose={() => {
@@ -889,6 +1044,19 @@ export default function ManualEntryScreen() {
         value={expMonthPickerFor === "start" ? exp.start_month : exp.end_month}
         onChange={(v) => {
           setExp(expMonthPickerFor === "start" ? { ...exp, start_month: v } : { ...exp, end_month: v });
+          // If picked start month, move to start year
+          if (expMonthPickerFor === "start" && !exp.start_year) {
+            setTimeout(() => {
+              setExpYearPickerFor("start");
+              yearSheetRef.current?.present();
+            }, 400);
+          } else if (expMonthPickerFor === "end" && !exp.end_year) {
+            // If picked end month, move to end year
+            setTimeout(() => {
+              setExpYearPickerFor("end");
+              yearSheetRef.current?.present();
+            }, 400);
+          }
         }}
         onClose={() => setExpMonthPickerFor(null)}
       />

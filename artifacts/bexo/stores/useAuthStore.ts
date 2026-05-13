@@ -25,6 +25,8 @@ interface AuthState {
   getOtpRemainingSeconds: () => number;
   signOut: () => Promise<void>;
   initialize: () => Promise<void>;
+  hasSeenWalkthrough: boolean;
+  setHasSeenWalkthrough: (val: boolean) => void;
 }
 
 const RESET_STATE = {
@@ -145,6 +147,8 @@ export const useAuthStore = create<AuthState>()(
       set({ isLoading: false });
     }
   },
+  hasSeenWalkthrough: false,
+  setHasSeenWalkthrough: (val) => set({ hasSeenWalkthrough: val }),
 }), {
   name: "bexo-auth-storage",
   storage: createJSONStorage(() => AsyncStorage),
@@ -153,5 +157,6 @@ export const useAuthStore = create<AuthState>()(
     collectedEmail: state.collectedEmail,
     collectedPhone: state.collectedPhone,
     otpSentAt: state.otpSentAt,
+    hasSeenWalkthrough: state.hasSeenWalkthrough,
   }),
 }));

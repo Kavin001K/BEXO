@@ -58,6 +58,12 @@ export default function VerifyScreen() {
     };
   }, [otpSentAt]);
 
+  useEffect(() => {
+    if (code.length === OTP_LENGTH && !loading && !expired) {
+      handleVerify();
+    }
+  }, [code]);
+
   const expired = remaining <= 0;
 
   const formatTime = (s: number) => {
@@ -95,14 +101,18 @@ export default function VerifyScreen() {
       const result = await resp.json();
       if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
-      const { access_token, refresh_token } = result;
+      const { access_token, refresh_token, isNewUser } = result;
       const { error: sessionErr } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
       if (sessionErr) throw sessionErr;
 
-      router.replace("/dashboard");
+      if (isNewUser) {
+        router.replace("/(onboarding)/email");
+      } else {
+        router.replace("/dashboard");
+      }
     } catch (e: any) {
       setError(sanitizeError(e));
     } finally {
