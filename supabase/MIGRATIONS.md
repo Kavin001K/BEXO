@@ -8,7 +8,7 @@ Canonical migrations live in **repository root** [`supabase/migrations/`](../mig
 
 The `parse-resume` function reads **`GOOGLE_API_KEY`** first, then **`GEMINI_API_KEY`** (trimmed). Prefer **`GOOGLE_API_KEY`** only — if both secrets exist and contain different keys, remove the stale one in **Dashboard → Project Settings → Edge Functions → Secrets**.
 
-Résumés are uploaded to **Cloudflare R2** by the **`upload`** Edge Function; **`parse-resume`** then loads bytes via **`r2Key`** using the same R2 secrets as **`upload`**: **`R2_ACCOUNT_ID`**, **`R2_ACCESS_KEY_ID`**, **`R2_SECRET_ACCESS_KEY`**, **`R2_BUCKET_NAME`** (set these on **`parse-resume`** as well as **`upload`**).
+The mobile app uploads résumé **binary** to Cloudflare R2 through the **Node API** (`POST /api/storage/upload` — see `artifacts/api-server`), not the Edge `upload` JSON/base64 path (large PDFs exceed Edge body limits). **`parse-resume`** then loads bytes via **`r2Key`** using **`R2_ACCOUNT_ID`**, **`R2_ACCESS_KEY_ID`**, **`R2_SECRET_ACCESS_KEY`**, **`R2_BUCKET_NAME`** on the Edge function (same bucket/credentials as the API server’s `storage` routes).
 
 Secrets apply to the deployed Edge Function at runtime; redeploy after changing function code: `npx supabase functions deploy parse-resume`.
 

@@ -1,5 +1,6 @@
 import * as ImageManipulator from "expo-image-manipulator";
 import { decode } from "base64-arraybuffer";
+import { API_BASE_URL } from "@/lib/apiConfig";
 import { detectResumeMime } from "@/lib/mediaMime";
 import { supabase } from "@/lib/supabase";
 
@@ -7,16 +8,6 @@ async function uriToBlob(uri: string): Promise<Blob> {
   const res = await fetch(uri);
   if (!res.ok) throw new Error(`Failed to fetch file from URI: ${res.statusText}`);
   return await res.blob();
-}
-
-async function uriToDataUrl(uri: string): Promise<string> {
-  const blob = await uriToBlob(uri);
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("Could not read file"));
-    reader.readAsDataURL(blob);
-  });
 }
 
 /** Stored in profiles.resume_url for Cloudflare-backed résumés */
@@ -30,7 +21,9 @@ export function parseR2ResumeRef(ref: string): string | null {
 }
 
 /**
- * Upload résumé to Cloudflare R2 via Supabase Edge Function `upload`, then AI reads it using `r2Key`.
+ * Upload résumé bytes to Cloudflare R2 via the **Node API** (`POST /api/storage/upload`).
+ * We avoid Supabase Edge `invoke("upload")` with base64 JSON — large PDFs exceed Edge body limits and return non-2xx.
+ * `parse-resume` still loads the object using `r2Key` + R2 SigV4 on the Edge side.
  */
 export async function uploadResumeToCloudflare(
   userId: string,
@@ -39,34 +32,68 @@ export async function uploadResumeToCloudflare(
   onProgress?: (pct: number) => void
 ): Promise<{ key: string; publicUrl: string }> {
   onProgress?.(10);
-  const dataUrl = await uriToDataUrl(localUri);
-  onProgress?.(40);
+  const blob = await uriToBlob(localUri);
+  const ab = await blob.arrayBuffer();
+  const bytes = new Uint8Array(ab);
+  const sniffed = detectResumeMime(bytes);
+  const contentType =
+    sniffed !== "application/octet-stream"
+      ? sniffed
+      : blob.type && blob.type.length > 0
+        ? blob.type
+        : "application/pdf";
 
-  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || "resume";
+  const safeBase = fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || "resume";
+  const ext =
+    contentType === "application/pdf"
+      ? "pdf"
+      : contentType.includes("png")
+        ? "png"
+        : contentType.includes("webp")
+          ? "webp"
+          : contentType.includes("gif")
+            ? "gif"
+            : contentType.includes("jpeg") || contentType.includes("jpg")
+              ? "jpg"
+              : "bin";
 
-  const { data, error } = await supabase.functions.invoke("upload", {
-    body: {
-      userId,
-      folder: "resumes",
-      file: dataUrl,
-      fileName: safeName,
+  const key = `${userId}/resumes/${Date.now()}_${safeBase}.${ext}`;
+  onProgress?.(45);
+
+  const uploadUrl = `${API_BASE_URL}/api/storage/upload`;
+  const response = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": contentType,
+      "x-key": key,
     },
+    body: blob,
   });
 
   onProgress?.(85);
 
-  if (error) {
-    console.error("[uploadResumeToCloudflare] Edge upload failed:", error);
-    throw new Error(error.message ?? "Cloudflare upload failed");
+  if (!response.ok) {
+    const raw = await response.text();
+    let detail = raw.slice(0, 500);
+    try {
+      const j = JSON.parse(raw) as { error?: string };
+      if (j.error) detail = j.error;
+    } catch {
+      /* keep text */
+    }
+    console.error("[uploadResumeToCloudflare] API upload failed:", response.status, detail);
+    throw new Error(
+      `Could not upload resume to storage (${response.status}). Is the API running and EXPO_PUBLIC_API_BASE_URL correct? ${detail}`,
+    );
   }
 
-  const payload = data as { url?: string; key?: string };
-  if (!payload?.key || !payload?.url) {
-    throw new Error("Cloudflare upload returned an invalid response");
+  const payload = (await response.json()) as { success?: boolean; publicUrl?: string };
+  if (!payload.publicUrl) {
+    throw new Error("Upload API returned no publicUrl");
   }
 
   onProgress?.(100);
-  return { key: payload.key, publicUrl: payload.url };
+  return { key, publicUrl: payload.publicUrl };
 }
 
 /**
