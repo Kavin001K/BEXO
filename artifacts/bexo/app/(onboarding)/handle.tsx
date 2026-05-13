@@ -171,10 +171,10 @@ export default function HandleScreen() {
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>
-          Own Your Website
+          Your Digital Identity
         </Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          This is where the world will find your work. Make it yours.
+          Create a unique URL for your professional portfolio. This is how the world will discover your talent.
         </Text>
 
         {/* Full name */}
