@@ -54,4 +54,66 @@ Return ONLY a JSON array of 5 strings, no markdown, no extra text.`;
   }
 });
 
+/**
+ * POST /api/onboarding/suggest-about
+ * Body: { full_name, headline_hint?, bio_hint?, skills?: string[], target?: "headline" | "bio" | "both" }
+ */
+router.post("/suggest-about", async (req, res) => {
+  try {
+    const {
+      full_name,
+      headline_hint,
+      bio_hint,
+      skills,
+      target = "both",
+    } = req.body as {
+      full_name?: string;
+      headline_hint?: string;
+      headline?: string;
+      bio_hint?: string;
+      skills?: string[];
+      target?: "headline" | "bio" | "both";
+    };
+
+    if (!full_name?.trim()) {
+      res.status(400).json({ error: "full_name is required" });
+      return;
+    }
+
+    const prompt = `You help students write portfolio copy. Return ONLY valid JSON, no markdown.
+Name: ${full_name.trim()}
+Current headline idea: ${headline_hint ?? ""}
+Current bio idea: ${bio_hint ?? ""}
+Skills (comma-separated): ${(skills ?? []).join(", ")}
+
+Rules:
+- headline: max 90 characters, punchy, no quotes in the string
+- bio: 2-3 sentences, first person, warm and professional, max 400 characters
+
+Return shape: {"headline":"...","bio":"..."}
+If target is "headline" you may still return both fields; the client will only use what it asked for.`;
+
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const raw = response.text().trim().replace(/```json\n?|\n?```/g, "");
+    let headline = "";
+    let bio = "";
+    try {
+      const parsed = JSON.parse(raw) as { headline?: string; bio?: string };
+      headline = (parsed.headline ?? "").trim().slice(0, 120);
+      bio = (parsed.bio ?? "").trim().slice(0, 500);
+    } catch {
+      res.status(422).json({ error: "Could not parse AI response" });
+      return;
+    }
+
+    if (target === "headline") res.json({ headline, bio: "" });
+    else if (target === "bio") res.json({ headline: "", bio });
+    else res.json({ headline, bio });
+  } catch (err: any) {
+    console.error("[onboarding/suggest-about]", err?.message);
+    res.status(500).json({ error: err?.message ?? "Failed to suggest copy" });
+  }
+});
+
 export default router;

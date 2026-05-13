@@ -1,6 +1,11 @@
 -- ============================================================
 -- BEXO — Complete Database Schema
 -- Run this entire file in Supabase SQL Editor (Project → SQL Editor → New query)
+--
+-- Incremental changes for existing projects also live in:
+--   ../../../supabase/migrations/  (e.g. 006_public_portfolio_rls_and_indexes.sql)
+-- Prefer applying migrations in order for production; use this file for greenfield
+-- or documentation of the full desired state.
 -- ============================================================
 
 -- Enable UUID generation
@@ -33,6 +38,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   website_preference  TEXT,
   phone_verified      BOOLEAN     NOT NULL DEFAULT FALSE,
   email_verified      BOOLEAN     NOT NULL DEFAULT FALSE,
+  consent_accepted_at TIMESTAMPTZ,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

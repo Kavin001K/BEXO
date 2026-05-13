@@ -1,20 +1,22 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   FlatList,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import RNAnimated from "react-native";
+import { Animated as RNAnimated } from "react-native";
 import Animated, { 
   useSharedValue, 
   useAnimatedStyle, 
   withTiming, 
-  Easing 
+  Easing,
+  runOnJS
 } from "react-native-reanimated";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { YearPickerSheet } from "@/components/YearPickerSheet";
@@ -27,7 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useProfileStore } from "@/stores/useProfileStore";
+import { useProfileStore, type Education, type Experience } from "@/stores/useProfileStore";
 import { apiFetch } from "@/lib/apiConfig";
 
 const { width: W, height: SCREEN_H } = Dimensions.get("window");
@@ -43,7 +45,8 @@ const SECTIONS = [
   { id: 6, label: "Contact",    icon: "mail"       as const,  color: "#6AFA6A" },
 ];
 
-const STEPS = [2, 5, 5, 4, 1, 4, 2]; // Steps per section (including review steps)
+// Steps per section (About: 3, Edu: 5, Exp: 5, Proj: 5, Skills: 1, Research: 4, Contact: 2)
+const STEPS = [3, 5, 5, 5, 1, 4, 2];
 
 const DEGREES = ["Bachelor's", "Master's", "MBA", "PhD", "Associate's", "Diploma", "High School", "Bootcamp", "Certificate", "Other"];
 const MONTHS  = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -133,6 +136,18 @@ function GlassInput({
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   const [focused, setFocused] = useState(false);
+  const inputRef = useRef<TextInput>(null);
+
+  // Handle auto-focus with a slight delay to ensure animations are finished
+  React.useEffect(() => {
+    if (autoFocus) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 350); // Slightly more than the transition duration
+      return () => clearTimeout(timer);
+    }
+  }, [autoFocus]);
+
   const iosFocusStyle = Platform.OS === "ios" && focused
     ? { shadowColor: accentColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 14 }
     : {};
@@ -141,15 +156,20 @@ function GlassInput({
     : {};
 
   return (
-    <View style={[GI.wrap, { borderColor: focused ? accentColor + "99" : "rgba(255,255,255,0.1)" }, iosFocusStyle, webFocusStyle]}>
+    <TouchableOpacity 
+      activeOpacity={1}
+      onPress={() => inputRef.current?.focus()}
+      style={[GI.wrap, { borderColor: focused ? accentColor + "99" : "rgba(255,255,255,0.1)" }, iosFocusStyle, webFocusStyle]}
+    >
       <TextInput
+        ref={inputRef}
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
         placeholderTextColor="rgba(255,255,255,0.22)"
         style={[GI.input, multiline && { height: 96, textAlignVertical: "top", paddingTop: 4 }]}
         multiline={multiline}
-        autoFocus={autoFocus}
+        // We handle autoFocus manually via useEffect above for better transition support
         keyboardType={keyboardType}
         returnKeyType={returnKeyType ?? "done"}
         onSubmitEditing={onSubmitEditing}
@@ -158,7 +178,7 @@ function GlassInput({
         autoCorrect={false}
         autoCapitalize={autoCapitalize ?? "words"}
       />
-    </View>
+    </TouchableOpacity>
   );
 }
 const GI = StyleSheet.create({
@@ -358,7 +378,7 @@ const EC = StyleSheet.create({
 function EduDateRow({ edu, setEdu, color, eduYearPickerFor, setEduYearPickerFor, yearSheetRef }: {
   edu: EduEntry; setEdu: (e: EduEntry) => void; color: string;
   eduYearPickerFor: "start" | "end" | null; setEduYearPickerFor: (v: "start" | "end" | null) => void;
-  yearSheetRef: React.RefObject<BottomSheetModal>;
+  yearSheetRef: React.RefObject<BottomSheetModal | null>;
 }) {
   const handlePress = (v: "start" | "end") => {
     setEduYearPickerFor(v);
@@ -382,8 +402,8 @@ function EduDateRow({ edu, setEdu, color, eduYearPickerFor, setEduYearPickerFor,
 // ─── ExpDateSection ───────────────────────────────────────────────────────────
 function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMonthPickerFor, setYearPickerFor }: {
   exp: ExpEntry; setExp: (e: ExpEntry) => void; color: string;
-  monthSheetRef: React.RefObject<BottomSheetModal>;
-  yearSheetRef: React.RefObject<BottomSheetModal>;
+  monthSheetRef: React.RefObject<BottomSheetModal | null>;
+  yearSheetRef: React.RefObject<BottomSheetModal | null>;
   setMonthPickerFor: (v: "start" | "end" | null) => void;
   setYearPickerFor: (v: "start" | "end" | null) => void;
 }) {
@@ -432,7 +452,7 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ManualEntryScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, setOnboardingStep } = useProfileStore();
+  const { profile, setOnboardingStep, updateProfile } = useProfileStore();
 
   // Section & step
   const [sectionIdx, setSectionIdx] = useState(0);
@@ -472,12 +492,61 @@ export default function ManualEntryScreen() {
 
   // Save state
   const [saving, setSaving] = useState(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState<"headline" | "bio" | null>(null);
 
   // BottomSheet Refs
   const yearSheetRef  = useRef<BottomSheetModal>(null);
   const monthSheetRef = useRef<BottomSheetModal>(null);
 
+  const suggestAbout = useCallback(
+    async (target: "headline" | "bio") => {
+      if (!profile?.full_name?.trim()) return;
+      setAiSuggestLoading(target);
+      try {
+        const res = await apiFetch("/onboarding/suggest-about", {
+          method: "POST",
+          body: JSON.stringify({
+            full_name: profile.full_name,
+            headline_hint: headline,
+            bio_hint: bio,
+            skills,
+            target,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        if (target === "headline" && typeof data.headline === "string" && data.headline.trim()) {
+          setHeadline(data.headline.trim());
+        }
+        if (target === "bio" && typeof data.bio === "string" && data.bio.trim()) {
+          setBio(data.bio.trim());
+        }
+      } catch {
+        /* ignore */
+      } finally {
+        setAiSuggestLoading(null);
+      }
+    },
+    [profile?.full_name, headline, bio, skills],
+  );
 
+  useEffect(() => {
+    if (!profile?.id) return;
+    const id = setInterval(async () => {
+      const h = headline.trim();
+      const b = bio.trim();
+      if (!h && !b) return;
+      if (h === (profile.headline ?? "").trim() && b === (profile.bio ?? "").trim()) return;
+      try {
+        await updateProfile({ headline: h, bio: b });
+        setDraftSavedAt(Date.now());
+      } catch {
+        /* offline / validation — skip */
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [profile?.id, profile?.headline, profile?.bio, headline, bio, updateProfile]);
 
   // Transition animation
   const opacity = useSharedValue(1);
@@ -491,14 +560,16 @@ export default function ManualEntryScreen() {
   const sec   = SECTIONS[sectionIdx];
   const color = sec.color;
 
-  // Steps per section: [edu_steps, exp_steps, proj_steps, skills_steps]
-  // "review" is the extra step at index totalSteps-1
-  const STEPS = [5, 5, 5, 1];
+  // Section-specific logic used by handleNext and renderContent
 
   const haptic = (style: "light" | "medium" | "select" = "select") => {
-    if (Platform.OS === "web") return;
-    if (style === "select") Haptics.selectionAsync();
-    else Haptics.impactAsync(style === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    try {
+      if (Platform.OS === "web") return;
+      if (style === "select") Haptics.selectionAsync();
+      else Haptics.impactAsync(style === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      console.warn("Haptics failed", e);
+    }
   };
 
   const transition = useCallback((dir: "fwd" | "bwd", cb: () => void) => {
@@ -509,7 +580,7 @@ export default function ManualEntryScreen() {
     translateX.value = withTiming(exitTo, { duration: 130 }, (finished) => {
       if (finished) {
         translateX.value = enterFrom;
-        cb();
+        if (cb) runOnJS(cb)();
         opacity.value = withTiming(1, { duration: 200 });
         translateX.value = withTiming(0, { duration: 200 });
       }
@@ -619,17 +690,17 @@ export default function ManualEntryScreen() {
         if (finalEdu.length > 0) {
           tasks.push(bulkSaveEducation(finalEdu.map(e => ({
             ...e,
-            start_year: e.start_year ? Number(e.start_year) : null,
+            start_year: e.start_year ? Number(e.start_year) : 0,
             end_year: e.end_year && e.end_year !== "Present" ? Number(e.end_year) : null,
-          }))));
+          })) as Education[]));
         }
         
         if (finalExp.length > 0) {
           tasks.push(bulkSaveExperiences(finalExp.map(e => ({
             ...e,
-            start_date: e.start_year ? `${e.start_year}-${String(MONTHS.indexOf(e.start_month) + 1).padStart(2, "0")}-01` : null,
+            start_date: e.start_year ? `${e.start_year}-${String(MONTHS.indexOf(e.start_month) + 1).padStart(2, "0")}-01` : "",
             end_date: e.is_current || !e.end_year ? null : `${e.end_year}-${String(MONTHS.indexOf(e.end_month) + 1).padStart(2, "0")}-01`,
-          }))));
+          })) as Experience[]));
         }
         
         if (finalProj.length > 0) {
@@ -637,7 +708,11 @@ export default function ManualEntryScreen() {
         }
         
         if (finalSkills.length > 0) {
-          tasks.push(bulkSaveSkills(finalSkills.map(s => ({ name: s }))));
+          tasks.push(bulkSaveSkills(finalSkills.map(s => ({
+            name: s,
+            category: "General",
+            level: "intermediate" as const,
+          }))));
         }
         
         if (finalRes.length > 0) {
@@ -657,7 +732,7 @@ export default function ManualEntryScreen() {
 
 
   // ── Validation ──
-  const isReviewStep  = (sectionIdx === 1 && stepIdx === 4) || (sectionIdx === 2 && stepIdx === 4) || (sectionIdx === 3 && stepIdx === 4) || (sectionIdx === 5 && stepIdx === 3);
+  const isReviewStep  = stepIdx === STEPS[sectionIdx] - 1 && sectionIdx !== 4;
   const isSkillsStep  = sectionIdx === 4;
   const canContinue   = (() => {
     if (isReviewStep || isSkillsStep) return true;
@@ -712,12 +787,41 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="What's your headline?" sub="A short, catchy summary of who you are" />
           <GlassInput value={headline} onChangeText={setHeadline} placeholder="e.g. Product Designer at BEXO" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
+          <TouchableOpacity
+            onPress={() => suggestAbout("headline")}
+            disabled={aiSuggestLoading !== null}
+            style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: color + "44", alignItems: "center", backgroundColor: color + "12" }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color }}>
+              {aiSuggestLoading === "headline" ? "Generating…" : "Suggest a headline with AI"}
+            </Text>
+          </TouchableOpacity>
         </View>
       );
       if (stepIdx === 1) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Tell us more" sub="A brief bio for your profile" />
           <GlassInput value={bio} onChangeText={setBio} placeholder="I love building products that people use every day…" accentColor={color} multiline autoFocus />
+          <TouchableOpacity
+            onPress={() => suggestAbout("bio")}
+            disabled={aiSuggestLoading !== null}
+            style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: color + "44", alignItems: "center", backgroundColor: color + "12" }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color }}>
+              {aiSuggestLoading === "bio" ? "Generating…" : "Suggest a bio with AI"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      );
+      if (stepIdx === 2) return (
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Profile Preview" sub="How you'll appear to others" />
+          <EntryCard
+            label="About You"
+            lines={[headline, bio]}
+            accentColor={color}
+            onEdit={() => setStepIdx(0)}
+          />
         </View>
       );
     }
@@ -801,13 +905,11 @@ export default function ManualEntryScreen() {
         </View>
       );
       if (stepIdx === 3) return (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-          <View style={S.stepWrap}>
-            <QuestionHeader section={sec} title="What were your big wins?" sub="Key achievements — or let AI write it" />
-            <GlassInput value={exp.description} onChangeText={(v) => setExp({ ...exp, description: v })} placeholder="e.g. Led redesign of checkout flow, reducing drop-off by 32%…" accentColor={color} multiline />
-            <AIBulletsPanel role={exp.role} company={exp.company} accentColor={color} onAddBullet={(b) => setExp((e) => ({ ...e, description: e.description ? `${e.description}\n• ${b}` : `• ${b}` }))} />
-          </View>
-        </ScrollView>
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="What were your big wins?" sub="Key achievements — or let AI write it" />
+          <GlassInput value={exp.description} onChangeText={(v) => setExp({ ...exp, description: v })} placeholder="e.g. Led redesign of checkout flow, reducing drop-off by 32%…" accentColor={color} multiline />
+          <AIBulletsPanel role={exp.role} company={exp.company} accentColor={color} onAddBullet={(b) => setExp((e) => ({ ...e, description: e.description ? `${e.description}\n• ${b}` : `• ${b}` }))} />
+        </View>
       );
       if (stepIdx === 4) return (
         <View style={S.stepWrap}>
@@ -841,12 +943,10 @@ export default function ManualEntryScreen() {
         </View>
       );
       if (stepIdx === 2) return (
-        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-          <View style={S.stepWrap}>
-            <QuestionHeader section={sec} title="Tech stack?" sub="Tap everything you used — optional" />
-            <TechTagGrid selected={proj.tech_stack} onChange={(v) => setProj({ ...proj, tech_stack: v })} accentColor={color} />
-          </View>
-        </ScrollView>
+        <View style={S.stepWrap}>
+          <QuestionHeader section={sec} title="Tech stack?" sub="Tap everything you used — optional" />
+          <TechTagGrid selected={proj.tech_stack} onChange={(v) => setProj({ ...proj, tech_stack: v })} accentColor={color} />
+        </View>
       );
       if (stepIdx === 3) return (
         <View style={S.stepWrap}>
@@ -968,6 +1068,12 @@ export default function ManualEntryScreen() {
               <Text style={{ fontSize: 11, color, fontWeight: "700", marginLeft: 4 }}>{sectionIdx + 1}/7</Text>
             </View>
           </View>
+
+          {draftSavedAt ? (
+            <Text style={{ fontSize: 11, color: "#6AFAD0", textAlign: "right", marginBottom: 6, marginTop: -4 }}>
+              Draft saved to your profile
+            </Text>
+          ) : null}
 
           {/* ── Animated content ── */}
           <Animated.View style={[{ flex: 1 }, animatedContentStyle]}>

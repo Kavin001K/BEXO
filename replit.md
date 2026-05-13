@@ -21,7 +21,7 @@ A mobile-first student portfolio app that lets students build stunning, AI-power
 - **Realtime**: Supabase Realtime for portfolio build status updates
 - **State**: Zustand (`useAuthStore`, `useProfileStore`, `usePortfolioStore`)
 - **AI**: Supabase Edge Function `parse-resume` (OpenAI GPT-4o for resume parsing)
-- **Portfolio Generation**: n8n webhook triggered on `triggerBuild`
+- **Portfolio Generation**: n8n webhook triggered via **api-server** `POST /api/portfolio/trigger-build` (JWT + `N8N_WEBHOOK_URL` / `N8N_WEBHOOK_SECRET` server-side only — do not put the webhook URL in `EXPO_PUBLIC_*`)
 - API: Express 5, Drizzle ORM, Zod validation
 
 ## Where things live
@@ -68,7 +68,14 @@ A mobile-first student portfolio app that lets students build stunning, AI-power
 ```
 EXPO_PUBLIC_SUPABASE_URL       — Your Supabase project URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY  — Your Supabase anon/public key
-EXPO_PUBLIC_N8N_WEBHOOK_URL    — n8n webhook URL for portfolio generation (optional)
+EXPO_PUBLIC_API_BASE_URL       — HTTPS URL of the BEXO API server (Expo app calls this)
+
+# API server only (Replit / hosting secrets for artifacts/api-server — never EXPO_PUBLIC)
+SUPABASE_URL
+SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+N8N_WEBHOOK_URL                — n8n webhook URL for portfolio generation (optional)
+N8N_WEBHOOK_SECRET             — Shared secret sent as X-BEXO-Secret to n8n (recommended)
 ```
 
 Also set in **Supabase Edge Function secrets**:
@@ -80,8 +87,8 @@ OPENAI_API_KEY  — For resume parsing
 
 - Do NOT run `npx expo start` directly — use the workflow (`restart_workflow`)
 - After adding Supabase env vars, restart the Expo workflow for them to take effect
-- Run `supabase/migrations/001_initial_schema.sql` in Supabase SQL editor before using the app
-- The `(tabs)` folder still exists in `app/` as a legacy redirect — do not delete it (Expo Router needs it)
+- Run `supabase/migrations/001_initial_schema.sql` in Supabase SQL editor before using the app, then apply later migrations in order (e.g. `006_public_portfolio_rls_and_indexes.sql`, `007_consent_accepted_at.sql`).
+- Legacy `(tabs)` route group was removed; entry routing is handled by `app/index.tsx` and `app/(auth)`.
 
 ## Pointers
 

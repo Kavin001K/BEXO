@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Linking,
 } from "react-native";
 import Animated, {
   FadeIn,
@@ -46,6 +47,8 @@ export default function LoginScreen() {
   const setOtpSentAt   = useAuthStore((s) => s.setOtpSentAt);
   const session        = useAuthStore((s) => s.session);
   const hasSeenWalkthrough = useAuthStore((s) => s.hasSeenWalkthrough);
+  const dataConsentAccepted = useAuthStore((s) => s.dataConsentAccepted);
+  const setDataConsentAccepted = useAuthStore((s) => s.setDataConsentAccepted);
 
   const [countryCode, setCountryCode]         = useState("+91");
   const [phone, setPhone]                     = useState("");
@@ -68,6 +71,10 @@ export default function LoginScreen() {
   const handleSendOTP = async () => {
     if (!phone || phone.replace(/\D/g, "").length < 7) {
       setError("Enter a valid phone number");
+      return;
+    }
+    if (!dataConsentAccepted) {
+      setError("Please accept the data processing notice to continue.");
       return;
     }
     setError("");
@@ -234,15 +241,37 @@ export default function LoginScreen() {
               </Animated.Text>
             ) : null}
 
+            <TouchableOpacity
+              style={styles.consentRow}
+              onPress={() => setDataConsentAccepted(!dataConsentAccepted)}
+              activeOpacity={0.85}
+            >
+              <Feather
+                name={dataConsentAccepted ? "check-square" : "square"}
+                size={22}
+                color={dataConsentAccepted ? colors.primary : colors.mutedForeground}
+              />
+              <Text style={[styles.consentText, { color: colors.mutedForeground }]}>
+                I agree to BEXO processing my phone number and profile data as described in the{" "}
+                <Text
+                  style={{ color: colors.primary, fontWeight: "700" }}
+                  onPress={() => Linking.openURL("https://mybexo.com/privacy")}
+                >
+                  Privacy Notice
+                </Text>
+                {" "}and{" "}
+                <Text
+                  style={{ color: colors.primary, fontWeight: "700" }}
+                  onPress={() => Linking.openURL("https://mybexo.com/terms")}
+                >
+                  Terms
+                </Text>
+                . Required before we send an OTP.
+              </Text>
+            </TouchableOpacity>
+
             <BexoButton label="Send me the code" onPress={handleSendOTP} loading={loading} />
           </Animated.View>
-
-          <Animated.Text
-            entering={FadeInDown.delay(360).springify()}
-            style={[styles.terms, { color: colors.mutedForeground }]}
-          >
-            By continuing you agree to our Terms &amp; Privacy Policy
-          </Animated.Text>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -336,5 +365,7 @@ const styles = StyleSheet.create({
   },
   pickerLabel: { fontSize: 15, fontWeight: "500" },
   error: { fontSize: 13 },
+  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginTop: 4 },
+  consentText: { flex: 1, fontSize: 13, lineHeight: 20 },
   terms: { fontSize: 11, textAlign: "center", lineHeight: 16 },
 });

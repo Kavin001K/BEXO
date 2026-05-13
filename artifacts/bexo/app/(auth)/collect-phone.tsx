@@ -13,6 +13,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -38,7 +39,7 @@ const COUNTRY_CODES = [
 export default function CollectPhoneScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, setCollectedPhone } = useAuthStore();
+  const { user, setCollectedPhone, dataConsentAccepted, setDataConsentAccepted } = useAuthStore();
   const [countryCode, setCountryCode] = useState("+91");
   const [phone, setPhone] = useState("");
   const [showPicker, setShowPicker] = useState(false);
@@ -65,6 +66,10 @@ export default function CollectPhoneScreen() {
   const handleContinue = async () => {
     if (!phone || phone.replace(/\D/g, "").length < 7) {
       setError("Enter a valid phone number");
+      return;
+    }
+    if (!dataConsentAccepted) {
+      setError("Please accept the data processing notice to continue.");
       return;
     }
     if (cooldown > 0) return;
@@ -187,6 +192,35 @@ export default function CollectPhoneScreen() {
             <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
           ) : null}
 
+          <TouchableOpacity
+            style={styles.consentRow}
+            onPress={() => setDataConsentAccepted(!dataConsentAccepted)}
+            activeOpacity={0.85}
+          >
+            <Feather
+              name={dataConsentAccepted ? "check-square" : "square"}
+              size={22}
+              color={dataConsentAccepted ? colors.primary : colors.mutedForeground}
+            />
+            <Text style={[styles.consentText, { color: colors.mutedForeground }]}>
+              I agree to BEXO processing my phone number and profile data as described in the{" "}
+              <Text
+                style={{ color: colors.primary, fontWeight: "700" }}
+                onPress={() => Linking.openURL("https://mybexo.com/privacy")}
+              >
+                Privacy Notice
+              </Text>
+              {" "}and{" "}
+              <Text
+                style={{ color: colors.primary, fontWeight: "700" }}
+                onPress={() => Linking.openURL("https://mybexo.com/terms")}
+              >
+                Terms
+              </Text>
+              .
+            </Text>
+          </TouchableOpacity>
+
           <BexoButton
             label={cooldown > 0 ? `Resend in ${cooldown}s` : (loading ? "Sending..." : "Send OTP on WhatsApp")}
             onPress={handleContinue}
@@ -283,5 +317,7 @@ const styles = StyleSheet.create({
   },
   pickerLabel: { fontSize: 16, fontWeight: "500" },
   error: { fontSize: 13, marginTop: -8 },
+  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  consentText: { flex: 1, fontSize: 13, lineHeight: 20 },
   skip: { textAlign: "center", fontSize: 14 },
 });

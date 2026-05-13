@@ -27,6 +27,11 @@ node_modules
 !.vscode/launch.json
 !.vscode/extensions.json
 
+# Secrets — never commit (use Replit / EAS / CI secrets)
+.env
+.env.*.local
+!.env.example
+
 # misc
 /.sass-cache
 /connect.lock
@@ -47,3 +52,6 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# pnpm (never commit local store into the repo)
+.pnpm-store/

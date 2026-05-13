@@ -2,6 +2,7 @@ import { Router, raw } from "express";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { resolveFallbackModel, resolvePrimaryModel } from "../lib/ai-models";
 
 const router = Router();
 
@@ -33,8 +34,8 @@ async function callGemini(
   const key = resolveGoogleApiKey();
   const openRouterKey = process.env.OPENROUTER_API_KEY?.trim();
   
-  const primaryModel = process.env.GOOGLE_MODEL?.trim() || "gemini-1.5-flash";
-  const fallbackModel = process.env.GOOGLE_MODEL_FALLBACK?.trim() || "gemini-1.5-pro";
+  const primaryModel = resolvePrimaryModel();
+  const fallbackModel = resolveFallbackModel();
   const modelToUse = modelNameOverride || primaryModel;
 
   // 1. Try direct Google SDK if key exists

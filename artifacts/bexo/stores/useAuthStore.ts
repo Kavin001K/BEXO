@@ -27,6 +27,9 @@ interface AuthState {
   initialize: () => Promise<void>;
   hasSeenWalkthrough: boolean;
   setHasSeenWalkthrough: (val: boolean) => void;
+  /** In-memory only — user must accept before each OTP send (phone auth). */
+  dataConsentAccepted: boolean;
+  setDataConsentAccepted: (val: boolean) => void;
 }
 
 const RESET_STATE = {
@@ -37,6 +40,7 @@ const RESET_STATE = {
   collectedEmail: "",
   collectedPhone: "",
   otpSentAt: null,
+  dataConsentAccepted: false,
 };
 
 async function handleGoogleAccountMergeCheck(
@@ -162,6 +166,9 @@ export const useAuthStore = create<AuthState>()(
   },
   hasSeenWalkthrough: false,
   setHasSeenWalkthrough: (val) => set({ hasSeenWalkthrough: val }),
+
+  dataConsentAccepted: false,
+  setDataConsentAccepted: (val) => set({ dataConsentAccepted: val }),
 }), {
   name: "bexo-auth-storage",
   storage: createJSONStorage(() => AsyncStorage),

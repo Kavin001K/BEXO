@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 
 export type BuildStatus = "idle" | "queued" | "building" | "done" | "failed";
@@ -51,9 +52,11 @@ interface PortfolioState {
   deleteAttachment: (attachmentId: string) => Promise<void>;
   triggerBuild: (profileId: string) => Promise<void>;
   subscribeToBuilds: (profileId: string) => () => void;
+  fetchAnalytics: (profileId: string) => Promise<void>;
 }
 
-const N8N_WEBHOOK_URL = process.env.EXPO_PUBLIC_N8N_WEBHOOK_URL ?? "";
+/** Prevents duplicate site_builds rows + parallel n8n calls from double-tap. */
+let triggerBuildInFlightFor: string | null = null;
 
 export const usePortfolioStore = create<PortfolioState>()(
   persist(
@@ -183,24 +186,67 @@ export const usePortfolioStore = create<PortfolioState>()(
   },
 
   triggerBuild: async (profileId) => {
-    set({ buildStatus: "queued" });
-    const { data: buildData } = await supabase
-      .from("site_builds")
-      .insert({ profile_id: profileId, status: "queued" })
-      .select()
-      .single();
-    if (buildData) set({ currentBuild: buildData });
-    if (N8N_WEBHOOK_URL) {
-      try {
-        await fetch(N8N_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ profileId, buildId: buildData?.id }),
-        });
-      } catch {
-        // webhook failure is non-blocking
+    if (triggerBuildInFlightFor === profileId) return;
+    triggerBuildInFlightFor = profileId;
+    try {
+      set({ buildStatus: "queued" });
+      const { data: buildData } = await supabase
+        .from("site_builds")
+        .insert({ profile_id: profileId, status: "queued" })
+        .select()
+        .single();
+      if (buildData) set({ currentBuild: buildData });
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!buildData?.id) return;
+
+      if (!token) {
+        console.warn("[Portfolio] No session token — skipping n8n trigger-build proxy");
+        return;
       }
+
+      try {
+        const res = await apiFetch("/portfolio/trigger-build", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ profileId, buildId: buildData.id }),
+        });
+        if (!res.ok) {
+          const payload = await res.json().catch(() => ({}));
+          console.warn("[Portfolio] trigger-build API failed:", res.status, payload);
+        }
+      } catch (e) {
+        console.warn("[Portfolio] trigger-build network error:", e);
+      }
+    } finally {
+      triggerBuildInFlightFor = null;
     }
+  },
+
+  /**
+   * Loads counts from `site_analytics` (RLS: owner read). Public portfolio pages
+   * should insert rows with anon client: event_type view | click | share.
+   */
+  fetchAnalytics: async (profileId) => {
+    const countFor = async (eventType: "view" | "click" | "share") => {
+      const { count, error } = await supabase
+        .from("site_analytics")
+        .select("*", { count: "exact", head: true })
+        .eq("profile_id", profileId)
+        .eq("event_type", eventType);
+      if (error) {
+        console.warn("[Portfolio] fetchAnalytics:", eventType, error.message);
+        return 0;
+      }
+      return count ?? 0;
+    };
+    const [views, clicks, shares] = await Promise.all([
+      countFor("view"),
+      countFor("click"),
+      countFor("share"),
+    ]);
+    set({ analytics: { views, clicks, shares } });
   },
 
   subscribeToBuilds: (profileId) => {

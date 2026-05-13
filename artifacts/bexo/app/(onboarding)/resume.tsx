@@ -3,7 +3,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -44,6 +44,8 @@ export default function ResumeScreen() {
   const [parsing,      setParsing]          = useState(false);
   const [error,        setError]            = useState("");
   const [parsingMessage, setParsingMessage] = useState("AI is reading your resume…");
+  const [resumePipelineError, setResumePipelineError] = useState(false);
+  const uploadBusy = useRef(false);
 
   const PARSING_MESSAGES = [
     "Scanning document...",
@@ -66,6 +68,8 @@ export default function ResumeScreen() {
   }, [stage]);
 
   const pickDocument = async () => {
+    if (uploadBusy.current) return;
+    uploadBusy.current = true;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: "application/pdf",
@@ -111,9 +115,11 @@ export default function ResumeScreen() {
       if (Platform.OS !== "web") {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
-      setOnboardingStep("manual");
-      // Replace so user isn’t stuck behind a broken resume screen; message is user-safe from resumeParser
-      router.replace("/(onboarding)/manual");
+      setError(friendlyResumeAiError(sanitizeError(e)));
+      setResumePipelineError(true);
+      setStage("error");
+    } finally {
+      uploadBusy.current = false;
     }
   };
 
@@ -136,6 +142,7 @@ export default function ResumeScreen() {
       router.push("/(onboarding)/manual");
     } catch (e: unknown) {
       console.error("[ResumeScreen] Save error:", e);
+      setResumePipelineError(false);
       setError(friendlyResumeAiError(sanitizeError(e)));
       setStage("error");
     } finally {
@@ -160,6 +167,7 @@ export default function ResumeScreen() {
     setStage("idle");
     setSelectedFile(null);
     setError("");
+    setResumePipelineError(false);
     setUploadProgress(0);
     setParseProgress(0);
   };
@@ -297,6 +305,16 @@ export default function ResumeScreen() {
             </View>
             <Text style={[styles.errorText, { color: colors.mutedForeground }]}>{error}</Text>
             <BexoButton label="Try again" onPress={handleRetry} />
+            {resumePipelineError ? (
+              <BexoButton
+                label="Continue manually instead"
+                variant="ghost"
+                onPress={() => {
+                  setOnboardingStep("manual");
+                  router.replace("/(onboarding)/manual");
+                }}
+              />
+            ) : null}
           </Animated.View>
         )}
 

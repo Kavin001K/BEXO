@@ -102,16 +102,33 @@ export default function VerifyScreen() {
       const result = await resp.json();
       if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
-      const { access_token, refresh_token } = result;
+      const { access_token, refresh_token, user } = result as {
+        access_token: string;
+        refresh_token: string;
+        user?: { id: string };
+      };
+      if (!user?.id) throw new Error("Invalid server response: missing user");
+
       const { error: sessionErr } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
       if (sessionErr) throw sessionErr;
 
+      const authState = useAuthStore.getState();
+      if (authState.dataConsentAccepted) {
+        const ts = new Date().toISOString();
+        const { error: consentErr } = await supabase
+          .from("profiles")
+          .update({ consent_accepted_at: ts })
+          .eq("user_id", user.id);
+        if (consentErr) console.warn("[Verify] consent_accepted_at update:", consentErr.message);
+        authState.setDataConsentAccepted(false);
+      }
+
       // Force the profile store to fetch latest data to check completeness
       const profileStore = useProfileStore.getState();
-      await profileStore.fetchProfile(result.user_id);
+      await profileStore.fetchProfile(user.id);
       const profile = profileStore.profile;
 
       if (!profile || !profile.handle) {

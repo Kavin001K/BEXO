@@ -23,6 +23,7 @@ import { useColors } from "@/hooks/useColors";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { sanitizeError } from "@/lib/errorUtils";
+import { handleSchema } from "@/lib/profileFields";
 
 export default function HandleScreen() {
   const colors = useColors();
@@ -86,8 +87,10 @@ export default function HandleScreen() {
 
   const handleContinue = async () => {
     if (!user) return;
-    if (!slug || slug.length < 3) {
-      setError("Handle must be at least 3 characters");
+    const parsedHandle = handleSchema.safeParse(slug);
+    if (!parsedHandle.success) {
+      const msg = parsedHandle.error.errors[0]?.message ?? "Invalid handle";
+      setError(msg);
       return;
     }
     if (!fullName.trim()) {

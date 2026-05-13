@@ -4,6 +4,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import type { ParsedResume } from "@/services/resumeParser";
 import { sanitizeError } from "@/lib/errorUtils";
+import { validateProfileFieldPatch } from "@/lib/profileFields";
 
 export interface Education {
   id?: string;
@@ -76,6 +77,7 @@ export interface Profile {
   website_preference?: string | null;
   rebuild_preferences?: string | null;
   address?: string | null;
+  consent_accepted_at?: string | null;
 }
 
 export interface CompletionResult {
@@ -126,6 +128,7 @@ interface ProfileState {
   setExperiences: (exp: Experience[]) => void;
   setProjects: (proj: Project[]) => void;
   setSkills: (skills: Skill[]) => void;
+  setResearch: (research: Research[]) => void;
   saveEducation: (edu: Education) => Promise<void>;
   deleteEducation: (id: string) => Promise<void>;
   saveExperience: (exp: Experience) => Promise<void>;
@@ -171,7 +174,7 @@ export const useProfileStore = create<ProfileState>()(
       setExperiences: (experiences) => set({ experiences }),
       setProjects: (projects) => set({ projects }),
       setSkills: (skills) => set({ skills }),
-      setResearch: (research) => set({ research }),
+      setResearch: (research: Research[]) => set({ research }),
 
       addEducation: (edu) => set((s) => ({ education: [...s.education, edu] })),
       addExperience: (exp) => set((s) => ({ experiences: [...s.experiences, exp] })),
@@ -278,9 +281,24 @@ export const useProfileStore = create<ProfileState>()(
       updateProfile: async (updates: Partial<Profile>) => {
         const profile = get().profile;
         if (!profile) return;
+
+        const linkKeys = ["handle", "linkedin_url", "github_url", "website"] as const;
+        const subset: Record<string, unknown> = {};
+        for (const k of linkKeys) {
+          if (k in updates && updates[k] !== undefined) {
+            subset[k] = updates[k];
+          }
+        }
+        let patch: Partial<Profile> = { ...updates };
+        if (Object.keys(subset).length > 0) {
+          const v = validateProfileFieldPatch(subset);
+          if (!v.success) throw new Error(v.message);
+          patch = { ...updates, ...v.data };
+        }
+
         const { data, error } = await supabase
           .from("profiles")
-          .update(updates)
+          .update(patch)
           .eq("id", profile.id)
           .select()
           .single();

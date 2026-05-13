@@ -99,7 +99,7 @@ export default function DashboardScreen() {
   const { profile, skills, education, experiences, projects,
           fetchProfile, getCompletionResult } = useProfileStore();
   const { updates, analytics, buildStatus, portfolioUrl,
-          fetchUpdates, fetchBuildStatus, subscribeToBuilds } = usePortfolioStore();
+          fetchUpdates, fetchBuildStatus, fetchAnalytics, subscribeToBuilds } = usePortfolioStore();
 
   const [refreshing,     setRefreshing]     = useState(false);
   const [showMissing,    setShowMissing]    = useState(false);
@@ -139,6 +139,7 @@ export default function DashboardScreen() {
         await Promise.all([
           fetchUpdates(p.id),
           fetchBuildStatus(p.id),
+          fetchAnalytics(p.id),
         ]);
 
         unsubBuilds = subscribeToBuilds(p.id);
@@ -159,7 +160,7 @@ export default function DashboardScreen() {
     const p = useProfileStore.getState().profile;
     if (p?.id) {
       try {
-        await Promise.all([fetchUpdates(p.id), fetchBuildStatus(p.id)]);
+        await Promise.all([fetchUpdates(p.id), fetchBuildStatus(p.id), fetchAnalytics(p.id)]);
       } catch (e: any) {
         showErrorAlert(e, "Refresh Failed");
       }

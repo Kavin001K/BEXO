@@ -169,11 +169,12 @@ export default function WalkthroughScreen() {
           ))}
         </View>
 
-        <BexoButton
-          label={activeIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
-          onPress={handleNext}
-          style={styles.nextBtn}
-        />
+        <View style={styles.nextBtn}>
+          <BexoButton
+            label={activeIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
+            onPress={handleNext}
+          />
+        </View>
       </View>
     </View>
   );
