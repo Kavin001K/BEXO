@@ -17,10 +17,19 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { OTPInput } from "@/components/ui/OTPInput";
 import { useColors } from "@/hooks/useColors";
-import { apiFetch } from "@/lib/apiConfig";
+import { apiFetch, readApiJson } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useProfileStore } from "@/stores/useProfileStore";
 import { sanitizeError } from "@/lib/errorUtils";
+import type { User } from "@supabase/supabase-js";
+
+type VerifyOtpResponse = {
+  error?: string;
+  access_token?: string;
+  refresh_token?: string;
+  user?: User;
+};
 
 const OTP_LENGTH = 4;
 const OTP_EXPIRY_SECS = 10 * 60;
@@ -98,24 +107,27 @@ export default function VerifyScreen() {
         body: JSON.stringify({ phone: phoneNumber, code }),
       });
       
-      const result = await resp.json();
+      const result = await readApiJson<VerifyOtpResponse>(resp);
       if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
       const { access_token, refresh_token, user } = result;
+      if (!user?.id) throw new Error("Sign-in did not return a user id.");
+      if (!access_token || !refresh_token) {
+        throw new Error("Sign-in did not return session tokens.");
+      }
       const { error: sessionErr } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
       if (sessionErr) throw sessionErr;
 
-      // Check if user needs to provide a real email
-      const isFakeEmail = user?.email?.endsWith("@bexo.local");
-      
-      if (result.isNewUser || isFakeEmail) {
-        router.replace("/(onboarding)/email");
-      } else {
-        router.replace("/dashboard");
+      const uid = user.id;
+      if (useProfileStore.getState().profile?.user_id !== uid) {
+        useProfileStore.getState().reset();
       }
+      await useProfileStore.getState().fetchProfile(uid);
+
+      router.replace("/");
     } catch (e: any) {
       setError(sanitizeError(e));
     } finally {
@@ -133,7 +145,7 @@ export default function VerifyScreen() {
         method: "POST",
         body: JSON.stringify({ phone: phoneNumber }),
       });
-      const result = await resp.json();
+      const result = await readApiJson<{ error?: string; success?: boolean }>(resp);
       if (!resp.ok) throw new Error(result.error ?? "Could not resend OTP");
       
       setOtpSentAt(Date.now());

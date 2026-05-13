@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import React, { useState } from "react";
 import {
   Image,
+  Modal,
   Platform,
   StyleSheet,
   Text,

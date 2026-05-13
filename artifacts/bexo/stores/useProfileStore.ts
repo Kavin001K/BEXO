@@ -148,6 +148,37 @@ interface ProfileState {
   reset: () => void;
 }
 
+/** Placeholder handle created server-side for phone OTP users (`verify-otp`). */
+export function isBootstrapHandle(handle: string | undefined | null): boolean {
+  return !!handle?.trim() && /^u[a-f0-9]{26}$/i.test(handle.trim());
+}
+
+/** Fixes stale `onboardingStep === "email"` after sign-out when profile already has real data. */
+function reconcileOnboardingStep(
+  p: Profile,
+  current: ProfileState["onboardingStep"],
+  eduCount: number,
+  expCount: number,
+): ProfileState["onboardingStep"] {
+  const realEmail = !!(p.email?.trim() && !p.email.endsWith("@bexo.local"));
+  const hasAvatar = !!p.avatar_url?.trim();
+  const hasRealHandle = !!(p.handle?.trim() && !isBootstrapHandle(p.handle));
+
+  if (current === "email" && realEmail && hasAvatar && hasRealHandle && p.dob) {
+    if (eduCount + expCount > 0 || (p.headline?.trim() && p.bio?.trim())) {
+      return "completed";
+    }
+    return "resume";
+  }
+  if (current === "email" && realEmail && hasAvatar && hasRealHandle) {
+    return p.dob ? "resume" : "dob";
+  }
+  if (current === "email" && realEmail && hasAvatar) return "handle";
+  if (current === "email" && realEmail) return "photo";
+
+  return current;
+}
+
 export const useProfileStore = create<ProfileState>()(
   persist(
     (set, get) => ({
@@ -225,7 +256,6 @@ export const useProfileStore = create<ProfileState>()(
       }
 
       if (data) {
-        set({ profile: data, onboardingStep: "completed" });
         const [edu, exp, proj, skillsRes, resRes] = await Promise.all([
           supabase.from("education").select("*").eq("profile_id", data.id).order("start_year", { ascending: false }),
           supabase.from("experiences").select("*").eq("profile_id", data.id).order("start_date", { ascending: false }),
@@ -233,7 +263,12 @@ export const useProfileStore = create<ProfileState>()(
           supabase.from("skills").select("*").eq("profile_id", data.id),
           supabase.from("research").select("*").eq("profile_id", data.id),
         ]);
+        const eduCount = edu.data?.length ?? 0;
+        const expCount = exp.data?.length ?? 0;
+        const nextStep = reconcileOnboardingStep(data, get().onboardingStep, eduCount, expCount);
         set({
+          profile: data,
+          onboardingStep: nextStep,
           education:   edu.data   ?? [],
           experiences: exp.data   ?? [],
           projects:    proj.data  ?? [],

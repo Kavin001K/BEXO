@@ -23,7 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { apiFetch } from "@/lib/apiConfig";
+import { apiFetch, readApiJson } from "@/lib/apiConfig";
 import { useAuthStore } from "@/stores/useAuthStore";
 
 const COUNTRY_CODES = [
@@ -77,7 +77,7 @@ export default function LoginScreen() {
         method: "POST",
         body: JSON.stringify({ phone: fullPhone }),
       });
-      const result = await resp.json();
+      const result = await readApiJson<{ error?: string }>(resp);
       if (!resp.ok) throw new Error(result.error ?? "Failed to send OTP");
       setPhoneNumber(fullPhone);
       setOtpSentAt(Date.now());

@@ -19,7 +19,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { apiFetch } from "@/lib/apiConfig";
+import { apiFetch, readApiJson } from "@/lib/apiConfig";
 import { sanitizeError } from "@/lib/errorUtils";
 
 const COUNTRY_CODES = [
@@ -76,7 +76,7 @@ export default function CollectPhoneScreen() {
         method: "POST",
         body: JSON.stringify({ phone: fullPhone }),
       });
-      const result = await resp.json();
+      const result = await readApiJson<{ error?: string }>(resp);
       if (!resp.ok) throw new Error(result.error ?? "Failed to send OTP");
 
       setCollectedPhone(fullPhone);
