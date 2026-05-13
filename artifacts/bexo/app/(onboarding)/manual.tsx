@@ -29,7 +29,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useProfileStore, type Education, type Experience } from "@/stores/useProfileStore";
+import { useProfileStore, Education, Experience, Project, Research } from "@/stores/useProfileStore";
 import { apiFetch } from "@/lib/apiConfig";
 
 const { width: W, height: SCREEN_H } = Dimensions.get("window");
@@ -462,38 +462,34 @@ export default function ManualEntryScreen() {
   const [bio,      setBio     ] = useState(profile?.bio      || "");
 
   // Education
-  const [eduEntries,       setEduEntries      ] = useState<EduEntry[]>([]);
   const [edu,              setEdu             ] = useState<EduEntry>(newEdu());
   const [eduYearPickerFor, setEduYearPickerFor] = useState<"start" | "end" | null>(null);
 
   // Experience
-  const [expEntries, setExpEntries] = useState<ExpEntry[]>([]);
   const [exp,        setExp       ] = useState<ExpEntry>(newExp());
   const [expYearPickerFor, setExpYearPickerFor] = useState<"start" | "end" | null>(null);
   const [expMonthPickerFor, setExpMonthPickerFor] = useState<"start" | "end" | null>(null);
 
   // Projects
-  const [projEntries, setProjEntries] = useState<ProjEntry[]>([]);
   const [proj,        setProj       ] = useState<ProjEntry>(newProj());
 
   // Skills
   const [skills, setSkills] = useState<string[]>([]);
 
   // Research
-  const [resEntries, setResEntries] = useState<ResEntry[]>([]);
   const [res,        setRes       ] = useState<ResEntry>(newRes());
 
   // Contact
   const [contact, setContact] = useState<ContactEntry>({
     phone: profile?.phone || "",
     email: profile?.email || "",
-    address: "",
+    address: profile?.address || "",
   });
 
   // Save state
   const [saving, setSaving] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
-  const [aiSuggestLoading, setAiSuggestLoading] = useState<"headline" | "bio" | null>(null);
+  const [aiSuggestLoading, setAiSuggestLoading] = useState<string | null>(null);
 
   // BottomSheet Refs
   const yearSheetRef  = useRef<BottomSheetModal>(null);
@@ -501,7 +497,8 @@ export default function ManualEntryScreen() {
 
   const suggestAbout = useCallback(
     async (target: "headline" | "bio") => {
-      if (!profile?.full_name?.trim()) return;
+      const hint = target === "headline" ? headline : bio;
+      if (aiSuggestLoading || !profile?.full_name?.trim() || !hint.trim()) return;
       setAiSuggestLoading(target);
       try {
         const res = await apiFetch("/onboarding/suggest-about", {
@@ -528,8 +525,56 @@ export default function ManualEntryScreen() {
         setAiSuggestLoading(null);
       }
     },
-    [profile?.full_name, headline, bio, skills],
+    [profile?.full_name, headline, bio, skills, aiSuggestLoading],
   );
+
+  const suggestSkills = async () => {
+    if (aiSuggestLoading || (!headline.trim() && !bio.trim())) return;
+    setAiSuggestLoading("skills");
+    haptic("medium");
+    try {
+      const res = await apiFetch("/onboarding/suggest-skills", {
+        method: "POST",
+        body: JSON.stringify({ 
+          headline, 
+          bio, 
+          existing_skills: skills,
+          experiences: useProfileStore.getState().experiences.map(e => ({ role: e.role, company: e.company }))
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(data.skills)) {
+        setSkills(prev => [...new Set([...prev, ...data.skills])]);
+        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (err) {
+      console.error("[Manual] suggestSkills error:", err);
+    } finally {
+      setAiSuggestLoading(null);
+    }
+  };
+
+  const suggestDescription = async (type: "project" | "research") => {
+    const title = type === "project" ? proj.title : res.title;
+    if (aiSuggestLoading || !title.trim()) return;
+    setAiSuggestLoading(type);
+    haptic("medium");
+    try {
+      const resApi = await apiFetch("/onboarding/suggest-description", {
+        method: "POST",
+        body: JSON.stringify({ type, title, tech_stack: type === "project" ? proj.tech_stack : [] })
+      });
+      const data = await resApi.json().catch(() => ({}));
+      if (resApi.ok && typeof data.description === "string") {
+        if (type === "project") setProj(p => ({ ...p, description: data.description }));
+        else setRes(r => ({ ...r, description: data.description }));
+      }
+    } catch (err) {
+      console.error("[Manual] suggestDescription error:", err);
+    } finally {
+      setAiSuggestLoading(null);
+    }
+  };
 
   useEffect(() => {
     if (!profile?.id) return;
@@ -615,34 +660,76 @@ export default function ManualEntryScreen() {
     transition("fwd", () => setStepIdx((s) => s + 1));
   };
 
-  const addAnotherEntry = (section: number) => {
+  const addAnotherEntry = async (section: number) => {
     haptic("medium");
-    if (section === 1) { setEduEntries((e) => [...e, edu]); setEdu(newEdu()); }
-    if (section === 2) { setExpEntries((e) => [...e, exp]); setExp(newExp()); }
-    if (section === 3) { setProjEntries((e) => [...e, proj]); setProj(newProj()); }
-    if (section === 5) { setResEntries((e) => [...e, res]); setRes(newRes()); }
-    transition("fwd", () => setStepIdx(0));
+    setSaving(true);
+    const store = useProfileStore.getState();
+    try {
+      if (section === 1 && edu.institution.trim()) {
+        await store.saveEducation({
+          ...edu,
+          start_year: Number(edu.start_year) || 0,
+          end_year: edu.end_year && edu.end_year !== "Present" ? Number(edu.end_year) : null,
+        });
+        setEdu(newEdu());
+      }
+      if (section === 2 && exp.company.trim()) {
+        await store.saveExperience({
+          ...exp,
+          start_date: `${exp.start_year}-${String(MONTHS.indexOf(exp.start_month) + 1).padStart(2, "0")}-01`,
+          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-${String(MONTHS.indexOf(exp.end_month) + 1).padStart(2, "0")}-01`,
+        });
+        setExp(newExp());
+      }
+      if (section === 3 && proj.title.trim()) {
+        await store.saveProject(proj);
+        setProj(newProj());
+      }
+      if (section === 5 && res.title.trim()) {
+        await store.saveResearch(res);
+        setRes(newRes());
+      }
+      transition("fwd", () => setStepIdx(0));
+    } catch (err) {
+      console.error("[Manual] addAnother error:", err);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const proceedToNextSection = () => {
+  const proceedToNextSection = async () => {
     haptic("medium");
+    setSaving(true);
+    const store = useProfileStore.getState();
     
-    // Final check for each section to save the "currently being edited" item if it's valid
-    if (sectionIdx === 1 && edu.institution.trim()) {
-      setEduEntries((e) => [...e, edu]);
-      setEdu(newEdu());
-    }
-    if (sectionIdx === 2 && exp.company.trim()) {
-      setExpEntries((e) => [...e, exp]);
-      setExp(newExp());
-    }
-    if (sectionIdx === 3 && proj.title.trim()) {
-      setProjEntries((e) => [...e, proj]);
-      setProj(newProj());
-    }
-    if (sectionIdx === 5 && res.title.trim()) {
-      setResEntries((e) => [...e, res]);
-      setRes(newRes());
+    try {
+      // Save current draft if valid
+      if (sectionIdx === 1 && edu.institution.trim()) {
+        await store.saveEducation({
+          ...edu,
+          start_year: Number(edu.start_year) || 0,
+          end_year: edu.end_year && edu.end_year !== "Present" ? Number(edu.end_year) : null,
+        });
+        setEdu(newEdu());
+      }
+      if (sectionIdx === 2 && exp.company.trim()) {
+        await store.saveExperience({
+          ...exp,
+          start_date: `${exp.start_year}-${String(MONTHS.indexOf(exp.start_month) + 1).padStart(2, "0")}-01`,
+          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-${String(MONTHS.indexOf(exp.end_month) + 1).padStart(2, "0")}-01`,
+        });
+        setExp(newExp());
+      }
+      if (sectionIdx === 3 && proj.title.trim()) {
+        await store.saveProject(proj);
+        setProj(newProj());
+      }
+      if (sectionIdx === 5 && res.title.trim()) {
+        await store.saveResearch(res);
+        setRes(newRes());
+      }
+    } catch (err) {
+      console.error("[Manual] nextSection save error:", err);
     }
 
     if (sectionIdx < 6) {
@@ -656,27 +743,15 @@ export default function ManualEntryScreen() {
   };
 
   const handleFinish = async () => {
-    setSaving(true);
+    if (saving) return;
     haptic("medium");
-    const finalEdu   = sectionIdx >= 1 && edu.institution.trim() ? [...eduEntries, edu] : eduEntries;
-    const finalExp   = sectionIdx >= 2 && exp.company.trim()     ? [...expEntries, exp] : expEntries;
-    const finalProj  = sectionIdx >= 3 && proj.title.trim()      ? [...projEntries, proj] : projEntries;
-    const finalSkills = skills;
-    const finalRes   = sectionIdx >= 5 && res.title.trim()       ? [...resEntries, res] : resEntries;
-
-    const { 
-      updateProfile, 
-      bulkSaveEducation, 
-      bulkSaveExperiences, 
-      bulkSaveProjects, 
-      bulkSaveSkills, 
-      bulkSaveResearch 
-    } = useProfileStore.getState();
+    setSaving(true);
+    const store = useProfileStore.getState();
 
     try {
       if (profile?.id) {
-        // 1. Update basic info
-        await updateProfile({
+        // Final sync for contact and skills
+        await store.updateProfile({
           headline,
           bio,
           phone: contact.phone || profile.phone,
@@ -684,45 +759,16 @@ export default function ManualEntryScreen() {
           address: contact.address,
         });
 
-        // 2. Bulk save sections
-        const tasks: Promise<any>[] = [];
-        
-        if (finalEdu.length > 0) {
-          tasks.push(bulkSaveEducation(finalEdu.map(e => ({
-            ...e,
-            start_year: e.start_year ? Number(e.start_year) : 0,
-            end_year: e.end_year && e.end_year !== "Present" ? Number(e.end_year) : null,
-          })) as Education[]));
-        }
-        
-        if (finalExp.length > 0) {
-          tasks.push(bulkSaveExperiences(finalExp.map(e => ({
-            ...e,
-            start_date: e.start_year ? `${e.start_year}-${String(MONTHS.indexOf(e.start_month) + 1).padStart(2, "0")}-01` : "",
-            end_date: e.is_current || !e.end_year ? null : `${e.end_year}-${String(MONTHS.indexOf(e.end_month) + 1).padStart(2, "0")}-01`,
-          })) as Experience[]));
-        }
-        
-        if (finalProj.length > 0) {
-          tasks.push(bulkSaveProjects(finalProj));
-        }
-        
-        if (finalSkills.length > 0) {
-          tasks.push(bulkSaveSkills(finalSkills.map(s => ({
+        if (skills.length > 0) {
+          await store.bulkSaveSkills(skills.map(s => ({
             name: s,
             category: "General",
             level: "intermediate" as const,
-          }))));
+          })));
         }
-        
-        if (finalRes.length > 0) {
-          tasks.push(bulkSaveResearch(finalRes));
-        }
-
-        await Promise.all(tasks);
       }
     } catch (err) {
-      console.error("[Manual] Save error:", err);
+      console.error("[Manual] Final save error:", err);
     } finally {
       setSaving(false);
       setOnboardingStep("theme");
@@ -789,11 +835,20 @@ export default function ManualEntryScreen() {
           <GlassInput value={headline} onChangeText={setHeadline} placeholder="e.g. Product Designer at BEXO" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
           <TouchableOpacity
             onPress={() => suggestAbout("headline")}
-            disabled={aiSuggestLoading !== null}
-            style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: color + "44", alignItems: "center", backgroundColor: color + "12" }}
+            disabled={aiSuggestLoading !== null || !headline.trim()}
+            style={{ 
+              marginTop: 12, 
+              paddingVertical: 12, 
+              borderRadius: 12, 
+              borderWidth: 1, 
+              borderColor: (aiSuggestLoading || !headline.trim()) ? "rgba(255,255,255,0.1)" : color + "44", 
+              alignItems: "center", 
+              backgroundColor: (aiSuggestLoading || !headline.trim()) ? "transparent" : color + "12",
+              opacity: !headline.trim() ? 0.5 : 1
+            }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "700", color }}>
-              {aiSuggestLoading === "headline" ? "Generating…" : "Suggest a headline with AI"}
+            <Text style={{ fontSize: 13, fontWeight: "700", color: !headline.trim() ? "rgba(255,255,255,0.3)" : color }}>
+              {aiSuggestLoading === "headline" ? "Generating…" : headline.trim() ? "Suggest a headline with AI" : "Enter a headline to use AI"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -804,11 +859,20 @@ export default function ManualEntryScreen() {
           <GlassInput value={bio} onChangeText={setBio} placeholder="I love building products that people use every day…" accentColor={color} multiline autoFocus />
           <TouchableOpacity
             onPress={() => suggestAbout("bio")}
-            disabled={aiSuggestLoading !== null}
-            style={{ marginTop: 12, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: color + "44", alignItems: "center", backgroundColor: color + "12" }}
+            disabled={aiSuggestLoading !== null || !bio.trim()}
+            style={{ 
+              marginTop: 12, 
+              paddingVertical: 12, 
+              borderRadius: 12, 
+              borderWidth: 1, 
+              borderColor: (aiSuggestLoading || !bio.trim()) ? "rgba(255,255,255,0.1)" : color + "44", 
+              alignItems: "center", 
+              backgroundColor: (aiSuggestLoading || !bio.trim()) ? "transparent" : color + "12",
+              opacity: !bio.trim() ? 0.5 : 1
+            }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "700", color }}>
-              {aiSuggestLoading === "bio" ? "Generating…" : "Suggest a bio with AI"}
+            <Text style={{ fontSize: 13, fontWeight: "700", color: !bio.trim() ? "rgba(255,255,255,0.3)" : color }}>
+              {aiSuggestLoading === "bio" ? "Generating…" : bio.trim() ? "Suggest a bio with AI" : "Enter a bio to use AI"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -862,12 +926,28 @@ export default function ManualEntryScreen() {
       if (stepIdx === 4) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub="Looks great — want to add another?" />
-          <EntryCard
-            label="Education"
-            lines={[edu.institution, `${edu.degree}${edu.field ? ` in ${edu.field}` : ""}`, `${edu.start_year}${edu.end_year ? ` – ${edu.end_year}` : ""}`]}
-            accentColor={color}
-            onEdit={() => transition("bwd", () => setStepIdx(0))}
-          />
+          <View style={{ gap: 12 }}>
+            {useProfileStore.getState().education.map((item, idx) => (
+              <EntryCard
+                key={item.id || idx}
+                label="Education"
+                lines={[item.institution, `${item.degree}${item.field ? ` in ${item.field}` : ""}`, `${item.start_year}${item.end_year ? ` – ${item.end_year}` : ""}`]}
+                accentColor={color}
+                onEdit={() => {
+                  setEdu({
+                    id: item.id,
+                    institution: item.institution,
+                    degree: item.degree,
+                    field: item.field,
+                    start_year: String(item.start_year),
+                    end_year: item.end_year ? String(item.end_year) : "Present",
+                    description: item.description || "",
+                  });
+                  transition("bwd", () => setStepIdx(0));
+                }}
+              />
+            ))}
+          </View>
           <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(1)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another education</Text>
@@ -914,12 +994,38 @@ export default function ManualEntryScreen() {
       if (stepIdx === 4) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={`${exp.role} at ${exp.company}`} />
-          <EntryCard
-            label="Experience"
-            lines={[exp.role, exp.company, exp.is_current ? `${exp.start_month} ${exp.start_year} – Present` : `${exp.start_month} ${exp.start_year} – ${exp.end_month} ${exp.end_year}`]}
-            accentColor={color}
-            onEdit={() => transition("bwd", () => setStepIdx(0))}
-          />
+          <View style={{ gap: 12 }}>
+            {useProfileStore.getState().experiences.map((item, idx) => (
+              <EntryCard
+                key={item.id || idx}
+                label="Experience"
+                lines={[
+                  item.role, 
+                  item.company, 
+                  item.is_current 
+                    ? `${item.start_date.split("-")[0]} – Present` 
+                    : `${item.start_date.split("-")[0]} – ${item.end_date ? item.end_date.split("-")[0] : ""}`
+                ]}
+                accentColor={color}
+                onEdit={() => {
+                  const [sy, sm] = item.start_date.split("-");
+                  const [ey, em] = item.end_date?.split("-") || ["", ""];
+                  setExp({
+                    id: item.id,
+                    company: item.company,
+                    role: item.role,
+                    start_month: MONTHS[Number(sm) - 1],
+                    start_year: sy,
+                    end_month: em ? MONTHS[Number(em) - 1] : "",
+                    end_year: ey,
+                    is_current: item.is_current,
+                    description: item.description || "",
+                  });
+                  transition("bwd", () => setStepIdx(0));
+                }}
+              />
+            ))}
+          </View>
           <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(2)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another role</Text>
@@ -940,6 +1046,24 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Tell us more about it" sub="What it does, who it's for, why you built it" />
           <GlassInput value={proj.description} onChangeText={(v) => setProj({ ...proj, description: v })} placeholder="A short, punchy description…" accentColor={color} multiline autoFocus />
+          <TouchableOpacity
+            onPress={() => suggestDescription("project")}
+            disabled={aiSuggestLoading !== null || !proj.title.trim()}
+            style={{ 
+              marginTop: 12, 
+              paddingVertical: 12, 
+              borderRadius: 12, 
+              borderWidth: 1, 
+              borderColor: (aiSuggestLoading || !proj.title.trim()) ? "rgba(255,255,255,0.1)" : color + "44", 
+              alignItems: "center", 
+              backgroundColor: (aiSuggestLoading || !proj.title.trim()) ? "transparent" : color + "12",
+              opacity: !proj.title.trim() ? 0.5 : 1
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color: !proj.title.trim() ? "rgba(255,255,255,0.3)" : color }}>
+              {aiSuggestLoading === "project" ? "Generating…" : proj.title.trim() ? "Generate description with AI" : "Enter project title first"}
+            </Text>
+          </TouchableOpacity>
         </View>
       );
       if (stepIdx === 2) return (
@@ -960,12 +1084,26 @@ export default function ManualEntryScreen() {
       if (stepIdx === 4) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={proj.title} />
-          <EntryCard
-            label="Project"
-            lines={[proj.title, proj.description, proj.tech_stack.slice(0, 4).join(" · ")]}
-            accentColor={color}
-            onEdit={() => transition("bwd", () => setStepIdx(0))}
-          />
+          <View style={{ gap: 12 }}>
+            {useProfileStore.getState().projects.map((item, idx) => (
+              <EntryCard
+                key={item.id || idx}
+                label="Project"
+                lines={[item.title, item.description, item.tech_stack.slice(0, 4).join(" · ")]}
+                accentColor={color}
+                onEdit={() => {
+                  setProj({
+                    ...item,
+                    subtitle: item.subtitle || "",
+                    github_url: item.github_url || "",
+                    live_url: item.live_url || "",
+                    image_url: item.image_url || "",
+                  });
+                  transition("bwd", () => setStepIdx(0));
+                }}
+              />
+            ))}
+          </View>
           <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(3)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another project</Text>
@@ -978,6 +1116,24 @@ export default function ManualEntryScreen() {
     if (sectionIdx === 4) return (
       <View style={[S.stepWrap, { flex: 1 }]}>
         <QuestionHeader section={sec} title="What are you great at?" sub={`Tap everything that applies  ·  ${skills.length} selected`} />
+        <TouchableOpacity
+          onPress={suggestSkills}
+          disabled={aiSuggestLoading !== null || (!headline.trim() && !bio.trim())}
+          style={{ 
+            marginBottom: 16, 
+            paddingVertical: 12, 
+            borderRadius: 12, 
+            borderWidth: 1, 
+            borderColor: (aiSuggestLoading || (!headline.trim() && !bio.trim())) ? "rgba(255,255,255,0.1)" : color + "44", 
+            alignItems: "center", 
+            backgroundColor: (aiSuggestLoading || (!headline.trim() && !bio.trim())) ? "transparent" : color + "12",
+            opacity: (!headline.trim() && !bio.trim()) ? 0.5 : 1
+          }}
+        >
+          <Text style={{ fontSize: 13, fontWeight: "700", color: (!headline.trim() && !bio.trim()) ? "rgba(255,255,255,0.3)" : color }}>
+            {aiSuggestLoading === "skills" ? "Generating skills…" : (headline.trim() || bio.trim()) ? "✨ Discover skills from profile with AI" : "Enter headline/bio first to suggest skills"}
+          </Text>
+        </TouchableOpacity>
         <SkillCategoryGrid selected={skills} onChange={setSkills} accentColor={color} />
       </View>
     );
@@ -994,6 +1150,24 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="What was it about?" sub="A brief summary of your research" />
           <GlassInput value={res.description} onChangeText={(v) => setRes({ ...res, description: v })} placeholder="Summary of findings, methodology…" accentColor={color} multiline autoFocus />
+          <TouchableOpacity
+            onPress={() => suggestDescription("research")}
+            disabled={aiSuggestLoading !== null || !res.title.trim()}
+            style={{ 
+              marginTop: 12, 
+              paddingVertical: 12, 
+              borderRadius: 12, 
+              borderWidth: 1, 
+              borderColor: (aiSuggestLoading || !res.title.trim()) ? "rgba(255,255,255,0.1)" : color + "44", 
+              alignItems: "center", 
+              backgroundColor: (aiSuggestLoading || !res.title.trim()) ? "transparent" : color + "12",
+              opacity: !res.title.trim() ? 0.5 : 1
+            }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: "700", color: !res.title.trim() ? "rgba(255,255,255,0.3)" : color }}>
+              {aiSuggestLoading === "research" ? "Generating…" : res.title.trim() ? "Generate summary with AI" : "Enter research title first"}
+            </Text>
+          </TouchableOpacity>
         </View>
       );
       if (stepIdx === 2) return (
@@ -1005,12 +1179,24 @@ export default function ManualEntryScreen() {
       if (stepIdx === 3) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={res.title} />
-          <EntryCard
-            label="Research"
-            lines={[res.title, res.subtitle, res.description]}
-            accentColor={color}
-            onEdit={() => transition("bwd", () => setStepIdx(0))}
-          />
+          <View style={{ gap: 12 }}>
+            {useProfileStore.getState().research.map((item, idx) => (
+              <EntryCard
+                key={item.id || idx}
+                label="Research"
+                lines={[item.title, item.subtitle || "", item.description.substring(0, 100) + "..."]}
+                accentColor={color}
+                onEdit={() => {
+                  setRes({
+                    ...item,
+                    subtitle: item.subtitle || "",
+                    image_url: item.image_url || "",
+                  });
+                  transition("bwd", () => setStepIdx(0));
+                }}
+              />
+            ))}
+          </View>
           <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(5)}>
             <Feather name="plus" size={15} color={color} />
             <Text style={{ color, fontWeight: "700", fontSize: 14 }}>Add another research</Text>
