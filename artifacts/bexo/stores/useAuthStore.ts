@@ -92,11 +92,18 @@ export const useAuthStore = create<AuthState>()(
   },
 
   signOut: async () => {
+    // 1. Clear profile store first
+    useProfileStore.getState().reset();
+    
+    // 2. Clear auth store state locally
+    set(RESET_STATE);
+
+    // 3. Clear session from Supabase
     if (isSupabaseConfigured) {
       await supabase.auth.signOut();
     }
-    useProfileStore.getState().reset();
-    set(RESET_STATE);
+    
+    // 4. Finally redirect
     router.replace("/(auth)");
   },
 
@@ -110,7 +117,6 @@ export const useAuthStore = create<AuthState>()(
       
       if (error) {
         console.error("[BEXO Auth] Initialization error:", error.message);
-        // If the refresh token is invalid/not found, sign out to clear local state
         if (error.message.includes("Refresh Token") || error.message.includes("not found")) {
           await supabase.auth.signOut();
           set(RESET_STATE);
@@ -119,11 +125,19 @@ export const useAuthStore = create<AuthState>()(
       }
 
       const session = data.session;
-      set({ session, user: session?.user ?? null, isLoading: false });
-
+      
       if (session?.user) {
-        useProfileStore.getState().fetchProfile(session.user.id);
+        // IMPORTANT: Wait for profile fetch to FULLY resolve before marking auth as not loading.
+        // This ensures the root navigator has all the data it needs to decide the route.
+        try {
+          await useProfileStore.getState().fetchProfile(session.user.id);
+        } catch (pErr) {
+          console.error("[BEXO Auth] Profile fetch failed during init:", pErr);
+        }
+        set({ session, user: session.user });
       }
+
+      set({ isLoading: false });
 
       supabase.auth.onAuthStateChange(async (event, session) => {
         set({ session, user: session?.user ?? null });
@@ -136,7 +150,6 @@ export const useAuthStore = create<AuthState>()(
           }
           useProfileStore.getState().fetchProfile(user.id);
         } else if (event === "SIGNED_OUT" || event === "USER_UPDATED") {
-          // USER_UPDATED can happen on auth errors too
           if (event === "SIGNED_OUT") {
             useProfileStore.getState().reset();
           }

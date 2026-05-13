@@ -42,16 +42,16 @@ export default function HandleScreen() {
 
   const slug = handle.toLowerCase().replace(/[^a-z0-9-]/g, "");
 
-  // Auto-generate handle from name
+  // Auto-generate handle from name ONLY if handle is empty
   React.useEffect(() => {
-    if (!isManualHandle && fullName) {
+    if (!isManualHandle && fullName && !handle) {
       const suggested = fullName.toLowerCase().split(" ")[0].replace(/[^a-z0-9-]/g, "");
       if (suggested.length >= 3) {
         setHandle(suggested);
         performCheck(suggested);
       }
     }
-  }, [fullName]);
+  }, [fullName, handle, isManualHandle]);
 
   const performCheck = async (val: string) => {
     const clean = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
@@ -67,14 +67,18 @@ export default function HandleScreen() {
 
   const handleChange = (val: string) => {
     setIsManualHandle(true);
-    setHandle(val);
+    // Real-time normalization: lowercase and strip invalid characters
+    const clean = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
+    setHandle(clean);
     setAvailable(null);
-    if (val.length >= 3) performCheck(val);
+    if (clean.length >= 3) performCheck(clean);
   };
 
   const handleBack = () => {
     if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      try {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } catch (e) { /* ignore */ }
     }
     setOnboardingStep("photo");
     router.replace("/(onboarding)/photo");
@@ -90,25 +94,33 @@ export default function HandleScreen() {
       setError("Enter your full name");
       return;
     }
-    if (!available) {
-      setError("Handle is not available");
-      return;
-    }
+    
     setError("");
     setLoading(true);
     try {
+      // 1. Final atomic-style check for availability to prevent race conditions
+      const isStillAvail = await checkHandle(slug);
+      if (!isStillAvail) {
+        throw new Error("Sorry, this handle was just taken. Please try another.");
+      }
+
       await createProfile({
         user_id: user.id,
         handle: slug,
         full_name: fullName.trim(),
         email: collectedEmail || user.email || null,
         phone: collectedPhone || user.phone || null,
+        email_verified: true,
       });
       
       setOnboardingStep("dob");
       router.push("/(onboarding)/dob");
     } catch (e: any) {
-      setError(sanitizeError(e));
+      let msg = sanitizeError(e);
+      if (msg.includes("unique_handle") || msg.includes("already exists") || e?.code === "23505") {
+        msg = "This handle was just taken by someone else! Please try a different one.";
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }

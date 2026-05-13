@@ -15,12 +15,17 @@ export default function RootIndex() {
   useEffect(() => {
     if (!isAuthLoading && !isProfileLoading) {
       if (session) {
-        if (onboardingStep === "completed") {
+        const hasFinishedOnboarding = onboardingStep === "completed";
+        const hasHandle = !!profile?.handle;
+        
+        if (hasFinishedOnboarding && hasHandle) {
           router.replace("/(main)/dashboard");
         } else {
-          // Always start onboarding at the contact screen to ensure 
-          // email collection/verification is the first thing they see.
-          router.replace("/(onboarding)/contact");
+          // Resume from exactly where they left off
+          const step = onboardingStep || "email";
+          // Safety mapping: rename 'contact' to 'email' if needed, though we already renamed the file
+          const route = step === "completed" ? "email" : step;
+          router.replace(`/(onboarding)/${route}`);
         }
       } else {
         router.replace("/(auth)");

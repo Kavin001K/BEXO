@@ -20,6 +20,7 @@ import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useProfileStore } from "@/stores/useProfileStore";
 import { sanitizeError } from "@/lib/errorUtils";
 
 const OTP_LENGTH = 4;
@@ -101,17 +102,24 @@ export default function VerifyScreen() {
       const result = await resp.json();
       if (!resp.ok) throw new Error(result.error ?? "Invalid code. Try again.");
 
-      const { access_token, refresh_token, isNewUser } = result;
+      const { access_token, refresh_token } = result;
       const { error: sessionErr } = await supabase.auth.setSession({
         access_token,
         refresh_token,
       });
       if (sessionErr) throw sessionErr;
 
-      if (isNewUser) {
+      // Force the profile store to fetch latest data to check completeness
+      const profileStore = useProfileStore.getState();
+      await profileStore.fetchProfile(result.user_id);
+      const profile = profileStore.profile;
+
+      if (!profile || !profile.handle) {
+        // If no profile or no handle/URL exists, they MUST go to email first
+        profileStore.setOnboardingStep("email");
         router.replace("/(onboarding)/email");
       } else {
-        router.replace("/dashboard");
+        router.replace("/(main)/dashboard");
       }
     } catch (e: any) {
       setError(sanitizeError(e));
