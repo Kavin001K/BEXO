@@ -4,7 +4,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   Image,
+  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -12,8 +14,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { ActivityIndicator } from "react-native";
-console.log("[Portfolio] Rendering...");
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { RebuildModal } from "@/components/portfolio/RebuildModal";
@@ -23,6 +23,22 @@ import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
 type TabId = "overview" | "experience" | "education" | "projects" | "skills";
+
+function normalizeUrl(raw: string) {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  return `https://${t}`;
+}
+
+function displayHost(url: string) {
+  try {
+    const u = new URL(normalizeUrl(url));
+    return u.host + (u.pathname !== "/" ? u.pathname.replace(/\/$/, "") : "");
+  } catch {
+    return url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  }
+}
 
 export default function PortfolioScreen() {
   const colors = useColors();
@@ -154,15 +170,15 @@ export default function PortfolioScreen() {
           </View>
         </View>
 
-        {/* Hero card */}
+        {/* Hero card — full profile identity (visible on every tab) */}
         <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <LinearGradient
-            colors={["#7C6AFA15", "#FA6A6A08"]}
+            colors={["#7C6AFA18", "#FA6A6A0A"]}
             style={StyleSheet.absoluteFill}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
           />
-          <View style={styles.heroTop}>
+          <View style={styles.heroIdentityRow}>
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={() => router.push("/edit-profile")}
@@ -176,55 +192,98 @@ export default function PortfolioScreen() {
                 </Text>
               )}
             </TouchableOpacity>
-            {buildStatus === "done" && (
-              <View style={[styles.liveChip, { backgroundColor: "#6AFAD015", borderColor: "#6AFAD044", borderWidth: 1 }]}>
-                <View style={styles.liveDot} />
-                <Text style={styles.liveChipText}>Live Portfolio</Text>
+            <View style={styles.heroTextCol}>
+              <View style={styles.heroTitleRow}>
+                <View style={styles.heroNameBlock}>
+                  <Text style={[styles.heroName, { color: colors.foreground }]}>
+                    {profile?.full_name ?? "Your Name"}
+                  </Text>
+                  {profile?.headline ? (
+                    <Text style={[styles.heroHeadline, { color: colors.secondaryForeground }]}>
+                      {profile.headline}
+                    </Text>
+                  ) : null}
+                </View>
+                {buildStatus === "done" && (
+                  <View style={[styles.liveChip, { backgroundColor: "#6AFAD015", borderColor: "#6AFAD044", borderWidth: 1 }]}>
+                    <View style={styles.liveDot} />
+                    <Text style={styles.liveChipText}>Live</Text>
+                  </View>
+                )}
+                {(buildStatus === "building" || buildStatus === "queued") && (
+                  <View style={[styles.liveChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "44", borderWidth: 1 }]}>
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6, transform: [{ scale: 0.7 }] }} />
+                    <Text style={[styles.liveChipText, { color: colors.primary }]}>Syncing</Text>
+                  </View>
+                )}
               </View>
-            )}
-            {(buildStatus === "building" || buildStatus === "queued") && (
-              <View style={[styles.liveChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "44", borderWidth: 1 }]}>
-                <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6, transform: [{ scale: 0.7 }] }} />
-                <Text style={[styles.liveChipText, { color: colors.primary }]}>Syncing...</Text>
-              </View>
-            )}
-          </View>
-          <Text style={[styles.heroName, { color: colors.foreground }]}>
-            {profile?.full_name ?? "Your Name"}
-          </Text>
-          {profile?.headline ? (
-            <Text style={[styles.heroHeadline, { color: colors.mutedForeground }]}>
-              {profile.headline}
-            </Text>
-          ) : null}
-          <View style={styles.handleRow}>
-            <Feather name="link" size={12} color={colors.primary} />
-            <Text style={[styles.heroHandle, { color: colors.primary }]}>
-              {profile?.handle ?? "handle"}.mybexo.com
-            </Text>
+              <TouchableOpacity
+                style={styles.handleRow}
+                activeOpacity={0.7}
+                onPress={() => Linking.openURL(`https://${profile?.handle ?? "handle"}.mybexo.com`)}
+              >
+                <Feather name="link" size={13} color={colors.primary} />
+                <Text style={[styles.heroHandle, { color: colors.primary }]}>
+                  {profile?.handle ?? "handle"}.mybexo.com
+                </Text>
+              </TouchableOpacity>
+              {profile?.location ? (
+                <View style={styles.metaRow}>
+                  <Feather name="map-pin" size={13} color={colors.secondaryForeground} />
+                  <Text style={[styles.metaText, { color: colors.secondaryForeground }]} numberOfLines={2}>
+                    {profile.location}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
           {profile?.bio ? (
-            <Text style={[styles.heroBio, { color: colors.mutedForeground }]}>
-              {profile.bio}
-            </Text>
+            <>
+              <View style={[styles.heroDivider, { backgroundColor: colors.border }]} />
+              <Text style={[styles.heroBio, { color: colors.secondaryForeground }]}>
+                {profile.bio}
+              </Text>
+            </>
           ) : null}
-          {/* Social links */}
-          {(profile?.github_url || profile?.linkedin_url || profile?.website) && (
-            <View style={styles.socialRow}>
-              {profile.github_url && (
-                <View style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
-                  <Feather name="github" size={11} color={colors.foreground} />
-                  <Text style={[styles.socialLabel, { color: colors.foreground }]}>GitHub</Text>
-                </View>
-              )}
-              {profile.linkedin_url && (
-                <View style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
-                  <Feather name="linkedin" size={11} color={colors.primary} />
-                  <Text style={[styles.socialLabel, { color: colors.primary }]}>LinkedIn</Text>
-                </View>
-              )}
+          {(profile?.github_url || profile?.linkedin_url || profile?.website) ? (
+            <View style={styles.socialWrap}>
+              <Text style={[styles.socialSectionLabel, { color: colors.mutedForeground }]}>Links</Text>
+              <View style={styles.socialRow}>
+                {profile.github_url ? (
+                  <TouchableOpacity
+                    style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => Linking.openURL(normalizeUrl(profile.github_url!))}
+                    activeOpacity={0.75}
+                  >
+                    <Feather name="github" size={12} color={colors.foreground} />
+                    <Text style={[styles.socialLabel, { color: colors.foreground }]}>GitHub</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {profile.linkedin_url ? (
+                  <TouchableOpacity
+                    style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => Linking.openURL(normalizeUrl(profile.linkedin_url!))}
+                    activeOpacity={0.75}
+                  >
+                    <Feather name="linkedin" size={12} color={colors.primary} />
+                    <Text style={[styles.socialLabel, { color: colors.primary }]}>LinkedIn</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {profile.website ? (
+                  <TouchableOpacity
+                    style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
+                    onPress={() => Linking.openURL(normalizeUrl(profile.website!))}
+                    activeOpacity={0.75}
+                  >
+                    <Feather name="globe" size={12} color={colors.secondaryForeground} />
+                    <Text style={[styles.socialLabel, { color: colors.foreground }]} numberOfLines={1}>
+                      {displayHost(profile.website)}
+                    </Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
             </View>
-          )}
+          ) : null}
         </View>
 
         {/* Tabs */}
@@ -251,6 +310,65 @@ export default function PortfolioScreen() {
         {/* Tab content */}
         {activeTab === "overview" && (
           <View style={styles.section}>
+            {(allExperience.length > 0 ||
+              allProjects.length > 0 ||
+              skills.length > 0 ||
+              allEducation.length > 0) && (
+              <View style={[styles.glanceBar, { borderColor: colors.border, backgroundColor: colors.card }]}>
+                {allExperience.length > 0 ? (
+                  <View style={[styles.glancePill, { backgroundColor: colors.surface }]}>
+                    <Feather name="briefcase" size={13} color={colors.primary} />
+                    <Text style={[styles.glancePillText, { color: colors.foreground }]}>
+                      {allExperience.length} role{allExperience.length !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                ) : null}
+                {allProjects.length > 0 ? (
+                  <View style={[styles.glancePill, { backgroundColor: colors.surface }]}>
+                    <Feather name="layout" size={13} color={colors.primary} />
+                    <Text style={[styles.glancePillText, { color: colors.foreground }]}>
+                      {allProjects.length} project{allProjects.length !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                ) : null}
+                {skills.length > 0 ? (
+                  <View style={[styles.glancePill, { backgroundColor: colors.surface }]}>
+                    <Feather name="layers" size={13} color={colors.primary} />
+                    <Text style={[styles.glancePillText, { color: colors.foreground }]}>
+                      {skills.length} skill{skills.length !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                ) : null}
+                {allEducation.length > 0 ? (
+                  <View style={[styles.glancePill, { backgroundColor: colors.surface }]}>
+                    <Feather name="book-open" size={13} color={colors.primary} />
+                    <Text style={[styles.glancePillText, { color: colors.foreground }]}>
+                      {allEducation.length} school{allEducation.length !== 1 ? "s" : ""}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
+
+            {skills.length > 0 && (
+              <View style={styles.subSection}>
+                <View style={styles.subHeader}>
+                  <View style={styles.titleWithIcon}>
+                    <Feather name="layers" size={16} color={colors.mutedForeground} />
+                    <Text style={[styles.sectionTitle, { color: colors.foreground }]}>Skills</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setActiveTab("skills")}>
+                    <Text style={[styles.viewAll, { color: colors.primary }]}>View all</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.tagRow}>
+                  {skills.slice(0, 20).map((s, i) => (
+                    <SkillTag key={s.id ?? `${s.name}-${i}`} label={s.name} size="sm" />
+                  ))}
+                </View>
+              </View>
+            )}
+
             {/* Experience Summary */}
             {allExperience.length > 0 && (
               <View style={styles.subSection}>
@@ -270,8 +388,21 @@ export default function PortfolioScreen() {
                     activeOpacity={0.8}
                     style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
-                    <Text style={[styles.itemTitle, { color: colors.foreground }]}>{exp.role}</Text>
+                    <Text style={[styles.itemTitle, styles.itemTitleWrap, { color: colors.foreground }]}>
+                      {exp.role}
+                    </Text>
                     <Text style={[styles.itemSub, { color: colors.primary }]}>{exp.company}</Text>
+                    <View style={styles.dateRow}>
+                      <Feather name="calendar" size={12} color={colors.mutedForeground} />
+                      <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
+                        {exp.start_date}
+                        {exp.is_current
+                          ? " — Present"
+                          : "end_date" in exp && exp.end_date
+                            ? ` — ${exp.end_date}`
+                            : ""}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -296,8 +427,14 @@ export default function PortfolioScreen() {
                     activeOpacity={0.8}
                     style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
-                    <Text style={[styles.itemTitle, { color: colors.foreground }]}>{proj.title}</Text>
-                    <Text style={[styles.itemDesc, { color: colors.mutedForeground }]} numberOfLines={1}>{proj.description}</Text>
+                    <Text style={[styles.itemTitle, styles.itemTitleWrap, { color: colors.foreground }]}>
+                      {proj.title}
+                    </Text>
+                    {proj.description ? (
+                      <Text style={[styles.itemDesc, { color: colors.secondaryForeground }]} numberOfLines={3}>
+                        {proj.description}
+                      </Text>
+                    ) : null}
                   </TouchableOpacity>
                 ))}
               </View>
@@ -349,7 +486,11 @@ export default function PortfolioScreen() {
               </View>
             )}
 
-            {allExperience.length === 0 && allProjects.length === 0 && allEducation.length === 0 && allAchievements.length === 0 && (
+            {allExperience.length === 0 &&
+              allProjects.length === 0 &&
+              allEducation.length === 0 &&
+              allAchievements.length === 0 &&
+              skills.length === 0 && (
               <EmptySection label="Your portfolio is empty" onAdd={() => router.push("/edit-profile")} colors={colors} />
             )}
           </View>
@@ -525,29 +666,114 @@ const styles = StyleSheet.create({
   },
   actionLabel: { fontSize: 13, fontWeight: "600" },
   heroCard: {
-    borderRadius: 20, borderWidth: 1, padding: 20, gap: 6, overflow: "hidden",
+    borderRadius: 22,
+    borderWidth: 1,
+    padding: 22,
+    gap: 0,
+    overflow: "hidden",
   },
-  heroTop: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8,
+  heroIdentityRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 16,
+  },
+  heroTextCol: {
+    flex: 1,
+    minWidth: 0,
+    gap: 8,
+  },
+  heroTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  heroNameBlock: {
+    flex: 1,
+    minWidth: 0,
+    gap: 6,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    marginTop: 2,
+  },
+  metaText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
+  },
+  heroDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 16,
+    marginBottom: 12,
+    alignSelf: "stretch",
+  },
+  socialWrap: {
+    marginTop: 16,
+    gap: 10,
+  },
+  socialSectionLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  glanceBar: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  glancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+  glancePillText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   avatar: {
-    width: 70, height: 70, borderRadius: 35, borderWidth: 2,
+    width: 78, height: 78, borderRadius: 39, borderWidth: 2,
     alignItems: "center", justifyContent: "center", overflow: "hidden",
   },
-  avatarImg: { width: 70, height: 70, borderRadius: 35 },
+  avatarImg: { width: 78, height: 78, borderRadius: 39 },
   avatarInitial: { fontSize: 30, fontWeight: "800" },
   liveChip: {
-    flexDirection: "row", alignItems: "center", gap: 5,
-    backgroundColor: "#6AFAD022", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    flexShrink: 0,
+    alignSelf: "flex-start",
+    backgroundColor: "#6AFAD022",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
   },
   liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#6AFAD0" },
   liveChipText: { color: "#6AFAD0", fontSize: 12, fontWeight: "600" },
-  heroName: { fontSize: 22, fontWeight: "800" },
-  heroHeadline: { fontSize: 14 },
-  heroHandle: { fontSize: 13, fontWeight: "600" },
-  handleRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
-  heroBio: { fontSize: 13, lineHeight: 20, marginTop: 8 },
-  socialRow: { flexDirection: "row", gap: 8, marginTop: 12 },
+  heroName: { fontSize: 23, fontWeight: "800", letterSpacing: -0.45 },
+  heroHeadline: { fontSize: 14, lineHeight: 21, fontWeight: "500" },
+  heroHandle: { fontSize: 13, fontWeight: "600", flexShrink: 1 },
+  handleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    maxWidth: "100%",
+  },
+  heroBio: { fontSize: 14, lineHeight: 22, fontWeight: "400" },
+  socialRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   socialChip: {
     flexDirection: "row", alignItems: "center", gap: 5,
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
@@ -567,6 +793,7 @@ const styles = StyleSheet.create({
   awardDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#6AFAD0" },
   itemCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 6, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   itemTitle: { fontSize: 16, fontWeight: "700", letterSpacing: -0.1 },
+  itemTitleWrap: { flexShrink: 1 },
   itemSub: { fontSize: 14, fontWeight: "600" },
   dateRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 },
   itemDate: { fontSize: 12, fontWeight: "500" },
