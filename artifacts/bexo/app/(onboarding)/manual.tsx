@@ -344,27 +344,34 @@ const AB = StyleSheet.create({
 });
 
 // ─── EntryCard ────────────────────────────────────────────────────────────────
-function EntryCard({ label, lines, accentColor, onEdit }: { label: string; lines: string[]; accentColor: string; onEdit: () => void }) {
+function EntryCard({ label, lines, accentColor, onEdit, onDelete }: { label: string; lines: string[]; accentColor: string; onEdit: () => void; onDelete?: () => void }) {
   return (
     <View style={[EC.card, { borderColor: accentColor + "44", backgroundColor: accentColor + "09" }]}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, marginRight: 12 }}>
           <Text style={{ fontSize: 10, fontWeight: "800", color: accentColor, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{label}</Text>
           {lines.filter(Boolean).map((l, i) => (
             <Text key={i} style={[EC.line, { color: i === 0 ? "#fff" : "rgba(255,255,255,0.55)", fontSize: i === 0 ? 16 : 13, fontWeight: i === 0 ? "700" : "500" }]}>{l}</Text>
           ))}
         </View>
-        <TouchableOpacity onPress={onEdit} style={[EC.editBtn, { backgroundColor: accentColor + "22" }]}>
-          <Feather name="edit-2" size={12} color={accentColor} />
-        </TouchableOpacity>
+        <View style={{ gap: 8 }}>
+          <TouchableOpacity onPress={onEdit} style={[EC.actionBtn, { backgroundColor: accentColor + "22" }]}>
+            <Feather name="edit-2" size={12} color={accentColor} />
+          </TouchableOpacity>
+          {onDelete && (
+            <TouchableOpacity onPress={onDelete} style={[EC.actionBtn, { backgroundColor: "#ff444422" }]}>
+              <Feather name="trash-2" size={12} color="#ff4444" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     </View>
   );
 }
 const EC = StyleSheet.create({
-  card:    { borderWidth: 1, borderRadius: 18, padding: 18, marginBottom: 2 },
-  line:    { lineHeight: 22, marginBottom: 1 },
-  editBtn: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  card:      { borderWidth: 1, borderRadius: 18, padding: 18, marginBottom: 2 },
+  line:      { lineHeight: 22, marginBottom: 1 },
+  actionBtn: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
 });
 
 // ─── DateRangeRow — for education year picking ────────────────────────────────
@@ -406,12 +413,9 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
   return (
     <View>
       <Text style={S.fieldLabel}>Start Date</Text>
-      <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
-        <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.start_month ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openMonth("start")}>
-          <Text style={[S.monthYearTxt, { color: exp.start_month ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.start_month || "Month"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.start_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("start")}>
-          <Text style={[S.monthYearTxt, { color: exp.start_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.start_year || "Year"}</Text>
+      <View style={{ marginBottom: 16 }}>
+        <TouchableOpacity style={[S.yearBtn, { borderColor: exp.start_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("start")}>
+          <Text style={[S.monthYearTxt, { color: exp.start_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.start_year || "Start Year"}</Text>
         </TouchableOpacity>
       </View>
 
@@ -426,12 +430,9 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
       {!exp.is_current && (
         <>
           <Text style={[S.fieldLabel, { marginTop: 16 }]}>End Date</Text>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.end_month ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openMonth("end")}>
-              <Text style={[S.monthYearTxt, { color: exp.end_month ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.end_month || "Month"}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[S.monthYearBtn, { borderColor: exp.end_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("end")}>
-              <Text style={[S.monthYearTxt, { color: exp.end_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.end_year || "Year"}</Text>
+          <View style={{ marginTop: 8 }}>
+            <TouchableOpacity style={[S.yearBtn, { borderColor: exp.end_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("end")}>
+              <Text style={[S.monthYearTxt, { color: exp.end_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.end_year || "End Year"}</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -677,8 +678,8 @@ export default function ManualEntryScreen() {
       if (section === 2 && exp.company.trim()) {
         await store.saveExperience({
           ...exp,
-          start_date: `${exp.start_year}-${String(MONTHS.indexOf(exp.start_month) + 1).padStart(2, "0")}-01`,
-          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-${String(MONTHS.indexOf(exp.end_month) + 1).padStart(2, "0")}-01`,
+          start_date: `${exp.start_year}-01-01`,
+          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-01-01`,
         });
         setExp(newExp());
       }
@@ -716,8 +717,8 @@ export default function ManualEntryScreen() {
       if (sectionIdx === 2 && exp.company.trim()) {
         await store.saveExperience({
           ...exp,
-          start_date: `${exp.start_year}-${String(MONTHS.indexOf(exp.start_month) + 1).padStart(2, "0")}-01`,
-          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-${String(MONTHS.indexOf(exp.end_month) + 1).padStart(2, "0")}-01`,
+          start_date: `${exp.start_year}-01-01`,
+          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-01-01`,
         });
         setExp(newExp());
       }
@@ -936,17 +937,10 @@ export default function ManualEntryScreen() {
                 lines={[item.institution, `${item.degree}${item.field ? ` in ${item.field}` : ""}`, `${item.start_year}${item.end_year ? ` – ${item.end_year}` : ""}`]}
                 accentColor={color}
                 onEdit={() => {
-                  setEdu({
-                    id: item.id,
-                    institution: item.institution,
-                    degree: item.degree,
-                    field: item.field,
-                    start_year: String(item.start_year),
-                    end_year: item.end_year ? String(item.end_year) : "Present",
-                    description: item.description || "",
-                  });
-                  transition("bwd", () => setStepIdx(0));
+                  setEdu({ ...item, start_year: String(item.start_year), end_year: item.end_year ? String(item.end_year) : "" });
+                  setStepIdx(0);
                 }}
+                onDelete={() => useProfileStore.getState().deleteEducation(item.id!)}
               />
             ))}
           </View>
@@ -1010,21 +1004,16 @@ export default function ManualEntryScreen() {
                 ]}
                 accentColor={color}
                 onEdit={() => {
-                  const [sy, sm] = item.start_date.split("-");
-                  const [ey, em] = item.end_date?.split("-") || ["", ""];
+                  const [sy, sm] = (item.start_date || "").split("-");
+                  const [ey, em] = (item.end_date || "").split("-");
                   setExp({
-                    id: item.id,
-                    company: item.company,
-                    role: item.role,
-                    start_month: MONTHS[Number(sm) - 1],
-                    start_year: sy,
-                    end_month: em ? MONTHS[Number(em) - 1] : "",
-                    end_year: ey,
-                    is_current: item.is_current,
-                    description: item.description || "",
+                    ...item,
+                    start_year: sy, start_month: MONTHS[parseInt(sm) - 1] || "Jan",
+                    end_year: ey || "", end_month: em ? MONTHS[parseInt(em) - 1] : "Jan",
                   });
-                  transition("bwd", () => setStepIdx(0));
+                  setStepIdx(0);
                 }}
+                onDelete={() => useProfileStore.getState().deleteExperience(item.id!)}
               />
             ))}
           </View>
@@ -1100,8 +1089,9 @@ export default function ManualEntryScreen() {
                     live_url: item.live_url || "",
                     image_url: item.image_url || "",
                   });
-                  transition("bwd", () => setStepIdx(0));
+                  setStepIdx(0);
                 }}
+                onDelete={() => useProfileStore.getState().deleteProject(item.id!)}
               />
             ))}
           </View>
@@ -1188,13 +1178,10 @@ export default function ManualEntryScreen() {
                 lines={[item.title, item.subtitle || "", item.description.substring(0, 100) + "..."]}
                 accentColor={color}
                 onEdit={() => {
-                  setRes({
-                    ...item,
-                    subtitle: item.subtitle || "",
-                    image_url: item.image_url || "",
-                  });
-                  transition("bwd", () => setStepIdx(0));
+                  setRes({ ...item, subtitle: item.subtitle || "" });
+                  setStepIdx(0);
                 }}
+                onDelete={() => useProfileStore.getState().deleteResearch(item.id!)}
               />
             ))}
           </View>

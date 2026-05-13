@@ -310,7 +310,11 @@ export const useProfileStore = create<ProfileState>()(
       saveEducation: async (edu: Education) => {
         const profile = get().profile;
         if (!profile) return;
-        const payload = { ...edu, profile_id: profile.id };
+        
+        // Strip UI-only fields
+        const { start_month, end_month, ...cleanEdu } = edu as any;
+        const payload = { ...cleanEdu, profile_id: profile.id };
+        
         const { data, error } = await supabase
           .from("education")
           .upsert(payload)
@@ -334,7 +338,11 @@ export const useProfileStore = create<ProfileState>()(
       saveExperience: async (exp: Experience) => {
         const profile = get().profile;
         if (!profile) return;
-        const payload = { ...exp, profile_id: profile.id };
+        
+        // Strip UI-only fields
+        const { start_month, start_year, end_month, end_year, ...cleanExp } = exp as any;
+        const payload = { ...cleanExp, profile_id: profile.id };
+
         const { data, error } = await supabase
           .from("experiences")
           .upsert(payload)

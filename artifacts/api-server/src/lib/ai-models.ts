@@ -2,8 +2,8 @@
  * Single source of truth for Gemini model IDs used by the API server.
  * Override via env: GOOGLE_MODEL, GOOGLE_MODEL_FALLBACK
  */
-export const GEMINI_DEFAULT_PRIMARY = "gemini-2.0-flash";
-export const GEMINI_DEFAULT_FALLBACK = "gemini-1.5-pro";
+export const GEMINI_DEFAULT_PRIMARY = "gemini-2.5-flash-lite";
+export const GEMINI_DEFAULT_FALLBACK = "gemini-3-flash-preview";
 
 export function resolvePrimaryModel(): string {
   return (process.env.GOOGLE_MODEL?.trim() || GEMINI_DEFAULT_PRIMARY).replace(/["']/g, "");

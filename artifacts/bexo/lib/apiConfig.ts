@@ -36,17 +36,7 @@ function getApiBaseUrl(): string {
     return process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
   }
 
-  // 3. For native dev (iOS/Android), prioritize auto-detecting the LAN IP.
-  const debuggerHost =
-    Constants.expoConfig?.hostUri ?? 
-    (Constants as any).manifest?.debuggerHost;
-  
-  if (debuggerHost) {
-    const ip = debuggerHost.split(":")[0]; 
-    return `http://${ip}:3000`;
-  }
-
-  // 3. Fallback to explicit override if provided (useful for production or specific tunnels)
+  // 4. Fallback for Android emulator or specific overrides
   if (process.env.EXPO_PUBLIC_API_BASE_URL) {
     const url = process.env.EXPO_PUBLIC_API_BASE_URL;
     if (Platform.OS === "android" && url.includes("localhost")) {
@@ -55,7 +45,7 @@ function getApiBaseUrl(): string {
     return url;
   }
 
-  // 4. Ultimate fallback
+  // 5. Ultimate fallback
   return Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 }
 
