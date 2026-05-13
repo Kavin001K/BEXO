@@ -58,7 +58,7 @@ export function RebuildModal({ visible, onClose }: Props) {
     if (!user?.id || !profile?.id) return;
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
         copyToCacheDirectory: true,
       });
       if (res.canceled || !res.assets?.[0]) return;

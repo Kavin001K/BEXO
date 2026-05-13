@@ -277,7 +277,7 @@ export default function EditProfileScreen() {
   // ---- Resume ----
   const handlePickResume = async () => {
     const res = await DocumentPicker.getDocumentAsync({
-      type: "application/pdf",
+      type: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
       copyToCacheDirectory: true,
     });
     if (res.canceled || !res.assets?.[0]) return;

@@ -1,5 +1,6 @@
 import * as ImageManipulator from "expo-image-manipulator";
 import { decode } from "base64-arraybuffer";
+import { detectResumeMime } from "@/lib/mediaMime";
 import { supabase } from "@/lib/supabase";
 
 async function uriToBlob(uri: string): Promise<Blob> {
@@ -62,15 +63,38 @@ export async function uploadResume(
   onProgress?.(10);
   console.log("[uploadResume] Fetching blob...");
   const blob = await uriToBlob(localUri);
+  const ab = await blob.arrayBuffer();
+  const bytes = new Uint8Array(ab);
+  const sniffed = detectResumeMime(bytes);
+  const contentType =
+    sniffed !== "application/octet-stream"
+      ? sniffed
+      : blob.type && blob.type.length > 0
+        ? blob.type
+        : "application/pdf";
+
   onProgress?.(45);
 
-  const path = `${userId}/resume-${Date.now()}.pdf`;
+  const ext =
+    contentType === "application/pdf"
+      ? "pdf"
+      : contentType.includes("png")
+        ? "png"
+        : contentType.includes("webp")
+          ? "webp"
+          : contentType.includes("gif")
+            ? "gif"
+            : contentType.includes("jpeg") || contentType.includes("jpg")
+              ? "jpg"
+              : "bin";
 
-  console.log("[uploadResume] Uploading to Supabase Storage...");
+  const path = `${userId}/resume-${Date.now()}.${ext}`;
+
+  console.log("[uploadResume] Uploading to Supabase Storage...", contentType);
   const { data, error } = await supabase.storage
     .from("resumes")
     .upload(path, blob, {
-      contentType: "application/pdf",
+      contentType,
       upsert: true,
     });
 

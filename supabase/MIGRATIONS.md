@@ -54,4 +54,6 @@ If `npx supabase secrets set …` does not show up in the Dashboard project you 
 
 ### `parse-resume` model fallbacks
 
-Only **two** attempts: **`GOOGLE_MODEL`** (default **`gemini-2.5-flash-lite`**) then **`GOOGLE_MODEL_FALLBACK`** (default **`gemini-3-flash-preview`**). Older Gemini IDs are **not** chained — many return **404** on `v1beta` / `generateContent`.
+Only **two** models: **`GOOGLE_MODEL`** (default **`gemini-2.5-flash-lite`**) then **`GOOGLE_MODEL_FALLBACK`** (default **`gemini-3-flash-preview`**).
+
+The function **sniffs real file type** (PDF vs JPEG/PNG/WebP) for Gemini `inlineData` / File API. Storage uploads should **not** force `application/pdf` if the bytes are an image — wrong MIME led to Google error **“The document has no pages.”** If inline upload still fails, the function **re-uploads via the Gemini File API** and retries `generateContent` with `fileData`.

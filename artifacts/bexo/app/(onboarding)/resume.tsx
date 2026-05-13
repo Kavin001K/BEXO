@@ -70,7 +70,7 @@ export default function ResumeScreen() {
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets[0]) return;
