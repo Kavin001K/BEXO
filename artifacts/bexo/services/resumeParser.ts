@@ -1,6 +1,9 @@
-import { uploadResume, getResumeSignedUrl } from "@/services/upload";
+import {
+  formatR2ResumeRef,
+  uploadResumeToCloudflare,
+} from "@/services/upload";
 import { apiFetch } from "@/lib/apiConfig";
-import { sanitizeError } from "@/lib/errorUtils";
+import { explainGeminiApiFailure, sanitizeError } from "@/lib/errorUtils";
 
 export interface ParsedResume {
   full_name?:    string;
@@ -34,11 +37,11 @@ function parseSummary(p: ParsedResume): string {
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
-async function parseResumeWithGemini(resumeSignedUrl: string): Promise<ParsedResume> {
-  console.log("[resumeParser] Calling Gemini-powered Edge Function...");
+async function parseResumeWithGemini(r2ObjectKey: string): Promise<ParsedResume> {
+  console.log("[resumeParser] Calling parse-resume (R2 → Gemini pipeline)...");
 
   const { data, error } = await supabase.functions.invoke("parse-resume", {
-    body: { resumeUrl: resumeSignedUrl },
+    body: { r2Key: r2ObjectKey },
   });
 
   if (error) {
@@ -47,13 +50,23 @@ async function parseResumeWithGemini(resumeSignedUrl: string): Promise<ParsedRes
     let detailedError = error.message;
     if (error instanceof FunctionsHttpError) {
       try {
-        const body = await error.context.json();
-        detailedError = body.error || body.message || detailedError;
+        const body = await error.context.json() as { error?: unknown; message?: string };
+        const raw = body.error ?? body.message;
+        detailedError =
+          typeof raw === "string"
+            ? raw
+            : raw != null
+              ? JSON.stringify(raw)
+              : detailedError;
       } catch {
         // Fallback to default message if body isn't JSON
       }
     }
 
+    const explained = explainGeminiApiFailure(detailedError);
+    if (explained) {
+      throw new Error(explained);
+    }
     throw new Error(`Resume parsing failed: ${detailedError}`);
   }
 
@@ -83,7 +96,7 @@ function normalizeParsedResume(raw: unknown): ParsedResume {
 // ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Upload resume to Supabase Storage, then parse with Gemini Native PDF Vision (via Edge Function).
+ * Upload résumé to **Cloudflare R2** (via Edge Function `upload`), then **`parse-resume`** loads bytes from R2 and sends them to Gemini; structured JSON is mapped client-side for profile import.
  */
 export async function uploadAndParseResume(
   localUri: string,
@@ -91,28 +104,36 @@ export async function uploadAndParseResume(
   userId: string,
   onProgress?: (stage: "uploading" | "parsing", pct: number) => void
 ): Promise<{ resumeStoragePath: string; resumeSignedUrl: string; parsed: ParsedResume }> {
-  console.log("[resumeParser] Starting processing pipeline (Native PDF Vision)...");
+  console.log("[resumeParser] Pipeline: Cloudflare R2 upload → parse-resume Edge → Gemini");
 
-  // 1. Upload PDF to Supabase Storage
-  const { path: resumeStoragePath } = await uploadResume(
+  const { key, publicUrl } = await uploadResumeToCloudflare(
     userId,
     localUri,
+    fileName,
     (pct) => onProgress?.("uploading", pct)
   );
   onProgress?.("uploading", 100);
 
-  // 2. Get signed URL for the AI to fetch
-  const resumeSignedUrl = await getResumeSignedUrl(resumeStoragePath);
+  const resumeStoragePath = formatR2ResumeRef(key);
+  const resumeSignedUrl = publicUrl;
 
-  // 3. Parse with Gemini Native PDF Vision
   onProgress?.("parsing", 30);
   try {
-    const parsed = await parseResumeWithGemini(resumeSignedUrl);
+    const parsed = await parseResumeWithGemini(key);
     onProgress?.("parsing", 100);
     console.log(`[resumeParser] Pipeline complete: ${parseSummary(parsed)}`);
     return { resumeStoragePath, resumeSignedUrl, parsed };
   } catch (e: any) {
-    console.error("[resumeParser] Gemini parsing failed:", e.message);
+    const raw = e?.message ?? String(e);
+    console.error("[resumeParser] Gemini parsing failed:", raw);
+    const explained = explainGeminiApiFailure(raw);
+    if (explained) {
+      throw new Error(explained);
+    }
+    // Keep messages already produced above (avoid sanitizeError shortening long help text)
+    if (raw.includes("Google revoked") || raw.includes("aistudio.google.com")) {
+      throw new Error(raw);
+    }
     throw new Error(sanitizeError(e));
   }
 }

@@ -1,3 +1,5 @@
+import { fetchR2ObjectBytes } from "./r2_fetch.ts";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -123,10 +125,12 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { resumeUrl } = await req.json();
+    const body = await req.json() as { resumeUrl?: string; r2Key?: string };
+    const resumeUrl = typeof body.resumeUrl === "string" ? body.resumeUrl.trim() : "";
+    const r2Key = typeof body.r2Key === "string" ? body.r2Key.trim() : "";
 
-    if (!resumeUrl) {
-      return new Response(JSON.stringify({ error: "resumeUrl required" }), {
+    if (!resumeUrl && !r2Key) {
+      return new Response(JSON.stringify({ error: "Provide resumeUrl or r2Key" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
@@ -152,14 +156,19 @@ Deno.serve(async (req) => {
 
     console.log(`[parse-resume] Primary=${primaryModel} fallback=${fallbackResolved}`);
 
-    console.log(`[parse-resume] Fetching document from: ${resumeUrl}`);
-    const pdfResp = await fetch(resumeUrl);
-    if (!pdfResp.ok) {
-      console.error(`[parse-resume] Fetch failed: ${pdfResp.status} ${pdfResp.statusText}`);
-      throw new Error(`Failed to fetch resume from storage: ${pdfResp.status} ${pdfResp.statusText}`);
+    let rawBytes: Uint8Array;
+    if (r2Key) {
+      console.log(`[parse-resume] Loading resume from Cloudflare R2 key: ${r2Key}`);
+      rawBytes = await fetchR2ObjectBytes(r2Key);
+    } else {
+      console.log(`[parse-resume] Fetching document from URL`);
+      const pdfResp = await fetch(resumeUrl);
+      if (!pdfResp.ok) {
+        console.error(`[parse-resume] Fetch failed: ${pdfResp.status} ${pdfResp.statusText}`);
+        throw new Error(`Failed to fetch resume from URL: ${pdfResp.status} ${pdfResp.statusText}`);
+      }
+      rawBytes = new Uint8Array(await pdfResp.arrayBuffer());
     }
-
-    const rawBytes = new Uint8Array(await pdfResp.arrayBuffer());
     if (rawBytes.byteLength < 16) {
       throw new Error("Resume file is empty or too small to parse.");
     }
