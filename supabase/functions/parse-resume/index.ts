@@ -18,6 +18,14 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 /** Default when GOOGLE_MODEL / GEMINI_MODEL secrets are unset */
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
 
+/** Prefer GOOGLE_API_KEY so a new key set via CLI wins over a stale GEMINI_API_KEY */
+function resolveGeminiApiKey(): string | undefined {
+  const raw =
+    Deno.env.get("GOOGLE_API_KEY")?.trim() ||
+    Deno.env.get("GEMINI_API_KEY")?.trim();
+  return raw || undefined;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -33,16 +41,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    const geminiKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("GOOGLE_API_KEY");
+    const geminiKey = resolveGeminiApiKey();
     if (!geminiKey) {
       console.error("[parse-resume] Error: No API key found in Deno.env");
-      return new Response(JSON.stringify({ error: "GEMINI_API_KEY or GOOGLE_API_KEY not set in Supabase secrets" }), {
+      return new Response(JSON.stringify({ error: "GOOGLE_API_KEY or GEMINI_API_KEY not set in Supabase secrets" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const geminiModel =
+    let geminiModel =
       Deno.env.get("GOOGLE_MODEL")?.trim() ||
       Deno.env.get("GEMINI_MODEL")?.trim() ||
       DEFAULT_GEMINI_MODEL;
@@ -121,14 +129,14 @@ Deno.serve(async (req) => {
   ]
 }`;
 
-    async function callGemini(useJsonMime: boolean): Promise<Response> {
+    async function callGemini(modelId: string, useJsonMime: boolean): Promise<Response> {
       const geminiUrl =
-        `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${geminiKey}`;
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelId}:generateContent?key=${geminiKey}`;
       const generationConfig: Record<string, unknown> = { temperature: 0.1 };
       if (useJsonMime) {
         generationConfig.responseMimeType = "application/json";
       }
-      console.log(`[parse-resume] Calling ${geminiModel} API (jsonMode=${useJsonMime})...`);
+      console.log(`[parse-resume] Calling ${modelId} API (jsonMode=${useJsonMime})...`);
       return fetch(geminiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -149,17 +157,67 @@ Deno.serve(async (req) => {
       });
     }
 
-    let geminiResp = await callGemini(true);
-    if (!geminiResp.ok) {
-      const errText = await geminiResp.text();
-      console.warn(`[parse-resume] Gemini first attempt failed (${geminiResp.status}), retry without JSON mime:`, errText.slice(0, 500));
-      geminiResp = await callGemini(false);
+    /** Try primary, then optional secret fallback, then built-in fallbacks */
+    const secretFallback =
+      Deno.env.get("GOOGLE_MODEL_FALLBACK")?.trim() ||
+      Deno.env.get("GEMINI_MODEL_FALLBACK")?.trim();
+
+    const modelCandidates = [
+      geminiModel,
+      ...(secretFallback ? [secretFallback] : []),
+      "gemini-3-flash-preview",
+      "gemini-2.0-flash",
+      "gemini-1.5-flash",
+    ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+
+    let geminiResp: Response | null = null;
+    let lastErrText = "";
+
+    outer: for (const modelId of modelCandidates) {
+      geminiModel = modelId;
+      let attempt = await callGemini(modelId, true);
+      if (!attempt.ok) {
+        lastErrText = await attempt.text();
+        const retryPlain = await callGemini(modelId, false);
+        if (!retryPlain.ok) {
+          lastErrText = await retryPlain.text();
+          const low = lastErrText.toLowerCase();
+          const isWrongModel =
+            low.includes("not found") ||
+            low.includes("not supported") ||
+            low.includes("does not exist") ||
+            low.includes("invalid model");
+          const isBadKey =
+            low.includes("api key not valid") ||
+            low.includes("please pass a valid api key") ||
+            low.includes("invalid api key") ||
+            low.includes("api_key_invalid") ||
+            low.includes("reported as leaked") ||
+            (low.includes("permission_denied") &&
+              (low.includes("api") || low.includes("key") || low.includes("consumer")));
+          if (isWrongModel && modelCandidates.indexOf(modelId) < modelCandidates.length - 1) {
+            console.warn(`[parse-resume] Model ${modelId} failed, trying fallback…`);
+            continue outer;
+          }
+          if (isBadKey) {
+            throw new Error(`AI API returned error ${retryPlain.status}: ${lastErrText}`);
+          }
+          if (modelCandidates.indexOf(modelId) < modelCandidates.length - 1) {
+            console.warn(`[parse-resume] Model ${modelId} error, trying fallback…`);
+            continue outer;
+          }
+          throw new Error(`AI API returned error ${retryPlain.status}: ${lastErrText}`);
+        }
+        geminiResp = retryPlain;
+        break;
+      }
+      geminiResp = attempt;
+      break;
     }
 
-    if (!geminiResp.ok) {
-      const errText = await geminiResp.text();
-      console.error(`[parse-resume] Gemini API error (${geminiResp.status}):`, errText);
-      throw new Error(`AI API returned error ${geminiResp.status}: ${errText}`);
+    if (!geminiResp || !geminiResp.ok) {
+      console.error(`[parse-resume] Gemini API error:`, lastErrText.slice(0, 800));
+      throw new Error(`AI API returned error: ${lastErrText || "unknown"}`);
     }
 
     const geminiData = await geminiResp.json();

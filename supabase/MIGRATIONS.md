@@ -10,10 +10,12 @@ The `parse-resume` function reads **`GOOGLE_API_KEY`** first, then **`GEMINI_API
 
 Secrets apply to the deployed Edge Function at runtime; redeploy after changing function code: `npx supabase functions deploy parse-resume`.
 
-Optional model override (defaults to **`gemini-2.5-flash-lite`** in code if unset):
+Optional model overrides (primary defaults to **`gemini-2.5-flash-lite`** in code if unset):
 
 ```bash
 npx supabase secrets set GOOGLE_MODEL=gemini-2.5-flash-lite
+# Optional: tried after primary before built-in fallbacks (e.g. gemini-3-flash-preview)
+npx supabase secrets set GOOGLE_MODEL_FALLBACK=gemini-3-flash-preview
 ```
 
 ```bash
@@ -52,4 +54,4 @@ If `npx supabase secrets set …` does not show up in the Dashboard project you 
 
 ### `parse-resume` model fallbacks (code defaults)
 
-If `GOOGLE_MODEL` fails or is unavailable, the Edge Function tries in order: configured model → **`gemini-3-flash-preview`** → **`gemini-2.0-flash`** → **`gemini-1.5-flash`** (deduplicated).
+If the primary model fails or is unavailable, the Edge Function tries in order: **`GOOGLE_MODEL`** (or `GEMINI_MODEL`) → optional **`GOOGLE_MODEL_FALLBACK`** (or `GEMINI_MODEL_FALLBACK`) → **`gemini-3-flash-preview`** → **`gemini-2.0-flash`** → **`gemini-1.5-flash`** (deduplicated). Setting `GOOGLE_MODEL_FALLBACK` to the same id as a built-in fallback is harmless (deduped).
