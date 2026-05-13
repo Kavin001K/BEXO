@@ -10,6 +10,23 @@ async function uriToBlob(uri: string): Promise<Blob> {
   return await res.blob();
 }
 
+/**
+ * Read a local `file://` / content URI as bytes. React Native's `Blob` often has no
+ * `arrayBuffer()` — do not use `blob.arrayBuffer()`.
+ */
+async function localFileToArrayBuffer(uri: string): Promise<{
+  buffer: ArrayBuffer;
+  mimeFromResponse: string;
+}> {
+  const res = await fetch(uri);
+  if (!res.ok) {
+    throw new Error(`Failed to read file: ${res.status} ${res.statusText}`);
+  }
+  const buffer = await res.arrayBuffer();
+  const mimeFromResponse = res.headers.get("content-type")?.split(";")[0]?.trim() ?? "";
+  return { buffer, mimeFromResponse };
+}
+
 /** Stored in profiles.resume_url for Cloudflare-backed résumés */
 export function formatR2ResumeRef(key: string): string {
   return `r2:${key}`;
@@ -32,16 +49,13 @@ export async function uploadResumeToCloudflare(
   onProgress?: (pct: number) => void
 ): Promise<{ key: string; publicUrl: string }> {
   onProgress?.(10);
-  const blob = await uriToBlob(localUri);
-  const ab = await blob.arrayBuffer();
-  const bytes = new Uint8Array(ab);
+  const { buffer, mimeFromResponse } = await localFileToArrayBuffer(localUri);
+  const bytes = new Uint8Array(buffer);
   const sniffed = detectResumeMime(bytes);
   const contentType =
     sniffed !== "application/octet-stream"
       ? sniffed
-      : blob.type && blob.type.length > 0
-        ? blob.type
-        : "application/pdf";
+      : mimeFromResponse || "application/pdf";
 
   const safeBase = fileName.replace(/[^a-zA-Z0-9._-]/g, "_") || "resume";
   const ext =
@@ -67,7 +81,7 @@ export async function uploadResumeToCloudflare(
       "Content-Type": contentType,
       "x-key": key,
     },
-    body: blob,
+    body: buffer,
   });
 
   onProgress?.(85);
@@ -148,17 +162,14 @@ export async function uploadResume(
   onProgress?: (pct: number) => void
 ): Promise<{ path: string }> {
   onProgress?.(10);
-  console.log("[uploadResume] Fetching blob...");
-  const blob = await uriToBlob(localUri);
-  const ab = await blob.arrayBuffer();
-  const bytes = new Uint8Array(ab);
+  console.log("[uploadResume] Reading file...");
+  const { buffer, mimeFromResponse } = await localFileToArrayBuffer(localUri);
+  const bytes = new Uint8Array(buffer);
   const sniffed = detectResumeMime(bytes);
   const contentType =
     sniffed !== "application/octet-stream"
       ? sniffed
-      : blob.type && blob.type.length > 0
-        ? blob.type
-        : "application/pdf";
+      : mimeFromResponse || "application/pdf";
 
   onProgress?.(45);
 
@@ -176,6 +187,8 @@ export async function uploadResume(
               : "bin";
 
   const path = `${userId}/resume-${Date.now()}.${ext}`;
+
+  const blob = new Blob([buffer], { type: contentType });
 
   console.log("[uploadResume] Uploading to Supabase Storage...", contentType);
   const { data, error } = await supabase.storage
