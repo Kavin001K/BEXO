@@ -297,6 +297,7 @@ export default function DetailsScreen() {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.gallery}>
                     {images.map((img: any, idx: number) => {
                       const absUrl = ensureAbsolute(img.url);
+                      if (!absUrl) return null;
                       return (
                         <TouchableOpacity 
                           key={img.id} 
@@ -322,6 +323,7 @@ export default function DetailsScreen() {
                   <View style={styles.pdfList}>
                     {pdfs.map((pdf: any) => {
                       const absUrl = ensureAbsolute(pdf.url);
+                      if (!absUrl) return null;
                       return (
                         <TouchableOpacity 
                           key={pdf.id} 
@@ -439,7 +441,13 @@ export default function DetailsScreen() {
                     placeholder="https://..."
                   />
                 ) : (
-                  <TouchableOpacity style={styles.row} onPress={() => linkUrl && openSafeUrl(ensureAbsolute(linkUrl))}>
+                  <TouchableOpacity
+                    style={styles.row}
+                    onPress={() => {
+                      const u = ensureAbsolute(linkUrl);
+                      if (u) openSafeUrl(u);
+                    }}
+                  >
                     <Feather name="link" size={14} color={colors.primary} />
                     <Text style={[styles.linkText, { color: colors.primary }]}>{linkUrl}</Text>
                   </TouchableOpacity>

@@ -169,7 +169,7 @@ export const useProfileStore = create<ProfileState>()(
   setExperiences: (experiences) => set({ experiences }),
   setProjects: (projects) => set({ projects }),
   setSkills: (skills) => set({ skills }),
-  setResearch: (research) => set({ research }),
+  setResearch: (research: Research[]) => set({ research }),
 
   addEducation: (edu) => set((s) => ({ education: [...s.education, edu] })),
   addExperience: (exp) => set((s) => ({ experiences: [...s.experiences, exp] })),
@@ -251,15 +251,19 @@ export const useProfileStore = create<ProfileState>()(
   },
 
   updateProfile: async (updates) => {
-    const profile = get().profile;
-    if (!profile) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error("Not authenticated");
+
     const { data, error } = await supabase
       .from("profiles")
-      .update(updates)
-      .eq("id", profile.id)
+      .upsert({ ...updates, user_id: user.id }, { onConflict: "user_id" })
       .select()
       .single();
-    if (error) throw error;
+
+    if (error) {
+      console.error("[ProfileStore] updateProfile error:", error);
+      throw error;
+    }
     if (data) set({ profile: data });
   },
 
@@ -485,7 +489,7 @@ export const useProfileStore = create<ProfileState>()(
       if (parsed.bio       && !profile.bio?.trim())       profileUpdates.bio       = parsed.bio;
       if (parsed.email     && !profile.email?.trim())     profileUpdates.email     = parsed.email;
       if (parsed.phone     && !profile.phone?.trim())     profileUpdates.phone     = parsed.phone;
-      if (parsed.address   && !profile.address?.trim())   profileUpdates.address   = parsed.address;
+      if (parsed.location  && !profile.location?.trim())  profileUpdates.location  = parsed.location;
 
       if (Object.keys(profileUpdates).length > 1) { // more than just resume_url
         await get().updateProfile(profileUpdates);

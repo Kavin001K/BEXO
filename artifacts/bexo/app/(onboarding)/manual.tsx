@@ -3,12 +3,21 @@ import {
   Dimensions,
   FlatList,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
 } from "react-native";
+import Animated, { 
+  FadeInDown, 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  runOnJS 
+} from "react-native-reanimated";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { YearPickerSheet } from "@/components/YearPickerSheet";
 import { MonthPickerSheet } from "@/components/MonthPickerSheet";
@@ -85,7 +94,7 @@ function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: nu
         return (
           <View key={sec.id} style={{ flex: 1, gap: 3 }}>
             <View style={{ height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-              <Animated.View style={{ width: `${fill * 100}%` as any, height: 3, borderRadius: 2, backgroundColor: sec.color }} />
+              <View style={{ width: `${fill * 100}%`, height: 3, borderRadius: 2, backgroundColor: sec.color }} />
             </View>
             <Text style={{ fontSize: 8, fontWeight: "700", color: active ? sec.color : (done ? sec.color + "80" : "rgba(255,255,255,0.25)"), textAlign: "center", letterSpacing: 0.4, textTransform: "uppercase" }}>
               {sec.label}
@@ -352,7 +361,7 @@ const EC = StyleSheet.create({
 function EduDateRow({ edu, setEdu, color, eduYearPickerFor, setEduYearPickerFor, yearSheetRef }: {
   edu: EduEntry; setEdu: (e: EduEntry) => void; color: string;
   eduYearPickerFor: "start" | "end" | null; setEduYearPickerFor: (v: "start" | "end" | null) => void;
-  yearSheetRef: React.RefObject<BottomSheetModal>;
+  yearSheetRef: React.RefObject<BottomSheetModal | null>;
 }) {
   const handlePress = (v: "start" | "end") => {
     setEduYearPickerFor(v);
@@ -376,8 +385,8 @@ function EduDateRow({ edu, setEdu, color, eduYearPickerFor, setEduYearPickerFor,
 // ─── ExpDateSection ───────────────────────────────────────────────────────────
 function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMonthPickerFor, setYearPickerFor }: {
   exp: ExpEntry; setExp: (e: ExpEntry) => void; color: string;
-  monthSheetRef: React.RefObject<BottomSheetModal>;
-  yearSheetRef: React.RefObject<BottomSheetModal>;
+  monthSheetRef: React.RefObject<BottomSheetModal | null>;
+  yearSheetRef: React.RefObject<BottomSheetModal | null>;
   setMonthPickerFor: (v: "start" | "end" | null) => void;
   setYearPickerFor: (v: "start" | "end" | null) => void;
 }) {
@@ -426,7 +435,7 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ManualEntryScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, setOnboardingStep } = useProfileStore();
+  const { profile, setOnboardingStep, education: storeEdu, experiences: storeExp, projects: storeProj, research: storeRes, skills: storeSkills } = useProfileStore();
 
   // Section & step
   const [sectionIdx, setSectionIdx] = useState(0);
@@ -435,33 +444,93 @@ export default function ManualEntryScreen() {
   const [headline, setHeadline] = useState(profile?.headline || "");
   const [bio,      setBio     ] = useState(profile?.bio      || "");
 
+  // Helper to convert store objects to local form objects
+  const mapStoreEdu = (items: any[]): EduEntry[] => items.map(e => ({
+    institution: e.institution, degree: e.degree, field: e.field,
+    start_year: String(e.start_year || ""), end_year: String(e.end_year || ""),
+    description: e.description || ""
+  }));
+
+  const mapStoreExp = (items: any[]): ExpEntry[] => items.map(e => {
+    // Expected format: YYYY-MM-DD or Month YYYY
+    let sy = "", sm = "";
+    if (e.start_date) {
+      if (e.start_date.includes("-")) {
+        const parts = e.start_date.split("-");
+        sy = parts[0] || "";
+        sm = parts[1] ? MONTHS[parseInt(parts[1]) - 1] : "";
+      } else {
+        // Fallback for "Month YYYY"
+        const parts = e.start_date.split(" ");
+        if (parts.length === 2) {
+          sm = parts[0].slice(0, 3);
+          sy = parts[1];
+        }
+      }
+    }
+    
+    let ey = "", em = "";
+    if (e.end_date && !e.is_current) {
+      if (e.end_date.includes("-")) {
+        const ep = e.end_date.split("-");
+        ey = ep[0] || "";
+        em = ep[1] ? MONTHS[parseInt(ep[1]) - 1] : "";
+      } else {
+        const ep = e.end_date.split(" ");
+        if (ep.length === 2) {
+          em = ep[0].slice(0, 3);
+          ey = ep[1];
+        }
+      }
+    }
+
+    return {
+      company: e.company, role: e.role,
+      start_month: sm, start_year: sy,
+      end_month: em, end_year: ey,
+      is_current: !!e.is_current,
+      description: e.description || ""
+    };
+  });
+
+  const mapStoreProj = (items: any[]): ProjEntry[] => items.map(p => ({
+    title: p.title, subtitle: "", description: p.description || "",
+    tech_stack: p.tech_stack || [], live_url: p.live_url || "",
+    github_url: p.github_url || "", image_url: p.image_url || ""
+  }));
+
+  const mapStoreRes = (items: any[]): ResEntry[] => items.map(r => ({
+    title: r.title, subtitle: r.subtitle || "", description: r.description || "",
+    image_url: r.image_url || ""
+  }));
+
   // Education
-  const [eduEntries,       setEduEntries      ] = useState<EduEntry[]>([]);
+  const [eduEntries,       setEduEntries      ] = useState<EduEntry[]>(mapStoreEdu(storeEdu));
   const [edu,              setEdu             ] = useState<EduEntry>(newEdu());
   const [eduYearPickerFor, setEduYearPickerFor] = useState<"start" | "end" | null>(null);
 
   // Experience
-  const [expEntries, setExpEntries] = useState<ExpEntry[]>([]);
+  const [expEntries, setExpEntries] = useState<ExpEntry[]>(mapStoreExp(storeExp));
   const [exp,        setExp       ] = useState<ExpEntry>(newExp());
   const [expYearPickerFor, setExpYearPickerFor] = useState<"start" | "end" | null>(null);
   const [expMonthPickerFor, setExpMonthPickerFor] = useState<"start" | "end" | null>(null);
 
   // Projects
-  const [projEntries, setProjEntries] = useState<ProjEntry[]>([]);
+  const [projEntries, setProjEntries] = useState<ProjEntry[]>(mapStoreProj(storeProj));
   const [proj,        setProj       ] = useState<ProjEntry>(newProj());
 
   // Skills
-  const [skills, setSkills] = useState<string[]>([]);
+  const [skills, setSkills] = useState<string[]>(storeSkills.map(s => s.name));
 
   // Research
-  const [resEntries, setResEntries] = useState<ResEntry[]>([]);
+  const [resEntries, setResEntries] = useState<ResEntry[]>(mapStoreRes(storeRes));
   const [res,        setRes       ] = useState<ResEntry>(newRes());
 
   // Contact
   const [contact, setContact] = useState<ContactEntry>({
     phone: profile?.phone || "",
     email: profile?.email || "",
-    address: "",
+    address: profile?.address || "",
   });
 
   // Save state
@@ -473,16 +542,21 @@ export default function ManualEntryScreen() {
 
 
 
-  // Transition animation
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity    = useRef(new Animated.Value(1)).current;
+  // Transition animation (Reanimated)
+  const translateX = useSharedValue(0);
+  const opacity    = useSharedValue(1);
 
   const sec   = SECTIONS[sectionIdx];
   const color = sec.color;
 
+  const animatedStyle = useAnimatedStyle(() => ({
+    flex: 1,
+    opacity: opacity.value,
+    transform: [{ translateX: translateX.value }],
+  }));
+
   // Steps per section: [edu_steps, exp_steps, proj_steps, skills_steps]
-  // "review" is the extra step at index totalSteps-1
-  const STEPS = [5, 5, 5, 1];
+  // Uses global STEPS config
 
   const haptic = (style: "light" | "medium" | "select" = "select") => {
     if (Platform.OS === "web") return;
@@ -491,18 +565,17 @@ export default function ManualEntryScreen() {
   };
 
   const transition = useCallback((dir: "fwd" | "bwd", cb: () => void) => {
-    const exitTo    = dir === "fwd" ? -W * 0.45 : W * 0.45;
-    const enterFrom = dir === "fwd" ?  W * 0.45 : -W * 0.45;
-    Animated.parallel([
-      Animated.timing(opacity,    { toValue: 0, duration: 130, useNativeDriver: true }),
-      Animated.timing(translateX, { toValue: exitTo, duration: 130, useNativeDriver: true }),
-    ]).start(() => {
-      translateX.setValue(enterFrom);
-      cb();
-      Animated.parallel([
-        Animated.timing(opacity,    { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateX, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start();
+    const exitTo    = dir === "fwd" ? -W * 0.35 : W * 0.35;
+    const enterFrom = dir === "fwd" ?  W * 0.35 : -W * 0.35;
+
+    opacity.value = withTiming(0, { duration: 120 });
+    translateX.value = withTiming(exitTo, { duration: 120 }, (finished) => {
+      if (finished) {
+        runOnJS(cb)();
+        translateX.value = enterFrom;
+        opacity.value = withTiming(1, { duration: 180 });
+        translateX.value = withTiming(0, { duration: 180 });
+      }
     });
   }, [opacity, translateX]);
 
@@ -577,62 +650,94 @@ export default function ManualEntryScreen() {
   const handleFinish = async () => {
     setSaving(true);
     haptic("medium");
-    const finalEdu   = sectionIdx >= 1 && edu.institution.trim() ? [...eduEntries, edu] : eduEntries;
-    const finalExp   = sectionIdx >= 2 && exp.company.trim()     ? [...expEntries, exp] : expEntries;
-    const finalProj  = sectionIdx >= 3 && proj.title.trim()      ? [...projEntries, proj] : projEntries;
+    
+    // 1. Gather all data including currently editing items
+    const finalEdu = sectionIdx === 1 && edu.institution.trim() ? [...eduEntries, edu] : eduEntries;
+    const finalExp = sectionIdx === 2 && exp.company.trim() ? [...expEntries, exp] : expEntries;
+    const finalProj = sectionIdx === 3 && proj.title.trim() ? [...projEntries, proj] : projEntries;
+    const finalRes = sectionIdx === 5 && res.title.trim() ? [...resEntries, res] : resEntries;
     const finalSkills = skills;
-    const finalRes   = sectionIdx >= 5 && res.title.trim()       ? [...resEntries, res] : resEntries;
 
     try {
-      const pid = profile?.id;
-      if (pid) {
-        // Save About & Contact info
-        await supabase.from("profiles").update({
-          headline,
-          bio,
-          phone: contact.phone || profile.phone,
-          email: contact.email || profile.email,
-          address: contact.address,
-        }).eq("id", pid);
+      const store = useProfileStore.getState();
+      
+      // 2. Save About & Contact info via store (uses upsert)
+      await store.updateProfile({
+        headline,
+        bio,
+        phone: contact.phone || profile?.phone,
+        email: contact.email || profile?.email,
+        address: contact.address,
+      });
 
-        if (finalEdu.length > 0) {
-          await supabase.from("education").insert(finalEdu.map((e) => ({
-            profile_id: pid, institution: e.institution, degree: e.degree,
-            field: e.field, description: e.description,
-            start_year: e.start_year ? Number(e.start_year) : null,
-            end_year: e.end_year && e.end_year !== "Present" ? Number(e.end_year) : null,
-          })));
-        }
-        if (finalExp.length > 0) {
-          await supabase.from("experiences").insert(finalExp.map((e) => ({
-            profile_id: pid, company: e.company, role: e.role,
-            start_date: e.start_year ? `${e.start_year}-${String(MONTHS.indexOf(e.start_month) + 1).padStart(2, "0")}-01` : null,
-            end_date: e.is_current || !e.end_year ? null : `${e.end_year}-${String(MONTHS.indexOf(e.end_month) + 1).padStart(2, "0")}-01`,
-            is_current: e.is_current,
-            description: e.description,
-          })));
-        }
-        if (finalProj.length > 0) {
-          await supabase.from("projects").insert(finalProj.map((p) => ({
-            profile_id: pid, title: p.title, description: p.description,
-            tech_stack: p.tech_stack, live_url: p.live_url || null, github_url: p.github_url || null,
-          })));
-        }
-        if (finalSkills.length > 0) {
-          await supabase.from("skills").insert(finalSkills.map((s) => ({ profile_id: pid, name: s })));
-        }
-        if (finalRes.length > 0) {
-          await supabase.from("research").insert(finalRes.map((r) => ({
-            profile_id: pid, title: r.title, subtitle: r.subtitle, description: r.description,
-          })));
-        }
+      // Get updated profile ID after the await
+      const currentProfile = useProfileStore.getState().profile;
+      const pid = currentProfile?.id;
+      if (!pid) throw new Error("Profile not found and could not be created.");
+
+      // 3. Save sub-sections via store bulk methods (ensures local state sync)
+      const tasks: Promise<any>[] = [];
+
+      if (finalEdu.length > 0) {
+        tasks.push(store.bulkSaveEducation(finalEdu.map((e) => ({
+          institution: e.institution,
+          degree: e.degree,
+          field: e.field,
+          description: e.description,
+          start_year: Number(e.start_year) || new Date().getFullYear(),
+          end_year: e.end_year && e.end_year !== "Present" ? Number(e.end_year) : null,
+        }))));
       }
-    } catch (err) {
-      console.error("[Manual] Save error:", err);
-    } finally {
-      setSaving(false);
+
+      if (finalExp.length > 0) {
+        tasks.push(store.bulkSaveExperiences(finalExp.map((e) => ({
+          company: e.company,
+          role: e.role,
+          start_date: e.start_year ? `${e.start_year}-${String(MONTHS.indexOf(e.start_month) + 1).padStart(2, "0")}-01` : "",
+          end_date: e.is_current || !e.end_year ? null : `${e.end_year}-${String(MONTHS.indexOf(e.end_month) + 1).padStart(2, "0")}-01`,
+          is_current: e.is_current,
+          description: e.description,
+        }))));
+      }
+
+      if (finalProj.length > 0) {
+        tasks.push(store.bulkSaveProjects(finalProj.map((p) => ({
+          title: p.title,
+          description: p.description,
+          tech_stack: p.tech_stack,
+          live_url: p.live_url || null,
+          github_url: p.github_url || null,
+        }))));
+      }
+
+      if (finalSkills.length > 0) {
+        tasks.push(store.bulkSaveSkills(finalSkills.map((s) => ({
+          name: s,
+          category: "Other", // Default category
+          level: "intermediate",
+        }))));
+      }
+
+      if (finalRes.length > 0) {
+        tasks.push(store.bulkSaveResearch(finalRes.map((r) => ({
+          title: r.title,
+          subtitle: r.subtitle,
+          description: r.description,
+        }))));
+      }
+
+      await Promise.all(tasks);
+      
+      // Refresh to get new IDs from DB
+      await store.refreshFromDB();
+
       setOnboardingStep("theme");
       router.push("/(onboarding)/theme");
+    } catch (err: any) {
+      console.error("[Manual] Save error:", err);
+      Alert.alert("Save Error", err.message || "Failed to save profile data.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -950,7 +1055,7 @@ export default function ManualEntryScreen() {
           </View>
 
           {/* ── Animated content ── */}
-          <Animated.View style={[{ flex: 1 }, { opacity, transform: [{ translateX }] }]}>
+          <Animated.View style={animatedStyle}>
             {renderContent()}
           </Animated.View>
 

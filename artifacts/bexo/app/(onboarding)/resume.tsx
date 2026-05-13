@@ -5,12 +5,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  StyleSheet, Text, TouchableOpacity, View, Platform,
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Platform,
 } from "react-native";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
+import { ParsedResumeReviewModal } from "@/components/resume/ParsedResumeReviewModal";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
@@ -35,6 +41,7 @@ export default function ResumeScreen() {
   const [parsing,      setParsing]          = useState(false);
   const [error,        setError]            = useState("");
   const [parsingMessage, setParsingMessage] = useState("AI is reading your resume…");
+  const [reviewOpen,     setReviewOpen]      = useState(false);
 
   const PARSING_MESSAGES = [
     "Scanning document...",
@@ -56,6 +63,10 @@ export default function ResumeScreen() {
     return () => clearInterval(interval);
   }, [stage]);
 
+  useEffect(() => {
+    if (stage === "done" && parsedData) setReviewOpen(true);
+  }, [stage, parsedData]);
+
   const pickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -66,6 +77,7 @@ export default function ResumeScreen() {
       const file = result.assets[0];
       setSelectedFile({ name: file.name, uri: file.uri });
       setError("");
+      setReviewOpen(false);
       setStage("uploading");
 
       if (!user || !profile) {
@@ -99,10 +111,9 @@ export default function ResumeScreen() {
 
     } catch (e: any) {
       console.error("[ResumeScreen] Error:", e);
-      // Graceful degradation: move to manual with what we have
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      setOnboardingStep("manual");
-      router.push("/(onboarding)/manual");
+      setError(sanitizeError(e));
+      setStage("error");
     }
   };
 
@@ -110,6 +121,7 @@ export default function ResumeScreen() {
     if (!profile || !parsedData || !uploadedPath) return;
     setParsing(true);
     setError("");
+    setReviewOpen(false);
 
     try {
       const store = useProfileStore.getState();
@@ -119,8 +131,6 @@ export default function ResumeScreen() {
         await store.mergeDataFromResume(parsedData, uploadedPath);
       }
 
-      // Sync done, move forward
-      // Sync done, move to manual entry for review/edit
       setOnboardingStep("manual");
       router.push("/(onboarding)/manual");
     } catch (e: any) {
@@ -140,10 +150,21 @@ export default function ResumeScreen() {
   const handleRetry = () => {
     setStage("idle");
     setSelectedFile(null);
+    setParsedData(null);
+    setUploadedPath(null);
     setError("");
     setUploadProgress(0);
     setParseProgress(0);
+    setReviewOpen(false);
   };
+
+  const lowStructure =
+    parsedData != null &&
+    (parsedData.education?.length ?? 0) +
+      (parsedData.experiences?.length ?? 0) +
+      (parsedData.projects?.length ?? 0) +
+      (parsedData.skills?.length ?? 0) ===
+      0;
 
   const topPad    = insets.top + (Platform.OS === "web" ? 67 : 40);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
@@ -240,12 +261,25 @@ export default function ResumeScreen() {
               </View>
             </View>
 
-            <View style={{ marginTop: 8 }}>
+            <View style={{ marginTop: 8, gap: 10 }}>
               <BexoButton
-                label={parsing ? "Importing profile…" : "Looks good, let's go"}
+                label="Review all extracted fields"
+                onPress={() => setReviewOpen(true)}
+                icon={<Feather name="eye" size={16} color="#fff" />}
+              />
+              <BexoButton
+                label={parsing ? "Importing…" : "Replace all & continue"}
                 onPress={() => handleConfirmParsed("replace")}
                 loading={parsing}
-                icon={<Feather name="arrow-right" size={16} color="#fff" />}
+                variant="danger"
+                icon={<Feather name="trash-2" size={16} color="#fff" />}
+              />
+              <BexoButton
+                label={parsing ? "Importing…" : "Merge with existing & continue"}
+                onPress={() => handleConfirmParsed("merge")}
+                loading={parsing}
+                variant="secondary"
+                icon={<Feather name="git-merge" size={16} color={colors.primary} />}
               />
             </View>
 
@@ -264,6 +298,11 @@ export default function ResumeScreen() {
             </View>
             <Text style={[styles.errorText, { color: colors.mutedForeground }]}>{error}</Text>
             <BexoButton label="Try again" onPress={handleRetry} />
+            <TouchableOpacity style={styles.changeBtn} onPress={handleSkip}>
+              <Text style={[styles.changeBtnText, { color: colors.mutedForeground }]}>
+                Continue without resume
+              </Text>
+            </TouchableOpacity>
           </Animated.View>
         )}
 
@@ -289,6 +328,17 @@ export default function ResumeScreen() {
           <BexoButton label="Skip for now" onPress={handleSkip} variant="ghost" />
         )}
       </KeyboardAwareScrollViewCompat>
+
+      <ParsedResumeReviewModal
+        visible={reviewOpen && !!parsedData}
+        data={parsedData}
+        onClose={() => setReviewOpen(false)}
+        onReplace={() => handleConfirmParsed("replace")}
+        onMerge={() => handleConfirmParsed("merge")}
+        loading={parsing}
+        lowStructureWarning={lowStructure}
+        title="Review resume import"
+      />
     </View>
   );
 }

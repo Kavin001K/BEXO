@@ -5,7 +5,11 @@ import { uploadToR2 } from "../lib/r2";
 const router = Router();
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const GEMINI_MODEL_ID =
+  process.env.GOOGLE_MODEL?.trim() ||
+  process.env.GEMINI_MODEL?.trim() ||
+  "gemini-2.5-flash-lite";
+const model = genAI.getGenerativeModel({ model: GEMINI_MODEL_ID });
 
 const SCAN_PROMPT = `You are an expert at extracting achievement and education details from certificates and documents.
 Please analyze the attached document(s) and extract the key details.

@@ -2,24 +2,10 @@ import * as ImageManipulator from "expo-image-manipulator";
 import { decode } from "base64-arraybuffer";
 import { supabase } from "@/lib/supabase";
 
-async function uriToBase64(uri: string): Promise<string> {
-  if (uri.startsWith("data:")) return uri.split(",")[1];
-  try {
-    const res = await fetch(uri);
-    const blob = await res.blob();
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result.split(",")[1] ?? result);
-      };
-      reader.onerror = (e) => reject(new Error(`FileReader error: ${e}`));
-      reader.readAsDataURL(blob);
-    });
-  } catch (e) {
-    console.error("[uriToBase64] fetch failed:", e);
-    throw e;
-  }
+async function uriToBlob(uri: string): Promise<Blob> {
+  const res = await fetch(uri);
+  if (!res.ok) throw new Error(`Failed to fetch file from URI: ${res.statusText}`);
+  return await res.blob();
 }
 
 /**
@@ -40,14 +26,14 @@ export async function uploadAvatar(
   );
   onProgress?.(30);
 
-  const base64 = await uriToBase64(compressed.uri);
-  onProgress?.(55);
+  const blob = await uriToBlob(compressed.uri);
+  onProgress?.(60);
 
   const path = `${userId}/avatar-${Date.now()}.jpg`;
 
   const { data, error } = await supabase.storage
     .from("avatars")
-    .upload(path, decode(base64), {
+    .upload(path, blob, {
       contentType: "image/jpeg",
       upsert: true,
     });
@@ -72,17 +58,18 @@ export async function uploadResume(
   userId: string,
   localUri: string,
   onProgress?: (pct: number) => void
-): Promise<{ path: string; base64: string }> {
+): Promise<{ path: string }> {
   onProgress?.(10);
-  console.log("[uploadResume] Converting to base64...");
-  const base64 = await uriToBase64(localUri);
+  console.log("[uploadResume] Fetching blob...");
+  const blob = await uriToBlob(localUri);
   onProgress?.(45);
 
   const path = `${userId}/resume-${Date.now()}.pdf`;
 
+  console.log("[uploadResume] Uploading to Supabase Storage...");
   const { data, error } = await supabase.storage
     .from("resumes")
-    .upload(path, decode(base64), {
+    .upload(path, blob, {
       contentType: "application/pdf",
       upsert: true,
     });
@@ -93,7 +80,7 @@ export async function uploadResume(
   }
   onProgress?.(100);
 
-  return { path: data.path, base64 };
+  return { path: data.path };
 }
 
 /**
@@ -125,13 +112,13 @@ export async function uploadProjectImage(
   );
   onProgress?.(35);
 
-  const base64 = await uriToBase64(compressed.uri);
+  const blob = await uriToBlob(compressed.uri);
   onProgress?.(65);
 
   const path = `${userId}/${Date.now()}.jpg`;
   const { data, error } = await supabase.storage
     .from("projects")
-    .upload(path, decode(base64), { contentType: "image/jpeg", upsert: true });
+    .upload(path, blob, { contentType: "image/jpeg", upsert: true });
 
   if (error) throw new Error(`Project image upload failed: ${error.message}`);
   onProgress?.(100);
@@ -146,10 +133,10 @@ export async function uploadFile(
   uri: string,
   contentType = "application/octet-stream"
 ): Promise<{ url: string; storagePath: string }> {
-  const base64 = await uriToBase64(uri);
+  const blob = await uriToBlob(uri);
   const { data, error } = await supabase.storage
     .from(bucket)
-    .upload(storagePath, decode(base64), { contentType, upsert: true });
+    .upload(storagePath, blob, { contentType, upsert: true });
   if (error) throw new Error(error.message);
   const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
   return { url: urlData.publicUrl, storagePath: data.path };

@@ -37,7 +37,7 @@ export default function WalkthroughScreen() {
   const setHasSeenWalkthrough = useAuthStore((s) => s.setHasSeenWalkthrough);
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const timerRef = useRef<any>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const progress = useSharedValue(0);
 
@@ -169,11 +169,12 @@ export default function WalkthroughScreen() {
           ))}
         </View>
 
-        <BexoButton
-          label={activeIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
-          onPress={handleNext}
-          style={styles.nextBtn}
-        />
+        <View style={styles.nextBtn}>
+          <BexoButton
+            label={activeIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
+            onPress={handleNext}
+          />
+        </View>
       </View>
     </View>
   );

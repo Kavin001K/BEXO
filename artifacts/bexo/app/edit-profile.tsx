@@ -25,7 +25,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { LocationInput } from "@/components/ui/LocationInput";
 import { useColors } from "@/hooks/useColors";
-import { uploadAndParseResume } from "@/services/resumeParser";
+import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
+import { ParsedResumeReviewModal } from "@/components/resume/ParsedResumeReviewModal";
 import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { ProfilePhotoCropper } from "@/components/ProfilePhotoCropper";
@@ -182,6 +183,11 @@ export default function EditProfileScreen() {
   const [resumeFile, setResumeFile] = useState<{ name: string; uri: string } | null>(null);
   const [parsingResume, setParsingResume] = useState(false);
   const [resumeParsed, setResumeParsed] = useState(false);
+  const [resumeReviewOpen, setResumeReviewOpen] = useState(false);
+  const [pendingResumeImport, setPendingResumeImport] = useState<{
+    parsed: ParsedResume;
+    resumeStoragePath: string;
+  } | null>(null);
 
   // Education modal
   const [eduModalVisible, setEduModalVisible] = useState(false);
@@ -279,6 +285,47 @@ export default function EditProfileScreen() {
     setResumeParsed(false);
   };
 
+  const applyResumeImport = async (mode: "replace" | "merge") => {
+    if (!pendingResumeImport || !user?.id) return;
+    setParsingResume(true);
+    try {
+      const { parsed, resumeStoragePath } = pendingResumeImport;
+      if (mode === "replace") {
+        await useProfileStore.getState().replaceAllDataFromResume(parsed, resumeStoragePath);
+      } else {
+        await useProfileStore.getState().mergeDataFromResume(parsed, resumeStoragePath);
+      }
+      await useProfileStore.getState().refreshFromDB();
+      setResumeParsed(true);
+      setResumeReviewOpen(false);
+      setPendingResumeImport(null);
+      const fresh = useProfileStore.getState().profile;
+      if (fresh) {
+        setProfileForm({
+          full_name:    fresh.full_name    ?? "",
+          headline:     fresh.headline     ?? "",
+          bio:          fresh.bio          ?? "",
+          location:     fresh.location     ?? "",
+          website:      fresh.website      ?? "",
+          linkedin_url: fresh.linkedin_url ?? "",
+          github_url:   fresh.github_url   ?? "",
+          email:        fresh.email        ?? "",
+          phone:        fresh.phone        ?? "",
+        });
+      }
+      Alert.alert(
+        "Done!",
+        mode === "replace"
+          ? "All data replaced with resume content. Review across tabs and save profile when ready."
+          : "New items from your resume have been added. Duplicates were automatically removed.",
+      );
+    } catch (err: any) {
+      showErrorAlert(err, mode === "replace" ? "Update Failed" : "Merge Failed");
+    } finally {
+      setParsingResume(false);
+    }
+  };
+
   const handleParseResume = async () => {
     if (!resumeFile || !user?.id) return;
     setParsingResume(true);
@@ -287,13 +334,15 @@ export default function EditProfileScreen() {
         resumeFile.uri, resumeFile.name, user.id
       );
 
-      // Update profile form with parsed data (local state preview)
       if (parsed.full_name)    setProfileForm((f) => ({ ...f, full_name: parsed.full_name! }));
       if (parsed.headline)     setProfileForm((f) => ({ ...f, headline: parsed.headline! }));
       if (parsed.bio)          setProfileForm((f) => ({ ...f, bio: parsed.bio! }));
       if (parsed.location)     setProfileForm((f) => ({ ...f, location: parsed.location ?? f.location }));
       if (parsed.github_url)   setProfileForm((f) => ({ ...f, github_url: parsed.github_url ?? f.github_url }));
       if (parsed.linkedin_url) setProfileForm((f) => ({ ...f, linkedin_url: parsed.linkedin_url ?? f.linkedin_url }));
+      if (parsed.email)        setProfileForm((f) => ({ ...f, email: parsed.email ?? f.email }));
+      if (parsed.phone)        setProfileForm((f) => ({ ...f, phone: parsed.phone ?? f.phone }));
+      if (parsed.website)      setProfileForm((f) => ({ ...f, website: parsed.website ?? f.website }));
 
       const hasData = (parsed.education?.length ?? 0) > 0 ||
                       (parsed.experiences?.length ?? 0) > 0 ||
@@ -301,7 +350,6 @@ export default function EditProfileScreen() {
                       (parsed.skills?.length ?? 0) > 0;
 
       if (!hasData) {
-        // No structured data — just save profile text fields
         await updateProfile({ resume_url: resumeStoragePath });
         setResumeParsed(true);
         Alert.alert(
@@ -311,70 +359,8 @@ export default function EditProfileScreen() {
         return;
       }
 
-      // Ask user: Replace or Merge?
-      Alert.alert(
-        "Resume Parsed!",
-        `Found: ${parsed.education?.length ?? 0} education, ${parsed.experiences?.length ?? 0} experience, ${parsed.projects?.length ?? 0} projects, ${parsed.skills?.length ?? 0} skills.\n\nHow would you like to update your data?`,
-        [
-          {
-            text: "Replace All",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await useProfileStore.getState().replaceAllDataFromResume(parsed, resumeStoragePath);
-                await useProfileStore.getState().refreshFromDB();
-                setResumeParsed(true);
-                // Sync form with refreshed profile
-                const fresh = useProfileStore.getState().profile;
-                if (fresh) {
-                  setProfileForm({
-                    full_name:    fresh.full_name    ?? "",
-                    headline:     fresh.headline     ?? "",
-                    bio:          fresh.bio          ?? "",
-                    location:     fresh.location     ?? "",
-                    website:      fresh.website      ?? "",
-                    linkedin_url: fresh.linkedin_url ?? "",
-                    github_url:   fresh.github_url   ?? "",
-                    email:        fresh.email        ?? "",
-                    phone:        fresh.phone        ?? "",
-                  });
-                }
-                Alert.alert("Done!", "All data replaced with resume content. Review across tabs and save profile when ready.");
-              } catch (err: any) {
-                showErrorAlert(err, "Update Failed");
-              }
-            },
-          },
-          {
-            text: "Add to Existing",
-            onPress: async () => {
-              try {
-                await useProfileStore.getState().mergeDataFromResume(parsed, resumeStoragePath);
-                await useProfileStore.getState().refreshFromDB();
-                setResumeParsed(true);
-                const fresh = useProfileStore.getState().profile;
-                if (fresh) {
-                  setProfileForm({
-                    full_name:    fresh.full_name    ?? "",
-                    headline:     fresh.headline     ?? "",
-                    bio:          fresh.bio          ?? "",
-                    location:     fresh.location     ?? "",
-                    website:      fresh.website      ?? "",
-                    linkedin_url: fresh.linkedin_url ?? "",
-                    github_url:   fresh.github_url   ?? "",
-                    email:        fresh.email        ?? "",
-                    phone:        fresh.phone        ?? "",
-                  });
-                }
-                Alert.alert("Done!", "New items from your resume have been added. Duplicates were automatically removed.");
-              } catch (err: any) {
-                showErrorAlert(err, "Merge Failed");
-              }
-            },
-          },
-          { text: "Cancel", style: "cancel" },
-        ]
-      );
+      setPendingResumeImport({ parsed, resumeStoragePath });
+      setResumeReviewOpen(true);
     } catch (e: any) {
       showErrorAlert(e, "AI Parsing Error");
     } finally {
@@ -821,6 +807,20 @@ export default function EditProfileScreen() {
         imageUri={pendingImageUri}
         onClose={() => setCropperVisible(false)}
         onCrop={handleCropComplete}
+      />
+
+      <ParsedResumeReviewModal
+        visible={resumeReviewOpen && !!pendingResumeImport}
+        data={pendingResumeImport?.parsed ?? null}
+        onClose={() => {
+          setResumeReviewOpen(false);
+          setPendingResumeImport(null);
+        }}
+        onReplace={() => applyResumeImport("replace")}
+        onMerge={() => applyResumeImport("merge")}
+        loading={parsingResume}
+        lowStructureWarning={false}
+        title="Review resume import"
       />
 
       {/* ---- EDUCATION MODAL ---- */}
