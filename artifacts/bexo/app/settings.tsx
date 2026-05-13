@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { apiFetch } from "@/lib/apiConfig";
+import { apiFetch, readApiJson } from "@/lib/apiConfig";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
@@ -66,7 +66,7 @@ export default function SettingsScreen() {
         method: "POST",
         body: JSON.stringify({ phone }),
       });
-      const data = await resp.json();
+      const data = await readApiJson<{ error?: string }>(resp);
       if (!resp.ok) throw new Error(data.error ?? "Failed to send OTP");
       setPhoneStep("otp");
     } catch (e: any) {
@@ -84,7 +84,7 @@ export default function SettingsScreen() {
         method: "POST",
         body: JSON.stringify({ phone, code: phoneOtp, user_id: user!.id }),
       });
-      const data = await resp.json();
+      const data = await readApiJson<{ error?: string }>(resp);
       if (!resp.ok) throw new Error(data.error ?? "Verification failed");
 
       await updateProfile({ phone, phone_verified: true });

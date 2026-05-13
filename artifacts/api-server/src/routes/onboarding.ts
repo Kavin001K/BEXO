@@ -4,7 +4,11 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const router = Router();
 
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const GEMINI_MODEL_ID =
+  process.env.GOOGLE_MODEL?.trim() ||
+  process.env.GEMINI_MODEL?.trim() ||
+  "gemini-2.5-flash-lite";
+const model = genAI.getGenerativeModel({ model: GEMINI_MODEL_ID });
 
 /**
  * POST /api/onboarding/generate-bullets

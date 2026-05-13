@@ -39,6 +39,35 @@ function getApiBaseUrl(): string {
 
 export const API_BASE_URL = getApiBaseUrl();
 
+/**
+ * Parse JSON from an API response. Fails with a clear message when the server
+ * returns HTML (404/502 pages, wrong host, proxy errors) instead of JSON —
+ * avoids `JSON Parse error: Unexpected character: <` from `response.json()`.
+ */
+export async function readApiJson<T = Record<string, unknown>>(res: Response): Promise<T> {
+  const text = await res.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    if (!res.ok) {
+      throw new Error(`Request failed (${res.status}). Empty response.`);
+    }
+    return {} as T;
+  }
+  if (trimmed.startsWith("<")) {
+    throw new Error(
+      `Cannot reach the BEXO API (got HTML, status ${res.status}). ` +
+        `Set EXPO_PUBLIC_API_BASE_URL to your deployed API, or run the api-server on your LAN when using a physical device.`,
+    );
+  }
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(
+      `Invalid response from API (status ${res.status}). Check EXPO_PUBLIC_API_BASE_URL — currently ${API_BASE_URL}.`,
+    );
+  }
+}
+
 export async function apiFetch(
   path: string,
   options: RequestInit = {}

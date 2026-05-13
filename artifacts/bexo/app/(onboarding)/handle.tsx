@@ -28,6 +28,7 @@ export default function HandleScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, collectedEmail, collectedPhone } = useAuthStore();
+  const profileRow = useProfileStore((s) => s.profile);
   const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
 
   const [handle, setHandle] = useState("");
@@ -100,12 +101,19 @@ export default function HandleScreen() {
         .eq("user_id", user.id)
         .maybeSingle();
 
+      const authEmail =
+        user.email && !user.email.endsWith("@bexo.local") ? user.email : null;
+      const profileEmail =
+        profileRow?.email && !profileRow.email.endsWith("@bexo.local")
+          ? profileRow.email
+          : null;
+
       const upsertPayload: Record<string, any> = {
         user_id: user.id,
         handle: slug,
         full_name: fullName.trim(),
-        email: collectedEmail || user.email || null,
-        phone: collectedPhone || user.phone || null,
+        email: collectedEmail || profileEmail || authEmail || null,
+        phone: collectedPhone || user.phone || profileRow?.phone || null,
       };
 
       // Only set headline/bio to empty if the profile doesn't exist yet
@@ -171,10 +179,10 @@ export default function HandleScreen() {
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>
-          Own Your Website
+          Your Digital Identity
         </Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          This is where the world will find your work. Make it yours.
+          Create a unique URL for your professional portfolio. This is how the world will discover your talent.
         </Text>
 
         {/* Full name */}

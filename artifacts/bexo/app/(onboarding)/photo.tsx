@@ -4,10 +4,9 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
 import {
-  Alert,
   Image,
+  Modal,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -31,6 +30,7 @@ export default function PhotoScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -69,18 +69,20 @@ export default function PhotoScreen() {
 
   const handleContinue = async () => {
     if (!user) return;
-    if (imageUri) {
-      setUploading(true);
-      try {
-        const url = await uploadAvatar(user.id, imageUri);
-        await updateProfile({ avatar_url: url });
-      } catch (e: any) {
-        setError(e.message ?? "Upload failed");
-        setUploading(false);
-        return;
-      }
-      setUploading(false);
+    if (!imageUri) {
+      setError("Please add a profile photo to continue.");
+      return;
     }
+    setUploading(true);
+    try {
+      const url = await uploadAvatar(user.id, imageUri);
+      await updateProfile({ avatar_url: url });
+    } catch (e: any) {
+      setError(e.message ?? "Upload failed");
+      setUploading(false);
+      return;
+    }
+    setUploading(false);
     setOnboardingStep("handle");
     router.push("/(onboarding)/handle");
   };
@@ -110,10 +112,10 @@ export default function PhotoScreen() {
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>
-          Let's put a face to the name
+          Professional Profile Picture
         </Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          Show your best self. A friendly photo helps people trust your work.
+          Please upload a professional image. Portfolios with a proper profile photo get 3x more views and build instant trust.
         </Text>
 
         {/* Avatar */}
@@ -168,34 +170,68 @@ export default function PhotoScreen() {
           <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
         ) : null}
 
-        <BexoButton
-          label={uploading ? "Uploading..." : "Continue"}
-          onPress={handleContinue}
-          loading={uploading}
-        />
+        <View style={{ gap: 12 }}>
+          <BexoButton
+            label={uploading ? "Uploading..." : "Continue"}
+            onPress={handleContinue}
+            loading={uploading}
+            disabled={!imageUri || uploading}
+          />
+          
+          <TouchableOpacity 
+            style={styles.skipBtn}
+            onPress={() => setShowSkipConfirm(true)}
+            disabled={uploading}
+          >
+            <Text style={[styles.skipText, { color: colors.mutedForeground }]}>
+              I'll do it later
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        <BexoButton
-          label="Skip for now"
-          onPress={() => {
-            Alert.alert(
-              "Keep going?",
-              "A portfolio with a friendly photo is much more likely to be seen. You can always add one later in your settings.",
-              [
-                { 
-                  text: "Skip anyway", 
-                  style: "destructive",
-                  onPress: () => {
+        {/* Skip Confirmation Modal */}
+        <Modal
+          visible={showSkipConfirm}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowSkipConfirm(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={[styles.modalIcon, { backgroundColor: colors.primary + "15" }]}>
+                <Feather name="alert-circle" size={32} color={colors.primary} />
+              </View>
+              
+              <Text style={[styles.modalTitle, { color: colors.foreground }]}>
+                Boost Your Visibility
+              </Text>
+              
+              <Text style={[styles.modalMessage, { color: colors.mutedForeground }]}>
+                Portfolio with profile get more attention and attract more attention. Do you really want to skip?
+              </Text>
+              
+              <View style={styles.modalButtons}>
+                <BexoButton
+                  label="I will upload a profile"
+                  onPress={() => setShowSkipConfirm(false)}
+                />
+                
+                <TouchableOpacity 
+                  style={styles.secondaryBtn}
+                  onPress={() => {
+                    setShowSkipConfirm(false);
                     setOnboardingStep("handle");
                     router.push("/(onboarding)/handle");
-                  }
-                },
-                { text: "Add photo", style: "default" }
-              ]
-            );
-          }}
-          variant="ghost"
-          disabled={uploading}
-        />
+                  }}
+                >
+                  <Text style={[styles.secondaryBtnText, { color: colors.mutedForeground }]}>
+                    I'll do it later
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </KeyboardAwareScrollViewCompat>
     </View>
   );
@@ -243,4 +279,51 @@ const styles = StyleSheet.create({
   },
   photoBtnText: { fontSize: 15, fontWeight: "500" },
   error: { fontSize: 13 },
+  skipBtn: { alignItems: "center", paddingVertical: 12 },
+  skipText: { fontSize: 15, fontWeight: "600", textDecorationLine: "underline" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  modalContent: {
+    width: "100%",
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: 30,
+    alignItems: "center",
+    gap: 20,
+  },
+  modalIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  modalMessage: {
+    fontSize: 16,
+    lineHeight: 24,
+    textAlign: "center",
+  },
+  modalButtons: {
+    width: "100%",
+    gap: 12,
+  },
+  secondaryBtn: {
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
 });

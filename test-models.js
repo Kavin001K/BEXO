@@ -23,10 +23,10 @@ async function testModel(modelName) {
 }
 
 async function run() {
-    await testModel("google/gemini-1.5-flash");
-    await testModel("google/gemini-1.5-flash:free");
-    await testModel("google/gemini-2.0-flash-lite-preview-02-05:free");
-    await testModel("google/gemini-2.0-pro-exp-02-05:free");
+    await testModel("google/gemini-2.0-flash-lite-001");
+    await testModel("google/gemini-2.0-flash-001");
+    await testModel("google/gemini-pro-1.5");
+    await testModel("google/gemini-flash-1.5");
 }
 
 run();

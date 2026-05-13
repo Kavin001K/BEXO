@@ -25,7 +25,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { LocationInput } from "@/components/ui/LocationInput";
 import { useColors } from "@/hooks/useColors";
-import { uploadAndParseResume } from "@/services/resumeParser";
+import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
+import { ParsedResumeReviewModal } from "@/components/resume/ParsedResumeReviewModal";
 import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { ProfilePhotoCropper } from "@/components/ProfilePhotoCropper";
@@ -37,6 +38,9 @@ import {
   type Skill,
 } from "@/stores/useProfileStore";
 import { showErrorAlert } from "@/lib/errorUtils";
+import { formatMonthYear, normalizeExperienceIso } from "@/lib/dateWheel";
+import { MonthYearSpinnerField } from "@/components/datetime/MonthYearSpinnerField";
+import { YearWheelOverlay } from "@/components/datetime/YearWheelOverlay";
 
 type TabId = "profile" | "education" | "experience" | "projects" | "skills";
 
@@ -63,6 +67,8 @@ const EMPTY_PROJECT: Project = {
 const EMPTY_SKILL: Skill = {
   name: "", category: "Technical", level: "intermediate",
 };
+
+const CURRENT_YEAR = new Date().getFullYear();
 
 const SKILL_CATEGORIES = [
   "Programming Languages", "Frameworks", "Tools", "Databases",
@@ -182,6 +188,11 @@ export default function EditProfileScreen() {
   const [resumeFile, setResumeFile] = useState<{ name: string; uri: string } | null>(null);
   const [parsingResume, setParsingResume] = useState(false);
   const [resumeParsed, setResumeParsed] = useState(false);
+  const [resumeReviewOpen, setResumeReviewOpen] = useState(false);
+  const [pendingResumeImport, setPendingResumeImport] = useState<{
+    parsed: ParsedResume;
+    resumeStoragePath: string;
+  } | null>(null);
 
   // Education modal
   const [eduModalVisible, setEduModalVisible] = useState(false);
@@ -205,6 +216,9 @@ export default function EditProfileScreen() {
   const [editingSkillId, setEditingSkillId] = useState<string | null>(null);
   const [showCatPicker, setShowCatPicker] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+
+  const [eduYearTarget, setEduYearTarget] = useState<"start" | "end" | null>(null);
+  const [eduYearWheelVisible, setEduYearWheelVisible] = useState(false);
 
   // Sync form when profile loads
   React.useEffect(() => {
@@ -271,12 +285,53 @@ export default function EditProfileScreen() {
   // ---- Resume ----
   const handlePickResume = async () => {
     const res = await DocumentPicker.getDocumentAsync({
-      type: "application/pdf",
+      type: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
       copyToCacheDirectory: true,
     });
     if (res.canceled || !res.assets?.[0]) return;
     setResumeFile({ name: res.assets[0].name, uri: res.assets[0].uri });
     setResumeParsed(false);
+  };
+
+  const applyResumeImport = async (mode: "replace" | "merge") => {
+    if (!pendingResumeImport || !user?.id) return;
+    setParsingResume(true);
+    try {
+      const { parsed, resumeStoragePath } = pendingResumeImport;
+      if (mode === "replace") {
+        await useProfileStore.getState().replaceAllDataFromResume(parsed, resumeStoragePath);
+      } else {
+        await useProfileStore.getState().mergeDataFromResume(parsed, resumeStoragePath);
+      }
+      await useProfileStore.getState().refreshFromDB();
+      setResumeParsed(true);
+      setResumeReviewOpen(false);
+      setPendingResumeImport(null);
+      const fresh = useProfileStore.getState().profile;
+      if (fresh) {
+        setProfileForm({
+          full_name:    fresh.full_name    ?? "",
+          headline:     fresh.headline     ?? "",
+          bio:          fresh.bio          ?? "",
+          location:     fresh.location     ?? "",
+          website:      fresh.website      ?? "",
+          linkedin_url: fresh.linkedin_url ?? "",
+          github_url:   fresh.github_url   ?? "",
+          email:        fresh.email        ?? "",
+          phone:        fresh.phone        ?? "",
+        });
+      }
+      Alert.alert(
+        "Done!",
+        mode === "replace"
+          ? "All data replaced with resume content. Review across tabs and save profile when ready."
+          : "New items from your resume have been added. Duplicates were automatically removed.",
+      );
+    } catch (err: any) {
+      showErrorAlert(err, mode === "replace" ? "Update Failed" : "Merge Failed");
+    } finally {
+      setParsingResume(false);
+    }
   };
 
   const handleParseResume = async () => {
@@ -287,13 +342,15 @@ export default function EditProfileScreen() {
         resumeFile.uri, resumeFile.name, user.id
       );
 
-      // Update profile form with parsed data (local state preview)
       if (parsed.full_name)    setProfileForm((f) => ({ ...f, full_name: parsed.full_name! }));
       if (parsed.headline)     setProfileForm((f) => ({ ...f, headline: parsed.headline! }));
       if (parsed.bio)          setProfileForm((f) => ({ ...f, bio: parsed.bio! }));
       if (parsed.location)     setProfileForm((f) => ({ ...f, location: parsed.location ?? f.location }));
       if (parsed.github_url)   setProfileForm((f) => ({ ...f, github_url: parsed.github_url ?? f.github_url }));
       if (parsed.linkedin_url) setProfileForm((f) => ({ ...f, linkedin_url: parsed.linkedin_url ?? f.linkedin_url }));
+      if (parsed.email)        setProfileForm((f) => ({ ...f, email: parsed.email ?? f.email }));
+      if (parsed.phone)        setProfileForm((f) => ({ ...f, phone: parsed.phone ?? f.phone }));
+      if (parsed.website)      setProfileForm((f) => ({ ...f, website: parsed.website ?? f.website }));
 
       const hasData = (parsed.education?.length ?? 0) > 0 ||
                       (parsed.experiences?.length ?? 0) > 0 ||
@@ -301,7 +358,6 @@ export default function EditProfileScreen() {
                       (parsed.skills?.length ?? 0) > 0;
 
       if (!hasData) {
-        // No structured data — just save profile text fields
         await updateProfile({ resume_url: resumeStoragePath });
         setResumeParsed(true);
         Alert.alert(
@@ -311,70 +367,8 @@ export default function EditProfileScreen() {
         return;
       }
 
-      // Ask user: Replace or Merge?
-      Alert.alert(
-        "Resume Parsed!",
-        `Found: ${parsed.education?.length ?? 0} education, ${parsed.experiences?.length ?? 0} experience, ${parsed.projects?.length ?? 0} projects, ${parsed.skills?.length ?? 0} skills.\n\nHow would you like to update your data?`,
-        [
-          {
-            text: "Replace All",
-            style: "destructive",
-            onPress: async () => {
-              try {
-                await useProfileStore.getState().replaceAllDataFromResume(parsed, resumeStoragePath);
-                await useProfileStore.getState().refreshFromDB();
-                setResumeParsed(true);
-                // Sync form with refreshed profile
-                const fresh = useProfileStore.getState().profile;
-                if (fresh) {
-                  setProfileForm({
-                    full_name:    fresh.full_name    ?? "",
-                    headline:     fresh.headline     ?? "",
-                    bio:          fresh.bio          ?? "",
-                    location:     fresh.location     ?? "",
-                    website:      fresh.website      ?? "",
-                    linkedin_url: fresh.linkedin_url ?? "",
-                    github_url:   fresh.github_url   ?? "",
-                    email:        fresh.email        ?? "",
-                    phone:        fresh.phone        ?? "",
-                  });
-                }
-                Alert.alert("Done!", "All data replaced with resume content. Review across tabs and save profile when ready.");
-              } catch (err: any) {
-                showErrorAlert(err, "Update Failed");
-              }
-            },
-          },
-          {
-            text: "Add to Existing",
-            onPress: async () => {
-              try {
-                await useProfileStore.getState().mergeDataFromResume(parsed, resumeStoragePath);
-                await useProfileStore.getState().refreshFromDB();
-                setResumeParsed(true);
-                const fresh = useProfileStore.getState().profile;
-                if (fresh) {
-                  setProfileForm({
-                    full_name:    fresh.full_name    ?? "",
-                    headline:     fresh.headline     ?? "",
-                    bio:          fresh.bio          ?? "",
-                    location:     fresh.location     ?? "",
-                    website:      fresh.website      ?? "",
-                    linkedin_url: fresh.linkedin_url ?? "",
-                    github_url:   fresh.github_url   ?? "",
-                    email:        fresh.email        ?? "",
-                    phone:        fresh.phone        ?? "",
-                  });
-                }
-                Alert.alert("Done!", "New items from your resume have been added. Duplicates were automatically removed.");
-              } catch (err: any) {
-                showErrorAlert(err, "Merge Failed");
-              }
-            },
-          },
-          { text: "Cancel", style: "cancel" },
-        ]
-      );
+      setPendingResumeImport({ parsed, resumeStoragePath });
+      setResumeReviewOpen(true);
     } catch (e: any) {
       showErrorAlert(e, "AI Parsing Error");
     } finally {
@@ -412,7 +406,15 @@ export default function EditProfileScreen() {
 
   // ---- Experience ----
   const openAddExperience    = () => { setEditingExpId(null); setExpForm(EMPTY_EXPERIENCE); setExpModalVisible(true); };
-  const openEditExperience   = (e: Experience) => { setEditingExpId(e.id ?? null); setExpForm(e); setExpModalVisible(true); };
+  const openEditExperience   = (e: Experience) => {
+    setEditingExpId(e.id ?? null);
+    setExpForm({
+      ...e,
+      start_date: normalizeExperienceIso(e.start_date),
+      end_date: e.end_date ? normalizeExperienceIso(e.end_date) : null,
+    });
+    setExpModalVisible(true);
+  };
   const handleSaveExperience = async () => {
     if (!expForm.company.trim() || !expForm.role.trim()) return;
     await saveExperience({ ...expForm, id: editingExpId ?? undefined });
@@ -726,7 +728,8 @@ export default function EditProfileScreen() {
                     <Text style={[styles.entryTitle, { color: colors.foreground }]}>{exp.role}</Text>
                     <Text style={[styles.entrySub, { color: colors.primary }]}>{exp.company}</Text>
                     <Text style={[styles.entryMeta, { color: colors.mutedForeground }]}>
-                      {exp.start_date} — {exp.is_current ? "Present" : exp.end_date ?? ""}
+                      {(exp.start_date ? formatMonthYear(exp.start_date) || exp.start_date : "—")} —{" "}
+                      {exp.is_current ? "Present" : exp.end_date ? formatMonthYear(exp.end_date) || exp.end_date : ""}
                     </Text>
                     {exp.description ? (
                       <Text style={[styles.entryDesc, { color: colors.mutedForeground }]} numberOfLines={2}>
@@ -823,6 +826,20 @@ export default function EditProfileScreen() {
         onCrop={handleCropComplete}
       />
 
+      <ParsedResumeReviewModal
+        visible={resumeReviewOpen && !!pendingResumeImport}
+        data={pendingResumeImport?.parsed ?? null}
+        onClose={() => {
+          setResumeReviewOpen(false);
+          setPendingResumeImport(null);
+        }}
+        onReplace={() => applyResumeImport("replace")}
+        onMerge={() => applyResumeImport("merge")}
+        loading={parsingResume}
+        lowStructureWarning={false}
+        title="Review resume import"
+      />
+
       {/* ---- EDUCATION MODAL ---- */}
       <Modal visible={eduModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEduModalVisible(false)}>
         <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
@@ -838,7 +855,7 @@ export default function EditProfileScreen() {
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
-            <View style={[styles.field, { zIndex: 300 }]}>
+            <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Institution</Text>
               <AutocompleteInput
                 value={eduForm.institution}
@@ -848,7 +865,7 @@ export default function EditProfileScreen() {
                 inputStyle={inputStyle}
               />
             </View>
-            <View style={[styles.field, { zIndex: 200 }]}>
+            <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Degree</Text>
               <AutocompleteInput
                 value={eduForm.degree}
@@ -858,7 +875,7 @@ export default function EditProfileScreen() {
                 inputStyle={inputStyle}
               />
             </View>
-            <View style={[styles.field, { zIndex: 100 }]}>
+            <View style={styles.field}>
               <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Field</Text>
               <AutocompleteInput
                 value={eduForm.field}
@@ -871,19 +888,33 @@ export default function EditProfileScreen() {
             <View style={styles.rowFields}>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Start Year</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder="2020"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={eduForm.start_year ? String(eduForm.start_year) : ""}
-                  onChangeText={(v) => setEduForm((f) => ({ ...f, start_year: parseInt(v) || 0 }))}
-                  keyboardType="numeric" selectionColor={colors.primary} />
+                <TouchableOpacity
+                  style={[styles.input, styles.pickerTrigger, inputStyle]}
+                  onPress={() => {
+                    setEduYearTarget("start");
+                    setEduYearWheelVisible(true);
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 15 }}>
+                    {eduForm.start_year ? String(eduForm.start_year) : "Select year"}
+                  </Text>
+                  <Feather name="chevron-down" size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
               </View>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>End Year</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder="2024"
-                  placeholderTextColor={colors.mutedForeground}
-                  value={eduForm.end_year ? String(eduForm.end_year) : ""}
-                  onChangeText={(v) => { const n = parseInt(v); setEduForm((f) => ({ ...f, end_year: isNaN(n) ? null : n })); }}
-                  keyboardType="numeric" selectionColor={colors.primary} />
+                <TouchableOpacity
+                  style={[styles.input, styles.pickerTrigger, inputStyle]}
+                  onPress={() => {
+                    setEduYearTarget("end");
+                    setEduYearWheelVisible(true);
+                  }}
+                >
+                  <Text style={{ color: colors.foreground, fontSize: 15 }}>
+                    {eduForm.end_year == null ? "Present" : String(eduForm.end_year)}
+                  </Text>
+                  <Feather name="chevron-down" size={14} color={colors.mutedForeground} />
+                </TouchableOpacity>
               </View>
             </View>
             <View style={styles.field}>
@@ -893,6 +924,35 @@ export default function EditProfileScreen() {
                 onChangeText={(v) => setEduForm((f) => ({ ...f, gpa: v || null }))} selectionColor={colors.primary} />
             </View>
           </ScrollView>
+
+          <YearWheelOverlay
+            attachMode="layer"
+            visible={eduYearWheelVisible}
+            onClose={() => {
+              setEduYearWheelVisible(false);
+              setEduYearTarget(null);
+            }}
+            accentColor={colors.primary}
+            allowPresent={eduYearTarget === "end"}
+            value={
+              eduYearTarget === "start"
+                ? String(eduForm.start_year || CURRENT_YEAR)
+                : eduForm.end_year == null
+                  ? "Present"
+                  : String(eduForm.end_year)
+            }
+            onChange={(v) => {
+              if (eduYearTarget === "start") {
+                const y = parseInt(v, 10);
+                if (Number.isFinite(y)) setEduForm((f) => ({ ...f, start_year: y }));
+              } else if (v === "Present") {
+                setEduForm((f) => ({ ...f, end_year: null }));
+              } else {
+                const y = parseInt(v, 10);
+                setEduForm((f) => ({ ...f, end_year: Number.isFinite(y) ? y : null }));
+              }
+            }}
+          />
         </View>
       </Modal>
 
@@ -925,17 +985,24 @@ export default function EditProfileScreen() {
             <View style={styles.rowFields}>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Start Date</Text>
-                <TextInput style={[styles.input, inputStyle]} placeholder="Jan 2023"
-                  placeholderTextColor={colors.mutedForeground} value={expForm.start_date}
-                  onChangeText={(v) => setExpForm((f) => ({ ...f, start_date: v }))} selectionColor={colors.primary} />
+                <MonthYearSpinnerField
+                  value={expForm.start_date}
+                  onChange={(iso) => setExpForm((f) => ({ ...f, start_date: iso }))}
+                  placeholder="Month & year"
+                  minimumDate={new Date(1980, 0, 1)}
+                  maximumDate={new Date()}
+                />
               </View>
               <View style={[styles.field, { flex: 1 }]}>
                 <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>End Date</Text>
-                <TextInput style={[styles.input, expForm.is_current && styles.inputDisabled, inputStyle]}
-                  placeholder="Dec 2023" placeholderTextColor={colors.mutedForeground}
+                <MonthYearSpinnerField
                   value={expForm.is_current ? "" : (expForm.end_date ?? "")}
-                  onChangeText={(v) => setExpForm((f) => ({ ...f, end_date: v }))}
-                  editable={!expForm.is_current} selectionColor={colors.primary} />
+                  onChange={(iso) => setExpForm((f) => ({ ...f, end_date: iso }))}
+                  placeholder="Month & year"
+                  disabled={expForm.is_current}
+                  minimumDate={new Date(1980, 0, 1)}
+                  maximumDate={new Date()}
+                />
               </View>
             </View>
             <View style={styles.switchRow}>
@@ -1192,7 +1259,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, borderWidth: 1,
   },
   levelLabel: { fontSize: 12, fontWeight: "600" },
-  modalContainer: { flex: 1 },
+  modalContainer: { flex: 1, position: "relative" },
   modalHeader: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, paddingBottom: 12, borderBottomWidth: 1,

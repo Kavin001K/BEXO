@@ -135,11 +135,10 @@ export const useAuthStore = create<AuthState>()(
             await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
           }
           useProfileStore.getState().fetchProfile(user.id);
-        } else if (event === "SIGNED_OUT" || event === "USER_UPDATED") {
-          // USER_UPDATED can happen on auth errors too
-          if (event === "SIGNED_OUT") {
-            useProfileStore.getState().reset();
-          }
+        } else if (event === "SIGNED_OUT") {
+          useProfileStore.getState().reset();
+        } else if (event === "USER_UPDATED" && session?.user) {
+          useProfileStore.getState().fetchProfile(session.user.id);
         }
       });
     } catch (err: any) {

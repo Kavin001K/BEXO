@@ -15,42 +15,43 @@ A mobile-first student portfolio app that lets students build stunning, AI-power
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - **Mobile**: Expo SDK 54, Expo Router v3 (file-based routing), React Native
-- **Auth**: Supabase Auth — Phone/OTP + Google OAuth
+- **Auth**: Supabase Auth — WhatsApp OTP + Google OAuth
 - **DB**: Supabase PostgreSQL (schema in `supabase/migrations/001_initial_schema.sql`)
-- **Storage**: Supabase Storage (avatars, projects, resumes buckets)
+- **Storage**: Cloudflare R2 (for assets) + Supabase Storage (fallback)
 - **Realtime**: Supabase Realtime for portfolio build status updates
 - **State**: Zustand (`useAuthStore`, `useProfileStore`, `usePortfolioStore`)
-- **AI**: Supabase Edge Function `parse-resume` (OpenAI GPT-4o for resume parsing)
+- **AI**: Supabase Edge Function `parse-resume` (Gemini 2.0 Flash for Native PDF Vision parsing)
 - **Portfolio Generation**: n8n webhook triggered on `triggerBuild`
-- API: Express 5, Drizzle ORM, Zod validation
+- **Backend**: Node.js API server for R2 proxying, WhatsApp auth, and Gemini-powered features
+- **API**: Express 5, Drizzle ORM, Zod validation
 
 ## Where things live
 
 - `artifacts/bexo/` — Expo React Native app
-  - `app/(auth)/` — Login (phone+OTP+Google) and OTP verification screens
-  - `app/(onboarding)/` — Handle setup, resume upload, photo, card flow, generating screens
+  - `app/(auth)/` — Login (WhatsApp OTP + Google) and OTP verification screens
+  - `app/(onboarding)/` — Handle setup, resume upload (Native PDF Vision), photo, card flow, generating screens
   - `app/(main)/` — Dashboard, Portfolio, Post Update tabs (main app)
   - `stores/` — Zustand stores (auth, profile, portfolio)
-  - `services/resumeParser.ts` — Resume upload + parse via Supabase Edge Function
+  - `services/resumeParser.ts` — Resume upload + parse via Supabase Edge Function (Gemini Native)
   - `lib/supabase.ts` — Supabase client (graceful fallback if not configured)
   - `constants/colors.ts` — BEXO brand tokens
 - `supabase/migrations/001_initial_schema.sql` — Full DB schema (7 tables + RLS + storage)
-- `supabase/functions/parse-resume/index.ts` — Edge Function for AI resume parsing
-- `artifacts/api-server/` — Express API server
+- `supabase/functions/parse-resume/index.ts` — Edge Function for Gemini-powered Native PDF parsing
+- `artifacts/api-server/` — Express API server (WhatsApp, R2, Bio Generation)
 - `artifacts/mockup-sandbox/` — Phase 1 web mockups (canvas prototypes)
 
 ## Architecture Decisions
 
-- Supabase used for everything: auth, DB, storage, realtime, and edge functions — no separate backend needed for core app functionality
-- Resume parsing via Edge Function keeps OpenAI API key out of the mobile bundle
-- Zustand chosen over React Context for cross-screen state (profile, auth, portfolio build status)
-- `isSupabaseConfigured` guard in `lib/supabase.ts` — app renders with placeholder credentials until user sets real Supabase env vars
-- Portfolio generation delegates to n8n webhook; build status synced via Supabase Realtime subscription
+- Supabase used for auth, DB, realtime, and edge functions.
+- Gemini 2.0 Flash Native PDF Vision: We send the raw PDF URL directly to Gemini. This preserves layout context (sidebars) that traditional OCR breaks.
+- Resume parsing via Edge Function keeps Gemini API key out of the mobile bundle.
+- Zustand chosen over React Context for cross-screen state.
+- Portfolio generation delegates to n8n webhook; build status synced via Supabase Realtime.
 
 ## Product
 
-- **Auth**: Phone OTP + Google OAuth (no email/password)
-- **Onboarding**: Claim handle → Upload resume (AI-parsed) → Profile photo → Fill cards (headline, bio, skills) → Portfolio generation
+- **Auth**: WhatsApp OTP + Google OAuth (no email/password)
+- **Onboarding**: Claim handle → Upload resume (Gemini-parsed) → Profile photo → Fill cards (headline, bio, skills) → Portfolio generation
 - **Dashboard**: Live portfolio banner, profile card, analytics (views/clicks/shares), updates feed
 - **Portfolio tab**: Full profile viewer (education, experience, projects, skills), rebuild trigger
 - **Post Update**: Post achievements, projects, new roles, or education updates to keep portfolio fresh
@@ -60,30 +61,32 @@ A mobile-first student portfolio app that lets students build stunning, AI-power
 
 - No emojis in UI (icons only via @expo/vector-icons)
 - Dark-only theme: `#0A0A0F` bg, `#7C6AFA` accent (purple), `#FA6A6A` coral, `#6AFAD0` mint
-- Portfolio URL format: `handle.mybixo.com` (not `bexo.app/handle`)
-- Auth: phone OTP + Google only (NOT email)
+- Portfolio URL format: `handle.mybexo.com` (not `bexo.app/handle`)
+- Auth: WhatsApp OTP + Google only (NOT email)
 
-## Env Vars Needed (add to Replit secrets)
+## Env Vars Needed (add to Replit secrets and .env)
 
 ```
+# Core App (Mobile)
 EXPO_PUBLIC_SUPABASE_URL       — Your Supabase project URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY  — Your Supabase anon/public key
-EXPO_PUBLIC_N8N_WEBHOOK_URL    — n8n webhook URL for portfolio generation (optional)
+EXPO_PUBLIC_API_BASE_URL       — API Server URL (dev or production)
+
+# Backend (api-server)
+GOOGLE_API_KEY                 — For Gemini bio generation and OCR
+R2_ACCOUNT_ID                  — Cloudflare R2 Account ID
+R2_ACCESS_KEY_ID               — Cloudflare R2 Access Key
+R2_SECRET_ACCESS_KEY           — Cloudflare R2 Secret Key
+MSG91_AUTH_KEY                 — For WhatsApp OTP
 ```
 
 Also set in **Supabase Edge Function secrets**:
 ```
-OPENAI_API_KEY  — For resume parsing
+GEMINI_API_KEY                 — For Native PDF Vision resume parsing
 ```
 
 ## Gotchas
 
-- Do NOT run `npx expo start` directly — use the workflow (`restart_workflow`)
-- After adding Supabase env vars, restart the Expo workflow for them to take effect
+- After adding Supabase env vars, restart the Expo dev server for them to take effect
 - Run `supabase/migrations/001_initial_schema.sql` in Supabase SQL editor before using the app
-- The `(tabs)` folder still exists in `app/` as a legacy redirect — do not delete it (Expo Router needs it)
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
-- See `.local/skills/expo/SKILL.md` for Expo-specific patterns and pitfalls
+- Ensure the `parse-resume` edge function is deployed (`npx supabase functions deploy parse-resume`)

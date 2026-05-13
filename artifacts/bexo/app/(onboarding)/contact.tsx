@@ -30,8 +30,14 @@ export default function ContactScreen() {
   const { user, setCollectedEmail, setCollectedPhone } = useAuthStore();
   const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
 
-  const needsPhone = !!user?.email && !user?.phone;
-  const needsEmail = !!user?.phone && !user?.email;
+  const authEmailPlaceholder = user?.email?.endsWith("@bexo.local");
+  const needsPhone =
+    !!user?.email &&
+    !authEmailPlaceholder &&
+    !user?.phone;
+  const needsEmail =
+    !!user?.phone &&
+    (!user?.email || !!authEmailPlaceholder);
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);

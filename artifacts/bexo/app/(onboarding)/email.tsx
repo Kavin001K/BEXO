@@ -20,21 +20,30 @@ import * as Haptics from "expo-haptics";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useProfileStore } from "@/stores/useProfileStore";
 import { supabase } from "@/lib/supabase";
+import { apiFetch, readApiJson } from "@/lib/apiConfig";
+import { sanitizeError } from "@/lib/errorUtils";
 
 export default function EmailScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
+  const setCollectedEmail = useAuthStore((s) => s.setCollectedEmail);
   
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleContinue = async () => {
-    if (!email || !email.includes("@")) {
+    const trimmedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
       setError("Please enter a valid email address");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       return;
     }
 
@@ -42,18 +51,72 @@ export default function EmailScreen() {
     setError("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("profiles")
-        .update({ email })
-        .eq("user_id", user?.id);
+      if (!user?.id) throw new Error("Not signed in.");
 
-      if (updateError) throw updateError;
+      const saveViaSupabaseClient = async () => {
+        const { error: authErr } = await supabase.auth.updateUser({
+          email: trimmedEmail,
+        });
+        if (authErr) throw authErr;
+        await useProfileStore.getState().updateProfile({ email: trimmedEmail });
+        await supabase.auth.refreshSession();
+      };
 
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // 1) Edge Function (works when self-hosted API has no /api/auth/update-email — e.g. 404 on backend host)
+      // 2) BEXO API server
+      // 3) supabase.auth.updateUser (can rate-limit if 1+2 are retried too often)
+      type EdgePayload = { success?: boolean; error?: string };
+      const edge = await supabase.functions.invoke<EdgePayload>("update-email", {
+        body: { email: trimmedEmail },
+      });
+      const ep = edge.data as EdgePayload | undefined;
+      const edgeOk = !edge.error && ep?.success === true;
+
+      if (!edgeOk) {
+        let apiErr: unknown = edge.error ?? edgeData?.error;
+        try {
+          const resp = await apiFetch("/auth/update-email", {
+            method: "POST",
+            body: JSON.stringify({
+              email: trimmedEmail,
+              user_id: user.id,
+            }),
+          });
+          const result = await readApiJson<{ error?: string }>(resp);
+          if (!resp.ok) throw new Error(result.error || "Failed to update email");
+        } catch (e) {
+          apiErr = e;
+          try {
+            await saveViaSupabaseClient();
+          } catch (suErr: unknown) {
+            throw new Error(
+              [
+                "Could not update your email.",
+                "Deploy the `update-email` Edge Function (`supabase functions deploy update-email`), or mount POST /api/auth/update-email on your API host.",
+                `Details: ${sanitizeError(apiErr)} / ${sanitizeError(suErr)}`,
+              ].join(" "),
+            );
+          }
+        }
+      }
+
+      await supabase.auth.refreshSession();
+      if (user?.id) {
+        await useProfileStore.getState().fetchProfile(user.id);
+      }
+      setCollectedEmail(trimmedEmail);
+      useProfileStore.getState().setOnboardingStep("photo");
+
+      if (Platform.OS !== "web") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+
       router.push("/(onboarding)/photo");
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } catch (err: unknown) {
+      setError(sanitizeError(err));
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
     } finally {
       setLoading(false);
     }

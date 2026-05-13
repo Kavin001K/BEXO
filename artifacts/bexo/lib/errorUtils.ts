@@ -1,6 +1,30 @@
 import { Alert, Platform } from "react-native";
 
 /**
+ * If Google blocked the key (leaked, invalid, billing), return a short actionable message.
+ * Call this before sanitizeError for Gemini / Edge Function failures.
+ */
+export function explainGeminiApiFailure(message: string): string | undefined {
+  const m = message.toLowerCase();
+  if (
+    m.includes("reported as leaked") ||
+    m.includes("api key was reported") ||
+    (m.includes("permission_denied") && m.includes("api key"))
+  ) {
+    return "Google revoked this Gemini API key because it was exposed publicly (never paste keys in chat, screenshots, or Git). Create a new key at https://aistudio.google.com/apikey , then update Supabase: npx supabase secrets set GOOGLE_API_KEY=<new_key> — no app reinstall needed.";
+  }
+  if (
+    m.includes("api_key_invalid") ||
+    m.includes("invalid api key") ||
+    m.includes("api key not valid") ||
+    m.includes("please pass a valid api key")
+  ) {
+    return "Gemini rejected this API key. Create a new key at aistudio.google.com/apikey , run npx supabase secrets set GOOGLE_API_KEY=… , and in Supabase Dashboard remove any duplicate GEMINI_API_KEY secret if present. Ensure parse-resume Edge Function is redeployed.";
+  }
+  return undefined;
+}
+
+/**
  * Sanitize technical error messages into user-friendly ones for production.
  */
 export function sanitizeError(error: any): string {

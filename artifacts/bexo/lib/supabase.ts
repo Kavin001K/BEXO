@@ -12,7 +12,12 @@ if (Platform.OS !== "web") {
 }
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key";
+/** Supports legacy anon key name + Dashboard “publishable” snippet (`EXPO_PUBLIC_SUPABASE_KEY`). */
+const supabaseAnonKey =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+  process.env.EXPO_PUBLIC_SUPABASE_KEY?.trim() ||
+  process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim() ||
+  "placeholder-anon-key";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -38,5 +43,9 @@ if (Platform.OS !== "web") {
 
 export const isSupabaseConfigured =
   !!process.env.EXPO_PUBLIC_SUPABASE_URL &&
-  !!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY &&
+  !!(
+    process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_SUPABASE_KEY?.trim() ||
+    process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY?.trim()
+  ) &&
   process.env.EXPO_PUBLIC_SUPABASE_URL !== "https://placeholder.supabase.co";

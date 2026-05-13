@@ -9,6 +9,7 @@ import {
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ParsedResumeReviewContent } from "@/components/resume/ParsedResumeReviewModal";
 import { BexoButton }           from "@/components/ui/BexoButton";
 import { useColors }             from "@/hooks/useColors";
 import { uploadAndParseResume }  from "@/services/resumeParser";
@@ -57,7 +58,7 @@ export function RebuildModal({ visible, onClose }: Props) {
     if (!user?.id || !profile?.id) return;
     try {
       const res = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: ["application/pdf", "image/jpeg", "image/png", "image/webp"],
         copyToCacheDirectory: true,
       });
       if (res.canceled || !res.assets?.[0]) return;
@@ -226,6 +227,17 @@ export function RebuildModal({ visible, onClose }: Props) {
                 <Text style={[M.desc, { color: "#FA6A6A" }]}>
                   AI couldn't extract structured data from this resume. The data will be saved, but you may want to add items manually.
                 </Text>
+              )}
+
+              {parsedResult && (
+                <View style={{ maxHeight: 340, borderRadius: 12, overflow: "hidden", borderWidth: 1, borderColor: colors.border }}>
+                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator style={{ maxHeight: 340 }} contentContainerStyle={{ padding: 12, gap: 10 }}>
+                    <ParsedResumeReviewContent
+                      data={parsedResult}
+                      lowStructureWarning={!parseHasData}
+                    />
+                  </ScrollView>
+                </View>
               )}
 
               <View style={M.summaryRow}>
