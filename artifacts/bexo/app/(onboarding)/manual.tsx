@@ -1,6 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
 import {
-  Animated,
   Dimensions,
   FlatList,
   Platform,
@@ -10,6 +9,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import RNAnimated from "react-native";
+import Animated, { 
+  useSharedValue, 
+  useAnimatedStyle, 
+  withTiming, 
+  Easing 
+} from "react-native-reanimated";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { YearPickerSheet } from "@/components/YearPickerSheet";
 import { MonthPickerSheet } from "@/components/MonthPickerSheet";
@@ -86,7 +92,7 @@ function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: nu
         return (
           <View key={sec.id} style={{ flex: 1, gap: 3 }}>
             <View style={{ height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-              <Animated.View style={{ width: `${fill * 100}%` as any, height: 3, borderRadius: 2, backgroundColor: sec.color }} />
+              <RNAnimated.View style={{ width: `${fill * 100}%` as any, height: 3, borderRadius: 2, backgroundColor: sec.color }} />
             </View>
             <Text style={{ fontSize: 8, fontWeight: "700", color: active ? sec.color : (done ? sec.color + "80" : "rgba(255,255,255,0.25)"), textAlign: "center", letterSpacing: 0.4, textTransform: "uppercase" }}>
               {sec.label}
@@ -475,8 +481,13 @@ export default function ManualEntryScreen() {
 
 
   // Transition animation
-  const translateX = useRef(new Animated.Value(0)).current;
-  const opacity    = useRef(new Animated.Value(1)).current;
+  const opacity = useSharedValue(1);
+  const translateX = useSharedValue(0);
+
+  const animatedContentStyle = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [{ translateX: translateX.value }],
+  }));
 
   const sec   = SECTIONS[sectionIdx];
   const color = sec.color;
@@ -494,16 +505,15 @@ export default function ManualEntryScreen() {
   const transition = useCallback((dir: "fwd" | "bwd", cb: () => void) => {
     const exitTo    = dir === "fwd" ? -W * 0.45 : W * 0.45;
     const enterFrom = dir === "fwd" ?  W * 0.45 : -W * 0.45;
-    Animated.parallel([
-      Animated.timing(opacity,    { toValue: 0, duration: 130, useNativeDriver: true }),
-      Animated.timing(translateX, { toValue: exitTo, duration: 130, useNativeDriver: true }),
-    ]).start(() => {
-      translateX.setValue(enterFrom);
-      cb();
-      Animated.parallel([
-        Animated.timing(opacity,    { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.timing(translateX, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ]).start();
+    
+    opacity.value = withTiming(0, { duration: 130 });
+    translateX.value = withTiming(exitTo, { duration: 130 }, (finished) => {
+      if (finished) {
+        translateX.value = enterFrom;
+        cb();
+        opacity.value = withTiming(1, { duration: 200 });
+        translateX.value = withTiming(0, { duration: 200 });
+      }
     });
   }, [opacity, translateX]);
 
@@ -951,7 +961,7 @@ export default function ManualEntryScreen() {
           </View>
 
           {/* ── Animated content ── */}
-          <Animated.View style={[{ flex: 1 }, { opacity, transform: [{ translateX }] }]}>
+          <Animated.View style={[{ flex: 1 }, animatedContentStyle]}>
             {renderContent()}
           </Animated.View>
 

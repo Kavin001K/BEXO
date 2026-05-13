@@ -23,18 +23,36 @@ const r2 = new S3Client({
 
 /** Prefer GOOGLE_API_KEY; GEMINI_API_KEY is a common alias (e.g. Edge Functions). */
 function resolveGoogleApiKey(): string {
-  const k =
-    process.env.GOOGLE_API_KEY?.trim() ||
-    process.env.GEMINI_API_KEY?.trim() ||
-    "";
-  return k;
+  return (process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim() || "").replace(/["']/g, "");
 }
 
-function getGeminiModel() {
+async function callGemini(
+  prompt: string | any[],
+  modelNameOverride?: string
+): Promise<string> {
   const key = resolveGoogleApiKey();
-  if (!key) return null;
+  if (!key) throw new Error("GOOGLE_API_KEY is not configured.");
+
+  const primaryModel = process.env.GOOGLE_MODEL?.trim() || "gemini-1.5-flash";
+  const fallbackModel = process.env.GOOGLE_MODEL_FALLBACK?.trim() || "gemini-1.5-pro";
+  const modelToUse = modelNameOverride || primaryModel;
+
   const genAI = new GoogleGenerativeAI(key);
-  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  
+  try {
+    const model = genAI.getGenerativeModel({ model: modelToUse });
+    const result = await (Array.isArray(prompt) 
+      ? model.generateContent(prompt) 
+      : model.generateContent(prompt));
+    const response = await result.response;
+    return response.text();
+  } catch (err: any) {
+    // If we already tried fallback or if this wasn't the primary, just rethrow
+    if (modelNameOverride || modelToUse === fallbackModel) throw err;
+    
+    console.warn(`[Gemini] Primary model (${modelToUse}) failed, trying fallback (${fallbackModel})... Error: ${err.message}`);
+    return callGemini(prompt, fallbackModel);
+  }
 }
 
 // Public base URL for the R2 bucket (if a custom domain is configured on the bucket, use that instead)
@@ -117,16 +135,7 @@ router.post("/parse-pdf", raw({ type: "*/*", limit: "15mb" }), async (req, res) 
       return;
     }
 
-    const model = getGeminiModel();
-    if (!model) {
-      res.status(503).json({
-        error:
-          "AI PDF extraction is not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY on the API server (backend.mybexo.com).",
-      });
-      return;
-    }
-
-    const result = await model.generateContent([
+    const text = await callGemini([
       {
         inlineData: {
           data: req.body.toString("base64"),
@@ -135,8 +144,6 @@ router.post("/parse-pdf", raw({ type: "*/*", limit: "15mb" }), async (req, res) 
       },
       "Extract all text from this PDF document as accurately as possible."
     ]);
-    const response = await result.response;
-    const text = response.text();
     
     res.json({
       success: true,
@@ -186,18 +193,7 @@ router.post("/parse-resume", async (req, res) => {
       return;
     }
 
-    const model = getGeminiModel();
-    if (!model) {
-      res.status(503).json({
-        error:
-          "AI service not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY on the API server.",
-      });
-      return;
-    }
-
-    const result = await model.generateContent(`Here is the full text of a resume:\n\n---\n${text}\n---\n\n${EXTRACTION_PROMPT}`);
-    const response = await result.response;
-    const raw = response.text().trim();
+    const raw = await callGemini(`Here is the full text of a resume:\n\n---\n${text}\n---\n\n${EXTRACTION_PROMPT}`);
     
     const clean = raw
       .replace(/^[\s\S]*?({[\s\S]*})[\s\S]*$/, "$1")
@@ -276,15 +272,6 @@ router.post("/generate-bio", async (req, res) => {
       return;
     }
 
-    const model = getGeminiModel();
-    if (!model) {
-      res.status(503).json({
-        error:
-          "AI service not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY on the API server.",
-      });
-      return;
-    }
-
     const prompt = `Write a professional 2-3 sentence bio in first person for a student portfolio.
 Name: ${full_name}
 Headline: ${headline ?? ""}
@@ -294,9 +281,7 @@ Recent experience: ${experience ?? ""}
 
 Return ONLY the bio text, no quotes, no extra text.`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const bio = response.text().trim();
+    const bio = await callGemini(prompt);
     
     res.json({ success: true, bio });
   } catch (err: any) {

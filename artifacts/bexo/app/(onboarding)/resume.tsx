@@ -18,7 +18,11 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { uploadAndParseResume, type ParsedResume } from "@/services/resumeParser";
+import {
+  friendlyResumeAiError,
+  uploadAndParseResume,
+  type ParsedResume,
+} from "@/services/resumeParser";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { sanitizeError } from "@/lib/errorUtils";
@@ -102,12 +106,14 @@ export default function ResumeScreen() {
       // (items without DB IDs would break edit/delete later)
       setParsedResumeData(parsed);
 
-    } catch (e: any) {
-      console.error("[ResumeScreen] Error:", e);
-      // Graceful degradation: move to manual with what we have
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } catch (e: unknown) {
+      console.error("[ResumeScreen] Resume pipeline:", e);
+      if (Platform.OS !== "web") {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
       setOnboardingStep("manual");
-      router.push("/(onboarding)/manual");
+      // Replace so user isn’t stuck behind a broken resume screen; message is user-safe from resumeParser
+      router.replace("/(onboarding)/manual");
     }
   };
 
@@ -128,9 +134,9 @@ export default function ResumeScreen() {
       // Sync done, move to manual entry for review/edit
       setOnboardingStep("manual");
       router.push("/(onboarding)/manual");
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("[ResumeScreen] Save error:", e);
-      setError(sanitizeError(e));
+      setError(friendlyResumeAiError(sanitizeError(e)));
       setStage("error");
     } finally {
       setParsing(false);

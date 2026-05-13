@@ -3,6 +3,53 @@ import { apiFetch } from "@/lib/apiConfig";
 import { decode } from "base64-arraybuffer";
 import { sanitizeError } from "@/lib/errorUtils";
 
+/** User-safe copy — never includes Google stack traces or JSON blobs. */
+const MSG_RESUME_AI_DOWN =
+  "Resume AI isn’t available right now (often an expired or missing Google API key on the server). You can enter your profile manually instead.";
+
+/**
+ * Maps vendor / HTTP errors to a single readable line. Defaults to a safe message so
+ * expired keys and 403/400 Gemini responses never surface raw JSON in the UI.
+ */
+export function friendlyResumeAiError(raw: string): string {
+  const s = raw.toLowerCase();
+  if (
+    s.includes("api_key_invalid") ||
+    s.includes("api key expired") ||
+    s.includes("renew the api key") ||
+    s.includes("unregistered callers") ||
+    s.includes("googlegenerativeai") ||
+    s.includes("generativelanguage.googleapis.com") ||
+    (s.includes("403") && (s.includes("forbidden") || s.includes("permission"))) ||
+    (s.includes("400") && (s.includes("api") || s.includes("key")))
+  ) {
+    return MSG_RESUME_AI_DOWN;
+  }
+  if (s.includes("quota") || s.includes("resource exhausted") || s.includes("rate limit")) {
+    return "Resume AI is busy right now. Try again in a few minutes or continue with manual entry.";
+  }
+  if (s.includes("not configured") || s.includes("503") || s.includes("service unavailable")) {
+    return MSG_RESUME_AI_DOWN;
+  }
+  if (s.includes("network request failed") || s.includes("failed to fetch")) {
+    return "Couldn’t reach the server. Check your connection, or continue with manual entry.";
+  }
+  if (s.includes("extracted text too short")) {
+    return "We couldn’t read enough text from this PDF. Try another file or enter your profile manually.";
+  }
+  if (s.includes("resume upload failed") || s.includes("upload failed")) {
+    return "Couldn’t upload your file. Check your connection and try again.";
+  }
+  // Long / JSON-ish messages — never show raw vendor payloads
+  if (raw.length > 180 || raw.includes("{") || raw.includes("http://") || raw.includes("https://")) {
+    return "Resume processing failed. Try again or enter your profile manually.";
+  }
+  if (raw.trim().length > 0 && raw.length < 160 && !raw.includes("GoogleGenerativeAI")) {
+    return raw.trim();
+  }
+  return "Resume processing failed. Try again or enter your profile manually.";
+}
+
 export interface ParsedResume {
   full_name?:    string;
   headline?:     string;
@@ -38,8 +85,15 @@ async function extractTextFromPDF(pdfBase64: string): Promise<string> {
   });
 
   if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Text extraction failed: ${err}`);
+    const body = await response.text();
+    let hint = body;
+    try {
+      const j = JSON.parse(body) as { error?: string };
+      if (typeof j.error === "string") hint = j.error;
+    } catch {
+      /* use raw body */
+    }
+    throw new Error(friendlyResumeAiError(`${response.status} ${hint}`));
   }
 
   const data = await response.json();
@@ -59,13 +113,16 @@ async function parseResumeWithBackend(resumeText: string): Promise<ParsedResume>
     body: JSON.stringify({ text: resumeText }),
   });
 
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error ?? `AI parsing failed (${response.status})`);
+    const raw =
+      typeof payload.error === "string"
+        ? payload.error
+        : JSON.stringify(payload ?? {});
+    throw new Error(friendlyResumeAiError(raw));
   }
 
-  const result = await response.json();
-  return result.parsed as ParsedResume;
+  return payload.parsed as ParsedResume;
 }
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -101,8 +158,8 @@ export async function uploadAndParseResume(
       throw new Error(`Extracted text too short (${resumeText.length} chars)`);
     }
   } catch (e: any) {
-    console.error("[resumeParser] Text extraction failed:", e.message);
-    throw new Error(sanitizeError(e));
+    console.error("[resumeParser] Text extraction failed:", e?.message ?? e);
+    throw new Error(friendlyResumeAiError(sanitizeError(e)));
   }
   onProgress?.("parsing", 40);
 
@@ -129,11 +186,14 @@ export async function generateBioWithAI(context: {
     body: JSON.stringify(context),
   });
 
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    throw new Error(data.error ?? "Failed to generate bio");
+    const raw =
+      typeof payload.error === "string"
+        ? payload.error
+        : JSON.stringify(payload ?? {});
+    throw new Error(friendlyResumeAiError(raw));
   }
 
-  const result = await response.json();
-  return result.bio ?? "";
+  return payload.bio ?? "";
 }
