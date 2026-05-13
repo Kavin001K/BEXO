@@ -15,8 +15,10 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
-/** Default when GOOGLE_MODEL / GEMINI_MODEL secrets are unset */
+/** Primary when GOOGLE_MODEL / GEMINI_MODEL secrets are unset */
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
+/** Second attempt when GOOGLE_MODEL_FALLBACK secret is unset — no legacy 1.5/2.0 IDs (404 on v1beta for many accounts) */
+const DEFAULT_FALLBACK_MODEL = "gemini-3-flash-preview";
 
 /** Prefer GOOGLE_API_KEY so a new key set via CLI wins over a stale GEMINI_API_KEY */
 function resolveGeminiApiKey(): string | undefined {
@@ -50,11 +52,16 @@ Deno.serve(async (req) => {
       });
     }
 
-    let geminiModel =
+    const primaryModel =
       Deno.env.get("GOOGLE_MODEL")?.trim() ||
       Deno.env.get("GEMINI_MODEL")?.trim() ||
       DEFAULT_GEMINI_MODEL;
-    console.log(`[parse-resume] Model: ${geminiModel}`);
+    const fallbackResolved =
+      Deno.env.get("GOOGLE_MODEL_FALLBACK")?.trim() ||
+      Deno.env.get("GEMINI_MODEL_FALLBACK")?.trim() ||
+      DEFAULT_FALLBACK_MODEL;
+    let geminiModel = primaryModel;
+    console.log(`[parse-resume] Primary=${primaryModel} fallback=${fallbackResolved}`);
 
     // 1. Fetch the PDF
     console.log(`[parse-resume] Fetching PDF from: ${resumeUrl}`);
@@ -157,18 +164,10 @@ Deno.serve(async (req) => {
       });
     }
 
-    /** Try primary, then optional secret fallback, then built-in fallbacks */
-    const secretFallback =
-      Deno.env.get("GOOGLE_MODEL_FALLBACK")?.trim() ||
-      Deno.env.get("GEMINI_MODEL_FALLBACK")?.trim();
-
-    const modelCandidates = [
-      geminiModel,
-      ...(secretFallback ? [secretFallback] : []),
-      "gemini-3-flash-preview",
-      "gemini-2.0-flash",
-      "gemini-1.5-flash",
-    ].filter((m, i, arr) => m && arr.indexOf(m) === i);
+    /** Only primary → fallback (secrets or defaults). Do not chain deprecated model IDs. */
+    const modelCandidates = [primaryModel, fallbackResolved].filter(
+      (m, i, arr) => m && arr.indexOf(m) === i,
+    );
 
     let geminiResp: Response | null = null;
     let lastErrText = "";

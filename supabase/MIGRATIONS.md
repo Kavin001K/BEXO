@@ -52,6 +52,6 @@ If `npx supabase secrets set …` does not show up in the Dashboard project you 
 6. After linking, redeploy functions so code matches this environment:  
    `npx supabase functions deploy parse-resume`
 
-### `parse-resume` model fallbacks (code defaults)
+### `parse-resume` model fallbacks
 
-If the primary model fails or is unavailable, the Edge Function tries in order: **`GOOGLE_MODEL`** (or `GEMINI_MODEL`) → optional **`GOOGLE_MODEL_FALLBACK`** (or `GEMINI_MODEL_FALLBACK`) → **`gemini-3-flash-preview`** → **`gemini-2.0-flash`** → **`gemini-1.5-flash`** (deduplicated). Setting `GOOGLE_MODEL_FALLBACK` to the same id as a built-in fallback is harmless (deduped).
+Only **two** attempts: **`GOOGLE_MODEL`** (default **`gemini-2.5-flash-lite`**) then **`GOOGLE_MODEL_FALLBACK`** (default **`gemini-3-flash-preview`**). Older Gemini IDs are **not** chained — many return **404** on `v1beta` / `generateContent`.
