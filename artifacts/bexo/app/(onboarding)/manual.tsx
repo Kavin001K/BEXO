@@ -29,7 +29,6 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { apiFetch } from "@/lib/apiConfig";
-import { supabase } from "@/lib/supabase";
 
 const { width: W, height: SCREEN_H } = Dimensions.get("window");
 
@@ -594,49 +593,58 @@ export default function ManualEntryScreen() {
     const finalSkills = skills;
     const finalRes   = sectionIdx >= 5 && res.title.trim()       ? [...resEntries, res] : resEntries;
 
+    const { 
+      updateProfile, 
+      bulkSaveEducation, 
+      bulkSaveExperiences, 
+      bulkSaveProjects, 
+      bulkSaveSkills, 
+      bulkSaveResearch 
+    } = useProfileStore.getState();
+
     try {
-      const pid = profile?.id;
-      if (pid) {
-        // Save About & Contact info
-        await supabase.from("profiles").update({
+      if (profile?.id) {
+        // 1. Update basic info
+        await updateProfile({
           headline,
           bio,
           phone: contact.phone || profile.phone,
           email: contact.email || profile.email,
           address: contact.address,
-        }).eq("id", pid);
+        });
 
+        // 2. Bulk save sections
+        const tasks: Promise<any>[] = [];
+        
         if (finalEdu.length > 0) {
-          await supabase.from("education").insert(finalEdu.map((e) => ({
-            profile_id: pid, institution: e.institution, degree: e.degree,
-            field: e.field, description: e.description,
+          tasks.push(bulkSaveEducation(finalEdu.map(e => ({
+            ...e,
             start_year: e.start_year ? Number(e.start_year) : null,
             end_year: e.end_year && e.end_year !== "Present" ? Number(e.end_year) : null,
-          })));
+          }))));
         }
+        
         if (finalExp.length > 0) {
-          await supabase.from("experiences").insert(finalExp.map((e) => ({
-            profile_id: pid, company: e.company, role: e.role,
+          tasks.push(bulkSaveExperiences(finalExp.map(e => ({
+            ...e,
             start_date: e.start_year ? `${e.start_year}-${String(MONTHS.indexOf(e.start_month) + 1).padStart(2, "0")}-01` : null,
             end_date: e.is_current || !e.end_year ? null : `${e.end_year}-${String(MONTHS.indexOf(e.end_month) + 1).padStart(2, "0")}-01`,
-            is_current: e.is_current,
-            description: e.description,
-          })));
+          }))));
         }
+        
         if (finalProj.length > 0) {
-          await supabase.from("projects").insert(finalProj.map((p) => ({
-            profile_id: pid, title: p.title, description: p.description,
-            tech_stack: p.tech_stack, live_url: p.live_url || null, github_url: p.github_url || null,
-          })));
+          tasks.push(bulkSaveProjects(finalProj));
         }
+        
         if (finalSkills.length > 0) {
-          await supabase.from("skills").insert(finalSkills.map((s) => ({ profile_id: pid, name: s })));
+          tasks.push(bulkSaveSkills(finalSkills.map(s => ({ name: s }))));
         }
+        
         if (finalRes.length > 0) {
-          await supabase.from("research").insert(finalRes.map((r) => ({
-            profile_id: pid, title: r.title, subtitle: r.subtitle, description: r.description,
-          })));
+          tasks.push(bulkSaveResearch(finalRes));
         }
+
+        await Promise.all(tasks);
       }
     } catch (err) {
       console.error("[Manual] Save error:", err);
@@ -646,6 +654,7 @@ export default function ManualEntryScreen() {
       router.push("/(onboarding)/theme");
     }
   };
+
 
   // ── Validation ──
   const isReviewStep  = (sectionIdx === 1 && stepIdx === 4) || (sectionIdx === 2 && stepIdx === 4) || (sectionIdx === 3 && stepIdx === 4) || (sectionIdx === 5 && stepIdx === 3);

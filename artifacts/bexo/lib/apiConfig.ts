@@ -10,31 +10,33 @@ import Constants from "expo-constants";
  * 3. Auto-detect: use Expo's debuggerHost IP for native, localhost for web
  */
 function getApiBaseUrl(): string {
-  // If we have an explicit override that isn't localhost, use it
-  if (
-    process.env.EXPO_PUBLIC_API_BASE_URL &&
-    !process.env.EXPO_PUBLIC_API_BASE_URL.includes("localhost")
-  ) {
-    return process.env.EXPO_PUBLIC_API_BASE_URL;
+  // 1. If we are on web, localhost is fine.
+  if (Platform.OS === "web") {
+    return process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
   }
 
-  if (process.env.EXPO_PUBLIC_DOMAIN) {
-    return `https://${process.env.EXPO_PUBLIC_DOMAIN}/api-server`;
+  // 2. For native (iOS/Android), prioritize auto-detecting the LAN IP.
+  // This is the most stable way to ensure devices can talk to the server.
+  const debuggerHost =
+    Constants.expoConfig?.hostUri ?? 
+    (Constants as any).manifest?.debuggerHost;
+  
+  if (debuggerHost) {
+    const ip = debuggerHost.split(":")[0]; 
+    return `http://${ip}:3000`;
   }
 
-  // Local dev: extract the LAN IP from Expo's debugger host
-  if (Platform.OS !== "web") {
-    const debuggerHost =
-      Constants.expoConfig?.hostUri ?? // SDK 49+
-      (Constants as any).manifest?.debuggerHost;
-    if (debuggerHost) {
-      const ip = debuggerHost.split(":")[0]; // e.g. "192.168.1.37"
-      return `http://${ip}:3000`;
+  // 3. Fallback to explicit override if provided (useful for production or specific tunnels)
+  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
+    const url = process.env.EXPO_PUBLIC_API_BASE_URL;
+    if (Platform.OS === "android" && url.includes("localhost")) {
+      return url.replace("localhost", "10.0.2.2");
     }
+    return url;
   }
 
-  // Fallback for web / simulator
-  return "http://localhost:3000";
+  // 4. Ultimate fallback
+  return Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 }
 
 export const API_BASE_URL = getApiBaseUrl();

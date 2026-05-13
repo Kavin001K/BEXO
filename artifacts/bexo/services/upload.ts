@@ -1,6 +1,6 @@
 import * as ImageManipulator from "expo-image-manipulator";
+import { apiFetch } from "@/lib/apiConfig";
 import { decode } from "base64-arraybuffer";
-import { supabase } from "@/lib/supabase";
 
 async function uriToBase64(uri: string): Promise<string> {
   if (uri.startsWith("data:")) return uri.split(",")[1];
@@ -23,8 +23,40 @@ async function uriToBase64(uri: string): Promise<string> {
 }
 
 /**
- * Upload avatar — compress to 400×400 JPEG then upload to Supabase Storage.
- * Returns public CDN URL.
+ * Upload a file to Cloudflare R2 via the API server.
+ */
+async function uploadToR2(
+  key: string,
+  uri: string,
+  contentType: string,
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  onProgress?.(10);
+  const base64 = await uriToBase64(uri);
+  const buffer = decode(base64);
+  onProgress?.(50);
+
+  const response = await apiFetch("/storage/upload", {
+    method: "POST",
+    headers: {
+      "x-key": key,
+      "content-type": contentType,
+    },
+    body: buffer,
+  });
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || "Failed to upload to Cloudflare R2");
+  }
+
+  const data = await response.json();
+  onProgress?.(100);
+  return data.publicUrl;
+}
+
+/**
+ * Upload avatar — compress to 400×400 JPEG then upload to Cloudflare R2.
  */
 export async function uploadAvatar(
   userId: string,
@@ -40,33 +72,12 @@ export async function uploadAvatar(
   );
   onProgress?.(30);
 
-  const base64 = await uriToBase64(compressed.uri);
-  onProgress?.(55);
-
-  const path = `${userId}/avatar-${Date.now()}.jpg`;
-
-  const { data, error } = await supabase.storage
-    .from("avatars")
-    .upload(path, decode(base64), {
-      contentType: "image/jpeg",
-      upsert: true,
-    });
-
-  if (error) {
-    console.error("[upload] Avatar upload failed:", error);
-    throw new Error(`Upload failed: ${error.message}`);
-  }
-  onProgress?.(90);
-
-  const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(data.path);
-  onProgress?.(100);
-  return urlData.publicUrl;
+  const key = `avatars/${userId}-${Date.now()}.jpg`;
+  return uploadToR2(key, compressed.uri, "image/jpeg", (p) => onProgress?.(30 + p * 0.7));
 }
 
 /**
- * Upload resume PDF — stored privately.
- * Returns the storage PATH (not a public URL — resumes are private).
- * Use getResumeSignedUrl() to get a temporary readable URL.
+ * Upload resume PDF to Cloudflare R2.
  */
 export async function uploadResume(
   userId: string,
@@ -74,42 +85,24 @@ export async function uploadResume(
   onProgress?: (pct: number) => void
 ): Promise<{ path: string; base64: string }> {
   onProgress?.(10);
-  console.log("[uploadResume] Converting to base64...");
   const base64 = await uriToBase64(localUri);
-  onProgress?.(45);
-
-  const path = `${userId}/resume-${Date.now()}.pdf`;
-
-  const { data, error } = await supabase.storage
-    .from("resumes")
-    .upload(path, decode(base64), {
-      contentType: "application/pdf",
-      upsert: true,
-    });
-
-  if (error) {
-    console.error("[upload] Resume upload failed:", error);
-    throw new Error(`Resume upload failed: ${error.message}`);
-  }
-  onProgress?.(100);
-
-  return { path: data.path, base64 };
+  const key = `resumes/${userId}-${Date.now()}.pdf`;
+  
+  const publicUrl = await uploadToR2(key, localUri, "application/pdf", (p) => onProgress?.(10 + p * 0.9));
+  
+  return { path: publicUrl, base64 };
 }
 
 /**
- * Get a signed URL for the resume (valid 1 hour).
+ * Get a "signed" URL (In R2 with public access, we just return the path/url).
  */
 export async function getResumeSignedUrl(storagePath: string): Promise<string> {
-  const { data, error } = await supabase.storage
-    .from("resumes")
-    .createSignedUrl(storagePath, 3600);
-  if (error) throw new Error(error.message);
-  return data.signedUrl;
+  // If it's already a full URL, return it. Otherwise, it's a key.
+  return storagePath;
 }
 
 /**
- * Upload project image — compress to max 1200px width.
- * Returns public CDN URL.
+ * Upload project image — compress to max 1200px width then upload to Cloudflare R2.
  */
 export async function uploadProjectImage(
   userId: string,
@@ -125,19 +118,8 @@ export async function uploadProjectImage(
   );
   onProgress?.(35);
 
-  const base64 = await uriToBase64(compressed.uri);
-  onProgress?.(65);
-
-  const path = `${userId}/${Date.now()}.jpg`;
-  const { data, error } = await supabase.storage
-    .from("projects")
-    .upload(path, decode(base64), { contentType: "image/jpeg", upsert: true });
-
-  if (error) throw new Error(`Project image upload failed: ${error.message}`);
-  onProgress?.(100);
-
-  const { data: urlData } = supabase.storage.from("projects").getPublicUrl(data.path);
-  return urlData.publicUrl;
+  const key = `projects/${userId}-${Date.now()}.jpg`;
+  return uploadToR2(key, compressed.uri, "image/jpeg", (p) => onProgress?.(35 + p * 0.65));
 }
 
 export async function uploadFile(
@@ -146,11 +128,8 @@ export async function uploadFile(
   uri: string,
   contentType = "application/octet-stream"
 ): Promise<{ url: string; storagePath: string }> {
-  const base64 = await uriToBase64(uri);
-  const { data, error } = await supabase.storage
-    .from(bucket)
-    .upload(storagePath, decode(base64), { contentType, upsert: true });
-  if (error) throw new Error(error.message);
-  const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(data.path);
-  return { url: urlData.publicUrl, storagePath: data.path };
+  const key = `${bucket}/${storagePath}`;
+  const publicUrl = await uploadToR2(key, uri, contentType);
+  return { url: publicUrl, storagePath: key };
 }
+

@@ -20,7 +20,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { sanitizeError } from "@/lib/errorUtils";
@@ -29,7 +28,7 @@ export default function HandleScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { user, collectedEmail, collectedPhone } = useAuthStore();
-  const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
+  const { createProfile, checkHandle, setOnboardingStep } = useProfileStore();
 
   const [handle, setHandle] = useState("");
   const [fullName, setFullName] = useState(
@@ -49,24 +48,20 @@ export default function HandleScreen() {
       const suggested = fullName.toLowerCase().split(" ")[0].replace(/[^a-z0-9-]/g, "");
       if (suggested.length >= 3) {
         setHandle(suggested);
-        checkAvailability(suggested);
+        performCheck(suggested);
       }
     }
   }, [fullName]);
 
-  const checkAvailability = async (val: string) => {
+  const performCheck = async (val: string) => {
     const clean = val.toLowerCase().replace(/[^a-z0-9-]/g, "");
     if (clean.length < 3) {
       setAvailable(null);
       return;
     }
     setChecking(true);
-    const { data } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("handle", clean)
-      .maybeSingle();
-    setAvailable(!data);
+    const isAvail = await checkHandle(clean);
+    setAvailable(isAvail);
     setChecking(false);
   };
 
@@ -74,7 +69,7 @@ export default function HandleScreen() {
     setIsManualHandle(true);
     setHandle(val);
     setAvailable(null);
-    if (val.length >= 3) checkAvailability(val);
+    if (val.length >= 3) performCheck(val);
   };
 
   const handleBack = () => {
@@ -102,44 +97,14 @@ export default function HandleScreen() {
     setError("");
     setLoading(true);
     try {
-      // Check if profile already exists — if so, only update handle/name
-      const { data: existing } = await supabase
-        .from("profiles")
-        .select("id, headline, bio")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const upsertPayload: Record<string, any> = {
+      await createProfile({
         user_id: user.id,
         handle: slug,
         full_name: fullName.trim(),
         email: collectedEmail || user.email || null,
         phone: collectedPhone || user.phone || null,
-      };
-
-      // Only set headline/bio to empty if the profile doesn't exist yet
-      // This prevents overwriting data parsed from a resume in a prior session
-      if (!existing) {
-        upsertPayload.headline = "";
-        upsertPayload.bio = "";
-      }
-
-      const { data, error: err } = await supabase
-        .from("profiles")
-        .upsert(upsertPayload, { onConflict: "user_id" })
-        .select()
-        .single();
+      });
       
-      if (err) {
-        // PostgREST 409 Conflict usually means the handle is already taken by another user_id
-        if (err.code === "23505") {
-          throw new Error("This handle is already taken. Please try another one.");
-        }
-        throw err;
-      }
-      
-      const { setProfile } = useProfileStore.getState();
-      setProfile(data);
       setOnboardingStep("dob");
       router.push("/(onboarding)/dob");
     } catch (e: any) {
@@ -148,6 +113,7 @@ export default function HandleScreen() {
       setLoading(false);
     }
   };
+
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>

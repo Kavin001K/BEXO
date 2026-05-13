@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
@@ -70,11 +69,7 @@ export default function DobScreen() {
     setLoading(true);
     try {
       const isoDate = `${parsedDate.getFullYear()}-${String(parsedDate.getMonth() + 1).padStart(2, "0")}-${String(parsedDate.getDate()).padStart(2, "0")}`;
-      const { error: err } = await supabase
-        .from("profiles")
-        .update({ dob: isoDate })
-        .eq("user_id", user?.id ?? "");
-      if (err) throw err;
+      await updateProfile({ dob: isoDate });
       setOnboardingStep("resume");
       router.push("/(onboarding)/resume");
     } catch {
@@ -85,6 +80,7 @@ export default function DobScreen() {
       setLoading(false);
     }
   };
+
 
   const handleSkip = () => {
     setOnboardingStep("resume");
