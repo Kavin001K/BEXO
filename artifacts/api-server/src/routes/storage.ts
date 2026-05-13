@@ -21,8 +21,21 @@ const r2 = new S3Client({
   forcePathStyle: true,
 });
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+/** Prefer GOOGLE_API_KEY; GEMINI_API_KEY is a common alias (e.g. Edge Functions). */
+function resolveGoogleApiKey(): string {
+  const k =
+    process.env.GOOGLE_API_KEY?.trim() ||
+    process.env.GEMINI_API_KEY?.trim() ||
+    "";
+  return k;
+}
+
+function getGeminiModel() {
+  const key = resolveGoogleApiKey();
+  if (!key) return null;
+  const genAI = new GoogleGenerativeAI(key);
+  return genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+}
 
 // Public base URL for the R2 bucket (if a custom domain is configured on the bucket, use that instead)
 const R2_PUBLIC_BASE = process.env.R2_PUBLIC_URL ?? `${R2_ENDPOINT}/${R2_BUCKET_NAME}`;
@@ -104,6 +117,15 @@ router.post("/parse-pdf", raw({ type: "*/*", limit: "15mb" }), async (req, res) 
       return;
     }
 
+    const model = getGeminiModel();
+    if (!model) {
+      res.status(503).json({
+        error:
+          "AI PDF extraction is not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY on the API server (backend.mybexo.com).",
+      });
+      return;
+    }
+
     const result = await model.generateContent([
       {
         inlineData: {
@@ -164,8 +186,12 @@ router.post("/parse-resume", async (req, res) => {
       return;
     }
 
-    if (!process.env.GOOGLE_API_KEY) {
-      res.status(500).json({ error: "AI service not configured on the server." });
+    const model = getGeminiModel();
+    if (!model) {
+      res.status(503).json({
+        error:
+          "AI service not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY on the API server.",
+      });
       return;
     }
 
@@ -250,8 +276,12 @@ router.post("/generate-bio", async (req, res) => {
       return;
     }
 
-    if (!process.env.GOOGLE_API_KEY) {
-      res.status(500).json({ error: "AI service not configured on the server." });
+    const model = getGeminiModel();
+    if (!model) {
+      res.status(503).json({
+        error:
+          "AI service not configured. Set GOOGLE_API_KEY or GEMINI_API_KEY on the API server.",
+      });
       return;
     }
 

@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
@@ -74,6 +75,14 @@ export default function HandleScreen() {
     setHandle(val);
     setAvailable(null);
     if (val.length >= 3) checkAvailability(val);
+  };
+
+  const handleBack = () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setOnboardingStep("photo");
+    router.replace("/(onboarding)/photo");
   };
 
   const handleContinue = async () => {
@@ -157,6 +166,20 @@ export default function HandleScreen() {
           },
         ]}
       >
+        <TouchableOpacity
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to edit profile photo and email"
+          style={styles.backRow}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="arrow-left" size={22} color={colors.primary} />
+          <Text style={[styles.backLabel, { color: colors.foreground }]}>Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.backHint, { color: colors.mutedForeground }]}>
+          Edit photo or email
+        </Text>
+
         <View style={styles.headerRow}>
           <Image 
             source={require("../../assets/images/icon.png")} 
@@ -277,6 +300,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 30,
     gap: 20,
   },
+  backRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    alignSelf: "flex-start",
+  },
+  backLabel: { fontSize: 17, fontWeight: "600" },
+  backHint: { fontSize: 13, lineHeight: 18, marginBottom: 4 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",

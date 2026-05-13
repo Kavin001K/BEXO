@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -48,6 +49,14 @@ export default function PhotoScreen() {
       setImageUri(result.assets[0].uri);
       setError("");
     }
+  };
+
+  const handleBack = () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setOnboardingStep("email");
+    router.replace("/(onboarding)/email");
   };
 
   const takePhoto = async () => {
@@ -102,6 +111,20 @@ export default function PhotoScreen() {
           },
         ]}
       >
+        <TouchableOpacity
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to edit email"
+          style={styles.backRow}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="arrow-left" size={22} color={colors.primary} />
+          <Text style={[styles.backLabel, { color: colors.foreground }]}>Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.backHint, { color: colors.mutedForeground }]}>
+          Edit email address
+        </Text>
+
         <View style={styles.stepRow}>
           <View style={[styles.dot, { backgroundColor: colors.border }]} />
           <View style={[styles.dot, { backgroundColor: colors.primary, width: 30 }]} />
@@ -205,6 +228,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   glow: { position: "absolute", top: 0, left: 0, right: 0, height: 280 },
   scroll: { paddingHorizontal: 28, gap: 18, alignItems: "stretch" },
+  backRow: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start" },
+  backLabel: { fontSize: 17, fontWeight: "600" },
+  backHint: { fontSize: 13, lineHeight: 18, marginBottom: 8 },
   stepRow: { flexDirection: "row", gap: 6, marginBottom: 8 },
   dot: { width: 20, height: 4, borderRadius: 2 },
   headline: { fontSize: 30, fontWeight: "800", letterSpacing: -0.4 },

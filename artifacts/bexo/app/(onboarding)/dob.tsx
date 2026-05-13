@@ -1,4 +1,5 @@
 import { Feather } from "@expo/vector-icons";
+import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState, useRef } from "react";
@@ -9,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
@@ -89,6 +91,14 @@ export default function DobScreen() {
     router.push("/(onboarding)/resume");
   };
 
+  const handleBack = () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setOnboardingStep("handle");
+    router.replace("/(onboarding)/handle");
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
@@ -106,6 +116,20 @@ export default function DobScreen() {
           },
         ]}
       >
+        <TouchableOpacity
+          onPress={handleBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back to edit your name and site URL"
+          style={styles.backRow}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Feather name="arrow-left" size={22} color={colors.primary} />
+          <Text style={[styles.backLabel, { color: colors.foreground }]}>Back</Text>
+        </TouchableOpacity>
+        <Text style={[styles.backHint, { color: colors.mutedForeground }]}>
+          Edit your URL, name, photo, or email
+        </Text>
+
         {/* Step indicator */}
         <View style={styles.stepRow}>
           {[0, 1, 2, 3, 4].map((i) => (
@@ -243,6 +267,9 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   glow: { position: "absolute", top: 0, left: 0, right: 0, height: 280 },
   scroll: { paddingHorizontal: 28, gap: 18 },
+  backRow: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start" },
+  backLabel: { fontSize: 17, fontWeight: "600" },
+  backHint: { fontSize: 13, lineHeight: 18, marginBottom: 8 },
   stepRow: { flexDirection: "row", gap: 6, marginBottom: 8 },
   dot: { width: 20, height: 4, borderRadius: 2 },
   headline: { fontSize: 30, fontWeight: "800", letterSpacing: -0.4 },
