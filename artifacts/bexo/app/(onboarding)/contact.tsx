@@ -30,18 +30,9 @@ export default function ContactScreen() {
   const { user, setCollectedEmail, setCollectedPhone } = useAuthStore();
   const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
 
-  const needsPhone = !!user?.email && !user?.phone;
-  const needsEmail = !!user?.phone && !user?.email;
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  // If user already has both, skip to next
-  useEffect(() => {
-    if (user?.email && user?.phone) {
-      handleSuccess();
-    }
-  }, [user]);
 
   const handleSuccess = () => {
     setOnboardingStep("photo");
@@ -50,21 +41,13 @@ export default function ContactScreen() {
 
   const validate = () => {
     if (!value.trim()) {
-      setError(`Please enter your ${needsPhone ? "phone number" : "email address"}`);
+      setError("Please enter your email address");
       return false;
     }
-    if (needsPhone) {
-      // Basic phone regex
-      if (!/^\+?[1-9]\d{1,14}$/.test(value.trim().replace(/\s/g, ""))) {
-        setError("Please enter a valid phone number with country code (e.g. +1...)");
-        return false;
-      }
-    } else {
-      // Email regex
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
-        setError("Please enter a valid email address");
-        return false;
-      }
+    // Email regex
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
+      setError("Please enter a valid email address");
+      return false;
     }
     return true;
   };
@@ -77,35 +60,31 @@ export default function ContactScreen() {
 
     try {
       const cleanValue = value.trim();
-      const column = needsPhone ? "phone" : "email";
 
       // 1. Check uniqueness in profiles table
       const { data: existing, error: checkError } = await supabase
         .from("profiles")
         .select("id")
-        .eq(column, cleanValue)
+        .eq("email", cleanValue)
         .neq("user_id", user?.id)
         .maybeSingle();
 
       if (checkError) throw checkError;
       if (existing) {
-        throw new Error(`This ${column} is already linked to another BEXO account. Please use a different one.`);
+        throw new Error("This email is already linked to another BEXO account. Please use a different one.");
       }
 
       // 2. Save to store for persistence during onboarding
-      if (needsPhone) {
-        setCollectedPhone(cleanValue);
-      } else {
-        setCollectedEmail(cleanValue);
-      }
+      setCollectedEmail(cleanValue);
 
       // 3. Create/Update profile record
       const payload: any = {
         user_id: user?.id,
-        [column]: cleanValue,
+        email: cleanValue,
+        phone: user?.phone || null,
+        email_verified: true, // Mark as verified to allow progression
       };
       
-      // Ensure we don't overwrite if profile exists
       const { error: upsertError } = await supabase
         .from("profiles")
         .upsert(payload, { onConflict: "user_id" });
@@ -123,7 +102,7 @@ export default function ContactScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <LinearGradient
-        colors={[needsPhone ? "#6AFAFA18" : "#FA6AFA18", "transparent"]}
+        colors={["#FA6AFA18", "transparent"]}
         style={styles.glow}
       />
       <KeyboardAwareScrollViewCompat
@@ -143,22 +122,20 @@ export default function ContactScreen() {
         </View>
 
         <Text style={[styles.headline, { color: colors.foreground }]}>
-          {needsPhone ? "How can we reach you?" : "What's your email?"}
+          What's your email?
         </Text>
         <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          {needsPhone
-            ? "We'll send a quick verification code to keep your account secure."
-            : "We'll send you updates about your site and new opportunities."}
+          We'll use this to send you important updates about your website.
         </Text>
 
         <View style={styles.field}>
           <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>
-            {needsPhone ? "Phone Number" : "Email Address"}
+            Email Address
           </Text>
           <View style={styles.inputContainer}>
             <View style={[styles.iconBox, { backgroundColor: colors.surface }]}>
               <Feather 
-                name={needsPhone ? "phone" : "mail"} 
+                name="mail" 
                 size={18} 
                 color={colors.primary} 
               />
@@ -172,11 +149,11 @@ export default function ContactScreen() {
                   color: colors.foreground,
                 },
               ]}
-              placeholder={needsPhone ? "+1 234 567 8900" : "you@example.com"}
+              placeholder="you@example.com"
               placeholderTextColor={colors.mutedForeground}
               value={value}
               onChangeText={(t) => { setValue(t); setError(""); }}
-              keyboardType={needsPhone ? "phone-pad" : "email-address"}
+              keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
               selectionColor={colors.primary}

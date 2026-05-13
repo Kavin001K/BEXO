@@ -15,16 +15,34 @@ export default function RootIndex() {
   useEffect(() => {
     if (!isAuthLoading && !isProfileLoading) {
       if (session) {
-        if (profile?.handle && onboardingStep === "completed") {
+        const isEmailVerified = profile?.email_verified || false;
+        
+        if (onboardingStep === "completed") {
           router.replace("/(main)/dashboard");
-        } else {
+        } else if (!isEmailVerified || onboardingStep === "email") {
           router.replace("/(onboarding)/contact");
+        } else {
+          // Map remaining steps
+          const stepRoutes: Record<string, string> = {
+            photo: "/(onboarding)/photo",
+            handle: "/(onboarding)/handle",
+            dob: "/(onboarding)/dob",
+            resume: "/(onboarding)/resume",
+            manual: "/(onboarding)/manual",
+            theme: "/(onboarding)/theme",
+            font: "/(onboarding)/font",
+            preference: "/(onboarding)/preference",
+            generating: "/(onboarding)/generating",
+          };
+          
+          const targetRoute = stepRoutes[onboardingStep] || "/(onboarding)/handle";
+          router.replace(targetRoute as any);
         }
       } else {
         router.replace("/(auth)");
       }
     }
-  }, [isAuthLoading, isProfileLoading, session, profile?.handle, onboardingStep]);
+  }, [isAuthLoading, isProfileLoading, session, onboardingStep, profile?.email_verified]);
 
   return <View style={{ flex: 1, backgroundColor: "#0A0A0F" }} />;
 }
