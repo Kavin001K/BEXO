@@ -1,7 +1,8 @@
+import { randomUUID } from "expo-crypto";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
+import { createEncryptedJSONStorage } from "@/lib/zustandEncryptedStorage";
 import type { ParsedResume } from "@/services/resumeParser";
 import { sanitizeError } from "@/lib/errorUtils";
 import { validateProfileFieldPatch } from "@/lib/profileFields";
@@ -170,6 +171,18 @@ interface ProfileState {
   mergeDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
   refreshFromDB: () => Promise<void>;
   reset: () => void;
+}
+
+const profilePersistStorage = createEncryptedJSONStorage();
+
+function stripEducationForDb(i: Education) {
+  const { start_month, end_month, description, ...rest } = i as any;
+  return rest;
+}
+
+function stripExperienceForDb(i: Experience) {
+  const { start_month, start_year, end_month, end_year, ...rest } = i as any;
+  return rest;
 }
 
 export const useProfileStore = create<ProfileState>()(
@@ -462,8 +475,14 @@ export const useProfileStore = create<ProfileState>()(
       bulkSaveEducation: async (items: Education[]) => {
         const profile = get().profile;
         if (!profile || items.length === 0) return;
-        const payload = items.map(i => ({ ...i, profile_id: profile.id }));
-        const { error } = await supabase.from("education").insert(payload);
+        const payload = items.map((i) => ({
+          ...stripEducationForDb(i),
+          id: i.id ?? randomUUID(),
+          profile_id: profile.id,
+        }));
+        const { error } = await supabase
+          .from("education")
+          .upsert(payload, { onConflict: "id" });
         if (error) throw error;
         await get().refreshFromDB();
       },
@@ -471,8 +490,14 @@ export const useProfileStore = create<ProfileState>()(
       bulkSaveExperiences: async (items: Experience[]) => {
         const profile = get().profile;
         if (!profile || items.length === 0) return;
-        const payload = items.map(i => ({ ...i, profile_id: profile.id }));
-        const { error } = await supabase.from("experiences").insert(payload);
+        const payload = items.map((i) => ({
+          ...stripExperienceForDb(i),
+          id: i.id ?? randomUUID(),
+          profile_id: profile.id,
+        }));
+        const { error } = await supabase
+          .from("experiences")
+          .upsert(payload, { onConflict: "id" });
         if (error) throw error;
         await get().refreshFromDB();
       },
@@ -480,8 +505,14 @@ export const useProfileStore = create<ProfileState>()(
       bulkSaveProjects: async (items: Project[]) => {
         const profile = get().profile;
         if (!profile || items.length === 0) return;
-        const payload = items.map(i => ({ ...i, profile_id: profile.id }));
-        const { error } = await supabase.from("projects").insert(payload);
+        const payload = items.map((i) => ({
+          ...i,
+          id: i.id ?? randomUUID(),
+          profile_id: profile.id,
+        }));
+        const { error } = await supabase
+          .from("projects")
+          .upsert(payload, { onConflict: "id" });
         if (error) throw error;
         await get().refreshFromDB();
       },
@@ -489,8 +520,15 @@ export const useProfileStore = create<ProfileState>()(
       bulkSaveSkills: async (items: Skill[]) => {
         const profile = get().profile;
         if (!profile || items.length === 0) return;
-        const payload = items.map(i => ({ ...i, profile_id: profile.id }));
-        const { error } = await supabase.from("skills").insert(payload);
+        const payload = items.map((i) => ({
+          profile_id: profile.id,
+          name: i.name,
+          category: i.category,
+          level: i.level,
+        }));
+        const { error } = await supabase
+          .from("skills")
+          .upsert(payload, { onConflict: "profile_id,name" });
         if (error) throw error;
         await get().refreshFromDB();
       },
@@ -498,8 +536,14 @@ export const useProfileStore = create<ProfileState>()(
       bulkSaveResearch: async (items: Research[]) => {
         const profile = get().profile;
         if (!profile || items.length === 0) return;
-        const payload = items.map(i => ({ ...i, profile_id: profile.id }));
-        const { error } = await supabase.from("research").insert(payload);
+        const payload = items.map((i) => ({
+          ...i,
+          id: i.id ?? randomUUID(),
+          profile_id: profile.id,
+        }));
+        const { error } = await supabase
+          .from("research")
+          .upsert(payload, { onConflict: "id" });
         if (error) throw error;
         await get().refreshFromDB();
       },
@@ -508,32 +552,24 @@ export const useProfileStore = create<ProfileState>()(
         const profile = get().profile;
         if (!profile) throw new Error("No profile loaded");
 
-        try {
-          await get().updateProfile({
-            resume_url: resumePath,
-            full_name: parsed.full_name || profile.full_name,
-            headline: parsed.headline || profile.headline,
-            bio: parsed.bio || profile.bio,
-          });
+        const { error } = await supabase.rpc("replace_profile_resume_data", {
+          p_profile_id: profile.id,
+          p_resume_url: resumePath,
+          p_full_name: parsed.full_name || profile.full_name,
+          p_headline: parsed.headline || profile.headline,
+          p_bio: parsed.bio || profile.bio,
+          p_education: parsed.education ?? [],
+          p_experiences: parsed.experiences ?? [],
+          p_projects: parsed.projects ?? [],
+          p_skills: parsed.skills ?? [],
+        });
 
-          await Promise.all([
-            supabase.from("education").delete().eq("profile_id", profile.id),
-            supabase.from("experiences").delete().eq("profile_id", profile.id),
-            supabase.from("projects").delete().eq("profile_id", profile.id),
-            supabase.from("skills").delete().eq("profile_id", profile.id),
-          ]);
-
-          const tasks: Promise<any>[] = [];
-          if (parsed.education?.length)   tasks.push(get().bulkSaveEducation(parsed.education));
-          if (parsed.experiences?.length) tasks.push(get().bulkSaveExperiences(parsed.experiences));
-          if (parsed.projects?.length)    tasks.push(get().bulkSaveProjects(parsed.projects));
-          if (parsed.skills?.length)      tasks.push(get().bulkSaveSkills(parsed.skills));
-
-          await Promise.all(tasks);
-        } catch (e) {
-          console.error("[ProfileStore] replaceAllData failed:", e);
-          throw e;
+        if (error) {
+          console.error("[ProfileStore] replaceAllData RPC failed:", error);
+          throw error;
         }
+
+        await get().refreshFromDB();
       },
 
       mergeDataFromResume: async (parsed: ParsedResume, resumePath: string) => {
@@ -577,7 +613,7 @@ export const useProfileStore = create<ProfileState>()(
     }),
     {
       name: "bexo-profile-storage",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => profilePersistStorage),
       partialize: (state) => ({
         onboardingStep: state.onboardingStep,
         manualReviewStepIndex: state.manualReviewStepIndex,

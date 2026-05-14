@@ -2,9 +2,38 @@ import { Session, User } from "@supabase/supabase-js";
 import { router } from "expo-router";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
+import { createEncryptedJSONStorage } from "@/lib/zustandEncryptedStorage";
 import { useProfileStore } from "./useProfileStore";
+
+const authPersistStorage = createEncryptedJSONStorage();
+
+/** Single subscription — avoids duplicate listeners (e.g. React Strict Mode). */
+let supabaseAuthSubscription: { unsubscribe: () => void } | null = null;
+
+function ensureSupabaseAuthListener() {
+  if (supabaseAuthSubscription || !isSupabaseConfigured) return;
+  const { data } = supabase.auth.onAuthStateChange(async (event, session) => {
+    useAuthStore.setState({
+      session,
+      user: session?.user ?? null,
+    });
+
+    if (event === "SIGNED_IN" && session?.user) {
+      const user = session.user;
+      const isGoogleUser = user.app_metadata?.provider === "google";
+      if (isGoogleUser) {
+        await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
+      }
+      useProfileStore.getState().fetchProfile(user.id);
+    } else if (event === "SIGNED_OUT" || event === "USER_UPDATED") {
+      if (event === "SIGNED_OUT") {
+        useProfileStore.getState().reset();
+      }
+    }
+  });
+  supabaseAuthSubscription = data.subscription;
+}
 
 const OTP_EXPIRY_MS = 10 * 60 * 1000;
 
@@ -53,7 +82,7 @@ async function handleGoogleAccountMergeCheck(
     .eq("email", googleEmail)
     .eq("email_verified", true)
     .neq("user_id", googleUserId)
-    .single();
+    .maybeSingle();
 
   if (existingProfile) {
     console.log(
@@ -143,22 +172,7 @@ export const useAuthStore = create<AuthState>()(
 
       set({ isLoading: false });
 
-      supabase.auth.onAuthStateChange(async (event, session) => {
-        set({ session, user: session?.user ?? null });
-
-        if (event === "SIGNED_IN" && session?.user) {
-          const user = session.user;
-          const isGoogleUser = user.app_metadata?.provider === "google";
-          if (isGoogleUser) {
-            await handleGoogleAccountMergeCheck(user.id, user.email ?? "");
-          }
-          useProfileStore.getState().fetchProfile(user.id);
-        } else if (event === "SIGNED_OUT" || event === "USER_UPDATED") {
-          if (event === "SIGNED_OUT") {
-            useProfileStore.getState().reset();
-          }
-        }
-      });
+      ensureSupabaseAuthListener();
     } catch (err: any) {
       console.error("[BEXO Auth] Unexpected init failure:", err);
       set({ isLoading: false });
@@ -171,7 +185,7 @@ export const useAuthStore = create<AuthState>()(
   setDataConsentAccepted: (val) => set({ dataConsentAccepted: val }),
 }), {
   name: "bexo-auth-storage",
-  storage: createJSONStorage(() => AsyncStorage),
+  storage: createJSONStorage(() => authPersistStorage),
   partialize: (state) => ({
     phoneNumber: state.phoneNumber,
     collectedEmail: state.collectedEmail,

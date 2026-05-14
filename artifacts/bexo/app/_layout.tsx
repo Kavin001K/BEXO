@@ -43,6 +43,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   const initialize = useAuthStore((s) => s.initialize);
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
   const [fontsReady, setFontsReady] = useState(false);
 
   useEffect(() => {
@@ -77,10 +78,12 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
-    if (fontsReady) {
-      SplashScreen.hideAsync();
+    if (fontsReady && !isAuthLoading) {
+      SplashScreen.hideAsync().catch(() => {
+        /* already hidden or unavailable */
+      });
     }
-  }, [fontsReady]);
+  }, [fontsReady, isAuthLoading]);
 
   if (!fontsReady) return null;
 

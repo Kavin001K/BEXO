@@ -9,7 +9,6 @@ import { Platform } from "react-native";
 import * as ExpoCrypto from "expo-crypto";
 
 if (Platform.OS !== "web") {
-  // Ensure crypto exists on all global objects
   if (typeof global.crypto === "undefined") {
     (global as any).crypto = {} as Crypto;
   }
@@ -22,12 +21,10 @@ if (Platform.OS !== "web") {
 
   const globalCrypto = global.crypto as any;
 
-  // Polyfill getRandomValues
   if (typeof globalCrypto.getRandomValues === "undefined") {
     globalCrypto.getRandomValues = ExpoCrypto.getRandomValues;
   }
 
-  // Polyfill subtle.digest (critical for PKCE SHA-256)
   if (typeof globalCrypto.subtle === "undefined") {
     globalCrypto.subtle = {
       digest: async (
@@ -43,18 +40,10 @@ if (Platform.OS !== "web") {
           algoMap[algorithm] ?? ExpoCrypto.CryptoDigestAlgorithm.SHA256;
         const inputBytes =
           data instanceof Uint8Array ? data : new Uint8Array(data);
-        
-        // Manual hex conversion to avoid 'Buffer' dependency on native
-        const hex = Array.from(inputBytes)
-          .map(b => b.toString(16).padStart(2, '0'))
-          .join('');
-
-        const digestHex = await ExpoCrypto.digestStringAsync(mapped, hex, {
-          encoding: ExpoCrypto.CryptoEncoding.HEX
-        });
-        
-        const bytes = new Uint8Array(digestHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-        return bytes.buffer as ArrayBuffer;
+        return ExpoCrypto.digest(
+          mapped,
+          inputBytes as unknown as BufferSource
+        );
       },
     };
   }

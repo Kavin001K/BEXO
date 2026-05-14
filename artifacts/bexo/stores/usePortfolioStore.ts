@@ -188,21 +188,37 @@ export const usePortfolioStore = create<PortfolioState>()(
   triggerBuild: async (profileId) => {
     if (triggerBuildInFlightFor === profileId) return;
     triggerBuildInFlightFor = profileId;
+
+    const markBuildFailed = async (buildId: string | undefined) => {
+      if (!buildId) return;
+      await supabase
+        .from("site_builds")
+        .update({ status: "failed" })
+        .eq("id", buildId);
+    };
+
     try {
       set({ buildStatus: "queued" });
-      const { data: buildData } = await supabase
+      const { data: buildData, error: insertErr } = await supabase
         .from("site_builds")
         .insert({ profile_id: profileId, status: "queued" })
         .select()
         .single();
-      if (buildData) set({ currentBuild: buildData });
+
+      if (insertErr || !buildData?.id) {
+        console.warn("[Portfolio] site_builds insert failed:", insertErr?.message);
+        set({ buildStatus: "idle", currentBuild: null });
+        return;
+      }
+
+      set({ currentBuild: buildData });
 
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
-      if (!buildData?.id) return;
-
       if (!token) {
         console.warn("[Portfolio] No session token — skipping n8n trigger-build proxy");
+        await markBuildFailed(buildData.id);
+        set({ buildStatus: "failed", currentBuild: buildData });
         return;
       }
 
@@ -215,9 +231,13 @@ export const usePortfolioStore = create<PortfolioState>()(
         if (!res.ok) {
           const payload = await res.json().catch(() => ({}));
           console.warn("[Portfolio] trigger-build API failed:", res.status, payload);
+          await markBuildFailed(buildData.id);
+          set({ buildStatus: "failed", currentBuild: buildData });
         }
       } catch (e) {
         console.warn("[Portfolio] trigger-build network error:", e);
+        await markBuildFailed(buildData.id);
+        set({ buildStatus: "failed", currentBuild: buildData });
       }
     } finally {
       triggerBuildInFlightFor = null;
