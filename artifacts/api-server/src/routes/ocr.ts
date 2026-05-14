@@ -1,11 +1,8 @@
 import { Router } from "express";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { uploadToR2 } from "../lib/r2";
+import { callGemini } from "../lib/ai";
 
 const router = Router();
-
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY ?? "");
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 const SCAN_PROMPT = `You are an expert at extracting achievement and education details from certificates and documents.
 Please analyze the attached document(s) and extract the key details.
@@ -60,10 +57,7 @@ router.post("/scan-attachment", async (req: any, res: any) => {
     }
 
     // 3. Call Gemini
-    console.log("[scan-attachment] Calling Gemini 1.5 Flash...");
-    const result = await model.generateContent(promptParts);
-    const response = await result.response;
-    const content = response.text().trim();
+    const content = await callGemini(promptParts);
     
     const clean = content.replace(/```json\n?|\n?```/g, "").trim();
     const parsed = JSON.parse(clean);
