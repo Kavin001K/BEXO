@@ -146,6 +146,11 @@ overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   esbuild: 0.27.3
 
+patchedDependencies:
+  expo-updates@0.27.5:
+    hash: 1e84f2f96c5d80e5197c0c66b1f380a3788b1f04ae62f708a8ef9d053353bda7
+    path: patches/expo-updates@0.27.5.patch
+
 importers:
 
   .:
@@ -266,8 +271,8 @@ importers:
         specifier: ~15.0.8
         version: 15.0.8(expo@54.0.34)(react@19.1.0)
       expo-updates:
-        specifier: ~0.27.0
-        version: 0.27.5(expo@54.0.34)(react@19.1.0)
+        specifier: 0.27.5
+        version: 0.27.5(patch_hash=1e84f2f96c5d80e5197c0c66b1f380a3788b1f04ae62f708a8ef9d053353bda7)(expo@54.0.34)(react@19.1.0)
       fs-extra:
         specifier: ^11.2.0
         version: 11.3.4
@@ -11125,7 +11130,7 @@ snapshots:
     dependencies:
       expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
 
-  expo-updates@0.27.5(expo@54.0.34)(react@19.1.0):
+  expo-updates@0.27.5(patch_hash=1e84f2f96c5d80e5197c0c66b1f380a3788b1f04ae62f708a8ef9d053353bda7)(expo@54.0.34)(react@19.1.0):
     dependencies:
       '@expo/code-signing-certificates': 0.0.6
       '@expo/config': 10.0.11

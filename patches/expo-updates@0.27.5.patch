@@ -1,0 +1,14 @@
+diff --git a/expo-updates-gradle-plugin/build.gradle.kts b/expo-updates-gradle-plugin/build.gradle.kts
+index c3e13d2dcfbca87b38ba346733604932cc04673b..f051a140ba15939ec63ec595fe3c2791908e024a 100644
+--- a/expo-updates-gradle-plugin/build.gradle.kts
++++ b/expo-updates-gradle-plugin/build.gradle.kts
+@@ -1,7 +1,8 @@
+ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+ 
+ plugins {
+-  kotlin("jvm") version("1.9.25")
++  // Must match @react-native/gradle-plugin (RN 0.81 uses Kotlin 2.1.20); 1.9.x cannot read RN plugin metadata.
++  kotlin("jvm") version("2.1.20")
+   id("java-gradle-plugin")
+ }
+ 
