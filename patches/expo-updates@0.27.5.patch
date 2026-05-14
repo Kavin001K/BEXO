@@ -7,8 +7,8 @@ index c3e13d2dcfbca87b38ba346733604932cc04673b..5d075d44a03d51bad6cf944f7d2dec84
  
  plugins {
 -  kotlin("jvm") version("1.9.25")
-+  // 2.1.x for RN 0.81 metadata; use 2.1.0 so Expo's KSP 2.1.0-1.0.29 stays compatible (2.1.20 breaks KSP).
-+  kotlin("jvm") version("2.1.0")
++  // Match RN 0.81 kotlin (2.1.20); ExpoRootProject KSPLookup maps 2.1.20 to KSP 2.1.20-2.0.1.
++  kotlin("jvm") version("2.1.20")
    id("java-gradle-plugin")
  }
  

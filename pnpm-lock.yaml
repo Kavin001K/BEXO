@@ -148,7 +148,7 @@ overrides:
 
 patchedDependencies:
   expo-updates@0.27.5:
-    hash: 84546643a0ebe00b66e2f52ebec50f2fd4ee0f45d40c211d79cd5bc3a0d88bda
+    hash: d000a4370521d616c661aa3b97e02bb5dbf883f0c88a678b2720f3130f4c966e
     path: patches/expo-updates@0.27.5.patch
 
 importers:
@@ -272,7 +272,7 @@ importers:
         version: 15.0.8(expo@54.0.34)(react@19.1.0)
       expo-updates:
         specifier: 0.27.5
-        version: 0.27.5(patch_hash=84546643a0ebe00b66e2f52ebec50f2fd4ee0f45d40c211d79cd5bc3a0d88bda)(expo@54.0.34)(react@19.1.0)
+        version: 0.27.5(patch_hash=d000a4370521d616c661aa3b97e02bb5dbf883f0c88a678b2720f3130f4c966e)(expo@54.0.34)(react@19.1.0)
       fs-extra:
         specifier: ^11.2.0
         version: 11.3.4
@@ -11130,7 +11130,7 @@ snapshots:
     dependencies:
       expo: 54.0.34(@babel/core@7.29.0)(@expo/metro-runtime@6.1.2)(expo-router@6.0.23)(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)(typescript@5.9.3)
 
-  expo-updates@0.27.5(patch_hash=84546643a0ebe00b66e2f52ebec50f2fd4ee0f45d40c211d79cd5bc3a0d88bda)(expo@54.0.34)(react@19.1.0):
+  expo-updates@0.27.5(patch_hash=d000a4370521d616c661aa3b97e02bb5dbf883f0c88a678b2720f3130f4c966e)(expo@54.0.34)(react@19.1.0):
     dependencies:
       '@expo/code-signing-certificates': 0.0.6
       '@expo/config': 10.0.11

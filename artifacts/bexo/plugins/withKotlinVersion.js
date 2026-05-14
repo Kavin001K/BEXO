@@ -3,7 +3,7 @@ const { withProjectBuildGradle } = require('@expo/config-plugins');
 /**
  * Force the Kotlin version in the root build.gradle buildscript.
  */
-const withKotlinVersion = (config, version = '2.1.0') => {
+const withKotlinVersion = (config, version = '2.1.20') => {
   return withProjectBuildGradle(config, (config) => {
     if (config.modResults.language === 'groovy') {
       config.modResults.contents = setKotlinVersion(
