@@ -71,6 +71,9 @@ export interface Profile {
   phone_verified?: boolean;
   email_verified?: boolean;
   is_published: boolean;
+  /** Public portfolio visibility (mirrors product UI; map to DB if column exists). */
+  is_public?: boolean | null;
+  notifications_enabled?: boolean | null;
   portfolio_theme: string;
   dob?: string | null;
   portfolio_font?: string | null;

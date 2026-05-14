@@ -5,10 +5,12 @@
   },
   "build": {
     "development": {
+      "environment": "development",
       "developmentClient": true,
       "distribution": "internal"
     },
     "preview": {
+      "environment": "preview",
       "android": {
         "image": "ubuntu-22.04-jdk-17-ndk-r26b",
         "buildType": "apk"
@@ -23,7 +25,12 @@
       }
     },
     "production": {
+      "environment": "production",
       "channel": "production",
+      "android": {
+        "image": "ubuntu-22.04-jdk-17-ndk-r26b",
+        "buildType": "apk"
+      },
       "env": {
         "EXPO_PUBLIC_SUPABASE_URL": "https://gtjbnvpvqzddkbatyqtr.supabase.co",
         "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0amJudnB2cXpkZGtiYXR5cXRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzM1MjIsImV4cCI6MjA5MzE0OTUyMn0.erIoHrwITtul-JY8y4wx0C0k0q37SQ0Ok7xYOXtWiBs",

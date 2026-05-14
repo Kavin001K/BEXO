@@ -2,50 +2,54 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 
 /**
+ * Strip trailing slashes so `${API_BASE_URL}/api/...` is always valid.
+ */
+function normalizeBaseUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+/**
  * Base URL for the BEXO API server.
  *
  * Priority:
- * 1. EXPO_PUBLIC_API_BASE_URL (explicit override, e.g. production)
- * 2. EXPO_PUBLIC_DOMAIN (Replit sets this for proxied dev URLs)
- * 3. Auto-detect: use Expo's debuggerHost IP for native, localhost for web
+ * 1. EXPO_PUBLIC_API_BASE_URL — always wins when set (EAS / .env production & preview builds).
+ * 2. In dev only: Expo debugger host → LAN IP :3000 (local api-server).
+ * 3. Web fallback localhost; native emulator fallback.
  */
 function getApiBaseUrl(): string {
-  // 1. For native dev (iOS/Android), prioritize auto-detecting the LAN IP.
-  // This is CRITICAL because the local server has the latest AI fixes.
+  const explicit = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (
+    explicit &&
+    (explicit.startsWith("https://") || explicit.startsWith("http://"))
+  ) {
+    let url = normalizeBaseUrl(explicit);
+    if (Platform.OS === "android" && url.includes("localhost")) {
+      url = url.replace("localhost", "10.0.2.2");
+    }
+    if (__DEV__) {
+      console.log(`[API] Using EXPO_PUBLIC_API_BASE_URL: ${url}`);
+    }
+    return url;
+  }
+
   const debuggerHost =
-    Constants.expoConfig?.hostUri ?? 
-    (Constants as any).manifest?.debuggerHost;
-  
-  if (debuggerHost && !process.env.EXPO_PUBLIC_FORCE_PROD) {
-    const ip = debuggerHost.split(":")[0]; 
+    Constants.expoConfig?.hostUri ?? (Constants as any).manifest?.debuggerHost;
+
+  if (
+    __DEV__ &&
+    debuggerHost &&
+    !process.env.EXPO_PUBLIC_FORCE_PROD
+  ) {
+    const ip = debuggerHost.split(":")[0];
     const url = `http://${ip}:3000`;
     console.log(`[API] Auto-detected local backend: ${url}`);
     return url;
   }
 
-  // 2. If an explicit PRODUCTION or remote URL is provided, use it.
-  if (
-    process.env.EXPO_PUBLIC_API_BASE_URL &&
-    process.env.EXPO_PUBLIC_API_BASE_URL.startsWith("https")
-  ) {
-    return process.env.EXPO_PUBLIC_API_BASE_URL;
-  }
-
-  // 3. If we are on web, localhost is fine for dev.
   if (Platform.OS === "web") {
-    return process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:3000";
+    return "http://localhost:3000";
   }
 
-  // 4. Fallback for Android emulator or specific overrides
-  if (process.env.EXPO_PUBLIC_API_BASE_URL) {
-    const url = process.env.EXPO_PUBLIC_API_BASE_URL;
-    if (Platform.OS === "android" && url.includes("localhost")) {
-      return url.replace("localhost", "10.0.2.2");
-    }
-    return url;
-  }
-
-  // 5. Ultimate fallback
   return Platform.OS === "android" ? "http://10.0.2.2:3000" : "http://localhost:3000";
 }
 
@@ -56,7 +60,9 @@ export async function apiFetch(
   options: RequestInit = {}
 ): Promise<Response> {
   const url = `${API_BASE_URL}/api${path}`;
-  console.log(`[API] Fetching: ${url}`, options.method ?? "GET");
+  if (__DEV__) {
+    console.log(`[API] Fetching: ${url}`, options.method ?? "GET");
+  }
 
   try {
     const res = await fetch(url, {
@@ -66,7 +72,9 @@ export async function apiFetch(
         ...(options.headers ?? {}),
       },
     });
-    console.log(`[API] Response: ${res.status} from ${url}`);
+    if (__DEV__) {
+      console.log(`[API] Response: ${res.status} from ${url}`);
+    }
     return res;
   } catch (error) {
     console.error(`[API] Network Error for ${url}:`, error);
