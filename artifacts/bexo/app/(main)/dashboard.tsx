@@ -69,7 +69,11 @@ const QuickAction = React.memo(function QuickAction({ icon, label, sublabel, onP
   return (
     <Animated.View entering={FadeInRight.delay(delay).springify()} style={style}>
       <TouchableOpacity
-        style={[S.quickAction, { backgroundColor: colors.card, borderColor: colors.border }]}
+        style={[
+          S.quickAction,
+          { backgroundColor: colors.card, borderColor: colors.border },
+          accent ? { borderLeftWidth: 3, borderLeftColor: accent } : null,
+        ]}
         onPress={() => {
           scale.value = withSequence(withTiming(0.96, { duration: 80 }), withTiming(1, { duration: 120 }));
           if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -202,6 +206,14 @@ export default function DashboardScreen() {
 
   return (
     <View style={[S.container, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={[colors.primary + "18", colors.background, colors.background]}
+        locations={[0, 0.22, 1]}
+        style={StyleSheet.absoluteFill}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0.45 }}
+        pointerEvents="none"
+      />
       <ScrollView
         contentContainerStyle={[S.scroll, { paddingTop: topPad + 16, paddingBottom: botPad }]}
         showsVerticalScrollIndicator={false}
@@ -488,7 +500,7 @@ const S = StyleSheet.create({
   avatarInitial: { fontSize: 20, fontWeight: "900" },
   appName: { fontSize: 11, fontWeight: "900", letterSpacing: 2, opacity: 0.8 },
   greeting: { fontSize: 14, fontWeight: "600", marginBottom: -2, opacity: 0.6 },
-  userName: { fontSize: 28, fontWeight: "900", letterSpacing: -0.8 },
+  userName: { fontSize: 32, fontWeight: "900", letterSpacing: -1 },
   liveCard: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     padding: 22, borderRadius: 24,
@@ -519,7 +531,7 @@ const S = StyleSheet.create({
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   addChip: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 22, borderWidth: 1 },
   addChipText: { fontSize: 13, fontWeight: "800" },
-  quickAction: { flexDirection: "row", alignItems: "center", gap: 14, padding: 18, borderRadius: 22, borderWidth: 1, elevation: 1 },
+  quickAction: { flexDirection: "row", alignItems: "center", gap: 14, padding: 18, borderRadius: 22, borderWidth: 1, overflow: "hidden" },
   qaIcon: { width: 48, height: 48, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   qaLabel: { fontSize: 16, fontWeight: "800", letterSpacing: -0.2 },
   qaSub: { fontSize: 13, marginTop: 2, opacity: 0.7 },

@@ -8,6 +8,7 @@ export default function OnboardingLayout() {
       <Stack.Screen name="handle" />
       <Stack.Screen name="dob" />
       <Stack.Screen name="resume" />
+      <Stack.Screen name="manual-review" />
       <Stack.Screen name="manual" />
       <Stack.Screen name="cards" />
       <Stack.Screen name="theme" />

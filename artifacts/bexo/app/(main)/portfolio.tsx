@@ -40,6 +40,14 @@ function displayHost(url: string) {
   }
 }
 
+function formatExpDateRange(exp: { start_date?: string; end_date?: string | null; is_current?: boolean }) {
+  const sy = (exp.start_date || "").slice(0, 4) || "—";
+  if (exp.is_current) return `${sy} — Present`;
+  const rawEnd = exp.end_date;
+  const ey = typeof rawEnd === "string" && rawEnd.length >= 4 ? rawEnd.slice(0, 4) : "";
+  return ey ? `${sy} — ${ey}` : sy;
+}
+
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -129,6 +137,13 @@ export default function PortfolioScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <LinearGradient
+        colors={[colors.primary + "12", "transparent"]}
+        style={styles.ambientTop}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        pointerEvents="none"
+      />
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -138,7 +153,10 @@ export default function PortfolioScreen() {
       >
         {/* Header */}
         <View style={styles.pageHeader}>
-          <Text style={[styles.pageTitle, { color: colors.foreground }]}>Portfolio</Text>
+          <View>
+            <Text style={[styles.pageKicker, { color: colors.mutedForeground }]}>Your public story</Text>
+            <Text style={[styles.pageTitle, { color: colors.foreground }]}>Portfolio</Text>
+          </View>
           <View style={styles.headerActions}>
             <TouchableOpacity
               style={[styles.actionBtn, { backgroundColor: colors.surface, borderColor: colors.border }]}
@@ -288,23 +306,26 @@ export default function PortfolioScreen() {
 
         {/* Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} style={styles.tabsContainer}>
-          {TABS.map((tab) => (
+          {TABS.map((tab) => {
+            const active = activeTab === tab.id;
+            return (
             <TouchableOpacity
               key={tab.id}
               style={[
                 styles.tab,
                 {
-                  backgroundColor: activeTab === tab.id ? colors.primary : colors.surface,
-                  borderColor:     activeTab === tab.id ? colors.primary : colors.border,
+                  backgroundColor: active ? colors.primary : colors.surface,
+                  borderColor: active ? colors.primary : colors.border,
                 },
               ]}
               onPress={() => setActiveTab(tab.id)}
             >
-              <Text style={[styles.tabLabel, { color: activeTab === tab.id ? "#fff" : colors.mutedForeground }]}>
+              <Text style={[styles.tabLabel, { color: active ? "#fff" : colors.mutedForeground }]}>
                 {tab.label}
               </Text>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </ScrollView>
 
         {/* Tab content */}
@@ -395,12 +416,7 @@ export default function PortfolioScreen() {
                     <View style={styles.dateRow}>
                       <Feather name="calendar" size={12} color={colors.mutedForeground} />
                       <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
-                        {exp.start_date}
-                        {exp.is_current
-                          ? " — Present"
-                          : "end_date" in exp && exp.end_date
-                            ? ` — ${exp.end_date}`
-                            : ""}
+                        {formatExpDateRange(exp)}
                       </Text>
                     </View>
                   </TouchableOpacity>
@@ -517,7 +533,7 @@ export default function PortfolioScreen() {
                   <View style={styles.dateRow}>
                     <Feather name="calendar" size={12} color={colors.mutedForeground} />
                     <Text style={[styles.itemDate, { color: colors.mutedForeground }]}>
-                      {exp.start_date} {exp.is_current ? "— Present" : ""}
+                      {formatExpDateRange(exp)}
                     </Text>
                   </View>
                   {exp.description ? (
@@ -656,9 +672,17 @@ const emptyStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  ambientTop: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 220,
+  },
   scroll: { paddingHorizontal: 20, gap: 16 },
-  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  pageTitle: { fontSize: 26, fontWeight: "800", letterSpacing: -0.3 },
+  pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+  pageKicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 4 },
+  pageTitle: { fontSize: 30, fontWeight: "900", letterSpacing: -0.8 },
   headerActions: { flexDirection: "row", gap: 8 },
   actionBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
@@ -666,11 +690,15 @@ const styles = StyleSheet.create({
   },
   actionLabel: { fontSize: 13, fontWeight: "600" },
   heroCard: {
-    borderRadius: 22,
+    borderRadius: 26,
     borderWidth: 1,
     padding: 22,
     gap: 0,
     overflow: "hidden",
+    ...Platform.select({
+      web: { boxShadow: "0 20px 50px rgba(0,0,0,0.12)" },
+      default: { shadowColor: "#000", shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.14, shadowRadius: 28, elevation: 8 },
+    }),
   },
   heroIdentityRow: {
     flexDirection: "row",
@@ -779,10 +807,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10,
   },
   socialLabel: { fontSize: 12, fontWeight: "600" },
-  tabsContainer: { marginTop: 4, marginBottom: 8 },
-  tabs: { gap: 10, paddingRight: 20 },
-  tab: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
-  tabLabel: { fontSize: 14, fontWeight: "700" },
+  tabsContainer: { marginTop: 8, marginBottom: 12 },
+  tabs: { gap: 10, paddingRight: 20, paddingVertical: 4 },
+  tab: { paddingHorizontal: 20, paddingVertical: 11, borderRadius: 999, borderWidth: 1 },
+  tabLabel: { fontSize: 13, fontWeight: "800" },
   section: { gap: 16 },
   sectionTitle: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
   titleWithIcon: { flexDirection: "row", alignItems: "center", gap: 8 },
@@ -791,7 +819,16 @@ const styles = StyleSheet.create({
   viewAll: { fontSize: 13, fontWeight: "700" },
   achievementRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   awardDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#6AFAD0" },
-  itemCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 6, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
+  itemCard: {
+    borderRadius: 20,
+    borderWidth: 1,
+    padding: 18,
+    gap: 6,
+    ...Platform.select({
+      web: { boxShadow: "0 8px 24px rgba(0,0,0,0.06)" },
+      default: { shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 12, elevation: 3 },
+    }),
+  },
   itemTitle: { fontSize: 16, fontWeight: "700", letterSpacing: -0.1 },
   itemTitleWrap: { flexShrink: 1 },
   itemSub: { fontSize: 14, fontWeight: "600" },

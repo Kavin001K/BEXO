@@ -24,7 +24,7 @@ export default function RootIndex() {
           // Resume from exactly where they left off
           const step = onboardingStep || "email";
           // Safety mapping: rename 'contact' to 'email' if needed, though we already renamed the file
-          const route = step === "completed" ? "email" : step;
+          const route = step === "completed" ? "email" : step === "manual_review" ? "manual-review" : step;
           router.replace(`/(onboarding)/${route}`);
         }
       } else {

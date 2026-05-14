@@ -136,10 +136,12 @@ export default function ResumeScreen() {
         await store.mergeDataFromResume(parsedData, uploadedPath);
       }
 
-      // Sync done, move forward
-      // Sync done, move to manual entry for review/edit
-      setOnboardingStep("manual");
-      router.push("/(onboarding)/manual");
+      await store.refreshFromDB();
+
+      // Resume data is in the profile — show 7-section summaries + terms before theme
+      setOnboardingStep("manual_review");
+      store.setManualReviewStepIndex(0);
+      router.push("/(onboarding)/manual-review");
     } catch (e: unknown) {
       console.error("[ResumeScreen] Save error:", e);
       setResumePipelineError(false);

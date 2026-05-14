@@ -101,7 +101,20 @@ interface ProfileState {
   skills: Skill[];
   research: Research[];
   isLoading: boolean;
-  onboardingStep: "email" | "photo" | "handle" | "dob" | "resume" | "manual" | "about" | "theme" | "font" | "preference" | "generating" | "completed";
+  onboardingStep:
+    | "email"
+    | "photo"
+    | "handle"
+    | "dob"
+    | "resume"
+    | "manual_review"
+    | "manual"
+    | "about"
+    | "theme"
+    | "font"
+    | "preference"
+    | "generating"
+    | "completed";
   parsedResumeData: Partial<{
     full_name: string;
     headline: string;
@@ -112,10 +125,13 @@ interface ProfileState {
     skills: Skill[];
     research: Research[];
   }> | null;
+  /** Persisted step in resume summary flow (0–6 = section summaries, 7 = terms). Survives app restart. */
+  manualReviewStepIndex: number;
 
   setProfile: (profile: Profile) => void;
   setOnboardingStep: (step: ProfileState["onboardingStep"]) => void;
   setParsedResumeData: (data: ProfileState["parsedResumeData"]) => void;
+  setManualReviewStepIndex: (index: number) => void;
   checkHandle: (handle: string) => Promise<boolean>;
   createProfile: (payload: any) => Promise<void>;
   fetchProfile: (userId: string) => Promise<void>;
@@ -165,10 +181,15 @@ export const useProfileStore = create<ProfileState>()(
       isLoading: false,
       onboardingStep: "email",
       parsedResumeData: null,
+      manualReviewStepIndex: 0,
 
       setProfile: (profile) => set({ profile }),
       setOnboardingStep: (step) => set({ onboardingStep: step }),
       setParsedResumeData: (data) => set({ parsedResumeData: data }),
+      setManualReviewStepIndex: (index) =>
+        set({
+          manualReviewStepIndex: Math.max(0, Math.min(7, Math.floor(Number.isFinite(index) ? index : 0))),
+        }),
 
       setEducation: (education) => set({ education }),
       setExperiences: (experiences) => set({ experiences }),
@@ -548,6 +569,7 @@ export const useProfileStore = create<ProfileState>()(
         onboardingStep: "email",
         parsedResumeData: null,
         isLoading: false,
+        manualReviewStepIndex: 0,
       }),
     }),
     {
@@ -555,6 +577,7 @@ export const useProfileStore = create<ProfileState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         onboardingStep: state.onboardingStep,
+        manualReviewStepIndex: state.manualReviewStepIndex,
         profile: state.profile,
         education: state.education,
         experiences: state.experiences,

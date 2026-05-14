@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Dimensions,
-  FlatList,
   Platform,
   ScrollView,
   StyleSheet,
@@ -10,13 +10,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Animated as RNAnimated } from "react-native";
-import Animated, { 
-  useSharedValue, 
-  useAnimatedStyle, 
-  withTiming, 
-  Easing,
-  runOnJS
+import Animated, {
+  FadeInDown,
+  cancelAnimation,
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withSpring,
+  withTiming,
 } from "react-native-reanimated";
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { YearPickerSheet } from "@/components/YearPickerSheet";
@@ -24,17 +27,58 @@ import { MonthPickerSheet } from "@/components/MonthPickerSheet";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useProfileStore, Education, Experience, Project, Research } from "@/stores/useProfileStore";
+import { useProfileStore, type Education, type Experience, type Project, type Research } from "@/stores/useProfileStore";
 import { apiFetch } from "@/lib/apiConfig";
 
 const { width: W, height: SCREEN_H } = Dimensions.get("window");
 
-// ─── Section config ───────────────────────────────────────────────────────────
+/** Snappy springs (Reanimated defaults tuned for step transitions). */
+const SPRING_SCREEN = { damping: 22, stiffness: 210, mass: 0.85 } as const;
+const SPRING_UI = { damping: 18, stiffness: 260, mass: 0.7 } as const;
+const SPRING_PROGRESS = { damping: 20, stiffness: 180 } as const;
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function monthIndexFromLabel(label: string): number {
+  const i = MONTHS.indexOf(label);
+  return i >= 0 ? i + 1 : 1;
+}
+
+/** ISO yyyy-mm-01 for Supabase experience rows. */
+function isoYearMonthFirst(year: string, monthLabel: string): string {
+  const y = (year || "").trim() || String(CY);
+  const m = monthIndexFromLabel(monthLabel || "Jan");
+  return `${y}-${pad2(m)}-01`;
+}
+
+function yearFromIso(iso: string | null | undefined): string {
+  if (!iso || typeof iso !== "string") return "";
+  const y = iso.split("-")[0];
+  return y && /^\d{4}$/.test(y) ? y : "";
+}
+
+function monthLabelFromIso(iso: string | null | undefined): string {
+  if (!iso || typeof iso !== "string") return "Jan";
+  const p = iso.split("-");
+  const mi = parseInt(p[1] ?? "1", 10);
+  if (Number.isNaN(mi) || mi < 1 || mi > 12) return "Jan";
+  return MONTHS[mi - 1] ?? "Jan";
+}
+
+function formatResearchPreview(description: string | null | undefined, max = 100): string {
+  const d = (description ?? "").trim();
+  if (!d) return "";
+  if (d.length <= max) return d;
+  return `${d.slice(0, max).trim()}…`;
+}
+
 const SECTIONS = [
   { id: 0, label: "About",      icon: "user"       as const,  color: "#FA6AB8" },
   { id: 1, label: "Education",  icon: "book-open" as const,  color: "#8B7CF8" },
@@ -72,28 +116,85 @@ const COMMON_TECH = [
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type EduEntry  = { institution: string; degree: string; field: string; start_year: string; end_year: string; description: string };
-type ExpEntry  = { company: string; role: string; start_month: string; start_year: string; end_month: string; end_year: string; is_current: boolean; description: string };
+type ExpEntry  = {
+  id?: string;
+  company: string;
+  role: string;
+  start_month: string;
+  start_year: string;
+  end_month: string;
+  end_year: string;
+  is_current: boolean;
+  description: string;
+};
 type ProjEntry = { id?: string; title: string; description: string; tech_stack: string[]; live_url: string; github_url: string; image_url: string };
 type ResEntry  = { title: string; subtitle: string; description: string; image_url: string };
 type ContactEntry = { phone: string; email: string; address: string };
 
 const newEdu  = (): EduEntry  => ({ institution: "", degree: "", field: "", start_year: "", end_year: "", description: "" });
-const newExp  = (): ExpEntry  => ({ company: "", role: "", start_month: "", start_year: "", end_month: "", end_year: "", is_current: false, description: "" });
+const newExp  = (): ExpEntry  => ({
+  company: "",
+  role: "",
+  start_month: "Jan",
+  start_year: "",
+  end_month: "Jan",
+  end_year: "",
+  is_current: false,
+  description: "",
+});
 const newProj = (): ProjEntry => ({ title: "", description: "", tech_stack: [], live_url: "", github_url: "", image_url: "" });
 const newRes  = (): ResEntry  => ({ title: "", subtitle: "", description: "", image_url: "" });
 const newContact = (): ContactEntry => ({ phone: "", email: "", address: "" });
 
+function experienceFormFromRecord(item: Experience): ExpEntry {
+  return {
+    id: item.id,
+    company: item.company ?? "",
+    role: item.role ?? "",
+    start_month: monthLabelFromIso(item.start_date),
+    start_year: yearFromIso(item.start_date),
+    end_month: item.end_date ? monthLabelFromIso(item.end_date) : "Jan",
+    end_year: item.end_date ? yearFromIso(item.end_date) : "",
+    is_current: !!item.is_current,
+    description: item.description ?? "",
+  };
+}
+
+function experiencePayloadFromForm(exp: ExpEntry): Experience {
+  return {
+    id: exp.id,
+    company: exp.company.trim(),
+    role: exp.role.trim(),
+    description: exp.description,
+    is_current: exp.is_current,
+    start_date: isoYearMonthFirst(exp.start_year, exp.start_month),
+    end_date:
+      exp.is_current || !exp.end_year.trim()
+        ? null
+        : isoYearMonthFirst(exp.end_year, exp.end_month),
+  };
+}
+
 function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: number; stepIdx: number; totalSteps: number }) {
   const sec = SECTIONS[sectionIdx];
-  const fill = Math.min((stepIdx + 1) / Math.max(totalSteps, 1), 1);
-  
+  const target = Math.min((stepIdx + 1) / Math.max(totalSteps, 1), 1);
+  const progress = useSharedValue(target);
+
+  useEffect(() => {
+    progress.value = withSpring(target, SPRING_PROGRESS);
+  }, [target, progress]);
+
+  const barStyle = useAnimatedStyle(() => ({
+    width: `${progress.value * 100}%`,
+  }));
+
   return (
     <View style={{ flex: 1, gap: 6 }}>
       <Text style={{ fontSize: 10, fontWeight: "900", color: sec.color, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: -2 }}>
         {sec.label}
       </Text>
       <View style={{ height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-        <RNAnimated.View style={{ width: `${fill * 100}%` as any, height: 4, borderRadius: 2, backgroundColor: sec.color }} />
+        <Animated.View style={[{ height: 4, borderRadius: 2, backgroundColor: sec.color }, barStyle]} />
       </View>
     </View>
   );
@@ -102,14 +203,14 @@ function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: nu
 // ─── QuestionHeader ───────────────────────────────────────────────────────────
 function QuestionHeader({ section, title, sub }: { section: typeof SECTIONS[number]; title: string; sub?: string }) {
   return (
-    <View style={{ marginBottom: 22 }}>
+    <Animated.View entering={FadeInDown.duration(320).springify()} style={{ marginBottom: 22 }}>
       <View style={[QS.badge, { backgroundColor: section.color + "18", borderColor: section.color + "40" }]}>
         <Feather name={section.icon} size={11} color={section.color} />
         <Text style={[QS.badgeTxt, { color: section.color }]}>{section.label}</Text>
       </View>
       <Text style={QS.title}>{title}</Text>
       {sub ? <Text style={QS.sub}>{sub}</Text> : null}
-    </View>
+    </Animated.View>
   );
 }
 const QS = StyleSheet.create({
@@ -125,18 +226,28 @@ function GlassInput({
 }: {
   value: string; onChangeText: (v: string) => void; placeholder: string;
   multiline?: boolean; accentColor: string; autoFocus?: boolean;
-  keyboardType?: any; returnKeyType?: any; onSubmitEditing?: () => void;
+  keyboardType?: "default" | "email-address" | "numeric" | "phone-pad" | "url";
+  returnKeyType?: "done" | "go" | "next" | "search" | "send";
+  onSubmitEditing?: () => void;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
 }) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
+  const scale = useSharedValue(1);
 
-  // Handle auto-focus with a slight delay to ensure animations are finished
-  React.useEffect(() => {
+  useEffect(() => {
+    scale.value = withSpring(focused ? 1.01 : 1, SPRING_UI);
+  }, [focused, scale]);
+
+  const wrapAnim = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  useEffect(() => {
     if (autoFocus) {
       const timer = setTimeout(() => {
         inputRef.current?.focus();
-      }, 350); // Slightly more than the transition duration
+      }, 380);
       return () => clearTimeout(timer);
     }
   }, [autoFocus]);
@@ -145,33 +256,34 @@ function GlassInput({
     ? { shadowColor: accentColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 14 }
     : {};
   const webFocusStyle = Platform.OS === "web" && focused
-    ? ({ boxShadow: `0 0 20px ${accentColor}44` } as any)
+    ? ({ boxShadow: `0 0 20px ${accentColor}44` } as object)
     : {};
 
   return (
-    <TouchableOpacity 
-      activeOpacity={1}
-      onPress={() => inputRef.current?.focus()}
-      style={[GI.wrap, { borderColor: focused ? accentColor + "99" : "rgba(255,255,255,0.1)" }, iosFocusStyle, webFocusStyle]}
-    >
-      <TextInput
-        ref={inputRef}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor="rgba(255,255,255,0.22)"
-        style={[GI.input, multiline && { height: 96, textAlignVertical: "top", paddingTop: 4 }]}
-        multiline={multiline}
-        // We handle autoFocus manually via useEffect above for better transition support
-        keyboardType={keyboardType}
-        returnKeyType={returnKeyType ?? "done"}
-        onSubmitEditing={onSubmitEditing}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        autoCorrect={false}
-        autoCapitalize={autoCapitalize ?? "words"}
-      />
-    </TouchableOpacity>
+    <Animated.View style={wrapAnim}>
+      <TouchableOpacity
+        activeOpacity={1}
+        onPress={() => inputRef.current?.focus()}
+        style={[GI.wrap, { borderColor: focused ? accentColor + "99" : "rgba(255,255,255,0.1)" }, iosFocusStyle, webFocusStyle]}
+      >
+        <TextInput
+          ref={inputRef}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="rgba(255,255,255,0.22)"
+          style={[GI.input, multiline && { height: 96, textAlignVertical: "top", paddingTop: 4 }]}
+          multiline={multiline}
+          keyboardType={keyboardType ?? "default"}
+          returnKeyType={returnKeyType ?? "done"}
+          onSubmitEditing={onSubmitEditing}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          autoCorrect={false}
+          autoCapitalize={autoCapitalize ?? "words"}
+        />
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 const GI = StyleSheet.create({
@@ -407,32 +519,73 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
   setMonthPickerFor: (v: "start" | "end" | null) => void;
   setYearPickerFor: (v: "start" | "end" | null) => void;
 }) {
-  const openMonth = (v: "start" | "end") => { setMonthPickerFor(v); monthSheetRef.current?.present(); };
-  const openYear  = (v: "start" | "end") => { setYearPickerFor(v);  yearSheetRef.current?.present();  };
+  const openMonth = (v: "start" | "end") => {
+    setMonthPickerFor(v);
+    monthSheetRef.current?.present();
+  };
+  const openYear = (v: "start" | "end") => {
+    setYearPickerFor(v);
+    yearSheetRef.current?.present();
+  };
 
   return (
     <View>
-      <Text style={S.fieldLabel}>Start Date</Text>
-      <View style={{ marginBottom: 16 }}>
-        <TouchableOpacity style={[S.yearBtn, { borderColor: exp.start_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("start")}>
-          <Text style={[S.monthYearTxt, { color: exp.start_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.start_year || "Start Year"}</Text>
+      <Text style={S.fieldLabel}>Start date</Text>
+      <View style={{ flexDirection: "row", gap: 10, marginBottom: 16 }}>
+        <TouchableOpacity
+          style={[S.monthYearBtn, { flex: 1, borderColor: exp.start_month ? color + "88" : "rgba(255,255,255,0.1)" }]}
+          onPress={() => openMonth("start")}
+        >
+          <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700" }}>MONTH</Text>
+          <Text style={[S.monthYearTxt, { color: exp.start_month ? "#fff" : "rgba(255,255,255,0.28)" }]}>
+            {exp.start_month || "Month"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[S.monthYearBtn, { flex: 1, borderColor: exp.start_year ? color + "88" : "rgba(255,255,255,0.1)" }]}
+          onPress={() => openYear("start")}
+        >
+          <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700" }}>YEAR</Text>
+          <Text style={[S.monthYearTxt, { color: exp.start_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>
+            {exp.start_year || "Year"}
+          </Text>
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity
-        onPress={() => { if (Platform.OS !== "web") Haptics.selectionAsync(); setExp({ ...exp, is_current: !exp.is_current }); }}
+        onPress={() => {
+          if (Platform.OS !== "web") Haptics.selectionAsync();
+          setExp({ ...exp, is_current: !exp.is_current });
+        }}
         style={[S.toggleRow, { borderColor: exp.is_current ? color + "70" : "rgba(255,255,255,0.1)", backgroundColor: exp.is_current ? color + "12" : "transparent" }]}
       >
         <View style={[S.toggleDot, { backgroundColor: exp.is_current ? color : "rgba(255,255,255,0.3)" }]} />
-        <Text style={{ fontSize: 14, fontWeight: "600", color: exp.is_current ? color : "rgba(255,255,255,0.6)" }}>Currently working here</Text>
+        <Text style={{ fontSize: 14, fontWeight: "600", color: exp.is_current ? color : "rgba(255,255,255,0.6)" }}>
+          I work here now
+        </Text>
       </TouchableOpacity>
 
       {!exp.is_current && (
         <>
-          <Text style={[S.fieldLabel, { marginTop: 16 }]}>End Date</Text>
-          <View style={{ marginTop: 8 }}>
-            <TouchableOpacity style={[S.yearBtn, { borderColor: exp.end_year ? color + "88" : "rgba(255,255,255,0.1)" }]} onPress={() => openYear("end")}>
-              <Text style={[S.monthYearTxt, { color: exp.end_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>{exp.end_year || "End Year"}</Text>
+          <Text style={[S.fieldLabel, { marginTop: 16 }]}>End date</Text>
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+            <TouchableOpacity
+              style={[S.monthYearBtn, { flex: 1, borderColor: exp.end_month ? color + "88" : "rgba(255,255,255,0.1)" }]}
+              onPress={() => openMonth("end")}
+            >
+              <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700" }}>MONTH</Text>
+              <Text style={[S.monthYearTxt, { color: exp.end_month ? "#fff" : "rgba(255,255,255,0.28)" }]}>
+                {exp.end_month || "Month"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[S.monthYearBtn, { flex: 1, borderColor: exp.end_year ? color + "88" : "rgba(255,255,255,0.1)" }]}
+              onPress={() => openYear("end")}
+            >
+              <Text style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", marginBottom: 4, fontWeight: "700" }}>YEAR</Text>
+              <Text style={[S.monthYearTxt, { color: exp.end_year ? "#fff" : "rgba(255,255,255,0.28)" }]}>
+                {exp.end_year || "Year"}
+              </Text>
             </TouchableOpacity>
           </View>
         </>
@@ -446,19 +599,38 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ManualEntryScreen() {
   const insets = useSafeAreaInsets();
-  const { 
-    profile, 
-    setOnboardingStep, 
+  const params = useLocalSearchParams<{ focusSection?: string; returnTo?: string; resumeStep?: string }>();
+  const returnToReview = params.returnTo === "manual-review";
+  const reviewReturnStepRef = useRef(0);
+
+  const {
+    profile,
+    setOnboardingStep,
+    setManualReviewStepIndex,
     updateProfile,
     education,
     experiences,
     projects,
-    research 
+    research,
   } = useProfileStore();
 
   // Section & step
   const [sectionIdx, setSectionIdx] = useState(0);
-  const [stepIdx,    setStepIdx   ] = useState(0);
+  const [stepIdx, setStepIdx] = useState(0);
+
+  useEffect(() => {
+    const fs = parseInt(String(params.focusSection ?? ""), 10);
+    if (!Number.isNaN(fs) && fs >= 0 && fs <= 6) {
+      setSectionIdx(fs);
+      setStepIdx(0);
+      reviewReturnStepRef.current = fs;
+      return;
+    }
+    const rs = parseInt(String(params.resumeStep ?? ""), 10);
+    if (!Number.isNaN(rs) && rs >= 0 && rs <= 6) {
+      reviewReturnStepRef.current = rs;
+    }
+  }, [params.focusSection, params.resumeStep]);
   // About
   const [headline, setHeadline] = useState(profile?.headline || "");
   const [bio,      setBio     ] = useState(profile?.bio      || "");
@@ -491,16 +663,21 @@ export default function ManualEntryScreen() {
   // Save state
   const [saving, setSaving] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<number | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [saveBanner, setSaveBanner] = useState<string | null>(null);
   const [aiSuggestLoading, setAiSuggestLoading] = useState<string | null>(null);
+  const aiBusyRef = useRef(false);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // BottomSheet Refs
-  const yearSheetRef  = useRef<BottomSheetModal>(null);
-  const monthSheetRef = useRef<BottomSheetModal>(null);
+  const yearSheetRef  = useRef<BottomSheetModal | null>(null);
+  const monthSheetRef = useRef<BottomSheetModal | null>(null);
 
   const suggestAbout = useCallback(
     async (target: "headline" | "bio") => {
       const hint = target === "headline" ? headline : bio;
-      if (aiSuggestLoading || !profile?.full_name?.trim() || !hint.trim()) return;
+      if (aiBusyRef.current || !profile?.full_name?.trim() || !hint.trim()) return;
+      aiBusyRef.current = true;
       setAiSuggestLoading(target);
       try {
         const res = await apiFetch("/onboarding/suggest-about", {
@@ -524,84 +701,120 @@ export default function ManualEntryScreen() {
       } catch {
         /* ignore */
       } finally {
+        aiBusyRef.current = false;
         setAiSuggestLoading(null);
       }
     },
-    [profile?.full_name, headline, bio, skills, aiSuggestLoading],
+    [profile?.full_name, headline, bio, skills],
   );
 
   const suggestSkills = async () => {
-    if (aiSuggestLoading || (!headline.trim() && !bio.trim())) return;
+    if (aiBusyRef.current || (!headline.trim() && !bio.trim())) return;
+    aiBusyRef.current = true;
     setAiSuggestLoading("skills");
     haptic("medium");
     try {
       const res = await apiFetch("/onboarding/suggest-skills", {
         method: "POST",
-        body: JSON.stringify({ 
-          headline, 
-          bio, 
+        body: JSON.stringify({
+          headline,
+          bio,
           existing_skills: skills,
-          experiences: useProfileStore.getState().experiences.map(e => ({ role: e.role, company: e.company }))
-        })
+          experiences: useProfileStore.getState().experiences.map((e) => ({ role: e.role, company: e.company })),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(data.skills)) {
-        setSkills(prev => [...new Set([...prev, ...data.skills])]);
+        setSkills((prev) => [...new Set([...prev, ...data.skills])]);
         if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err) {
       console.error("[Manual] suggestSkills error:", err);
     } finally {
+      aiBusyRef.current = false;
       setAiSuggestLoading(null);
     }
   };
 
   const suggestDescription = async (type: "project" | "research") => {
     const title = type === "project" ? proj.title : res.title;
-    if (aiSuggestLoading || !title.trim()) return;
+    if (aiBusyRef.current || !title.trim()) return;
+    aiBusyRef.current = true;
     setAiSuggestLoading(type);
     haptic("medium");
     try {
       const resApi = await apiFetch("/onboarding/suggest-description", {
         method: "POST",
-        body: JSON.stringify({ type, title, tech_stack: type === "project" ? proj.tech_stack : [] })
+        body: JSON.stringify({ type, title, tech_stack: type === "project" ? proj.tech_stack : [] }),
       });
       const data = await resApi.json().catch(() => ({}));
       if (resApi.ok && typeof data.description === "string") {
-        if (type === "project") setProj(p => ({ ...p, description: data.description }));
-        else setRes(r => ({ ...r, description: data.description }));
+        if (type === "project") setProj((p) => ({ ...p, description: data.description }));
+        else setRes((r) => ({ ...r, description: data.description }));
       }
     } catch (err) {
       console.error("[Manual] suggestDescription error:", err);
     } finally {
+      aiBusyRef.current = false;
       setAiSuggestLoading(null);
     }
   };
 
   useEffect(() => {
     if (!profile?.id) return;
-    const id = setInterval(async () => {
-      const h = headline.trim();
-      const b = bio.trim();
-      if (!h && !b) return;
-      if (h === (profile.headline ?? "").trim() && b === (profile.bio ?? "").trim()) return;
+    const h = headline.trim();
+    const b = bio.trim();
+    if (!h && !b) {
+      setDraftError(null);
+      return;
+    }
+    if (h === (profile.headline ?? "").trim() && b === (profile.bio ?? "").trim()) return;
+
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(async () => {
       try {
+        setDraftError(null);
         await updateProfile({ headline: h, bio: b });
         setDraftSavedAt(Date.now());
       } catch {
-        /* offline / validation — skip */
+        setDraftError("Could not save draft — check connection.");
       }
-    }, 30_000);
-    return () => clearInterval(id);
+    }, 2400);
+
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
   }, [profile?.id, profile?.headline, profile?.bio, headline, bio, updateProfile]);
 
   // Transition animation
   const opacity = useSharedValue(1);
   const translateX = useSharedValue(0);
+  const orbOpacity = useSharedValue(0.62);
+
+  useEffect(() => {
+    orbOpacity.value = withRepeat(
+      withSequence(withTiming(0.9, { duration: 3200 }), withTiming(0.52, { duration: 3200 })),
+      -1,
+      true,
+    );
+    return () => cancelAnimation(orbOpacity);
+  }, [orbOpacity]);
+
+  useEffect(
+    () => () => {
+      cancelAnimation(opacity);
+      cancelAnimation(translateX);
+    },
+    [opacity, translateX],
+  );
 
   const animatedContentStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,
     transform: [{ translateX: translateX.value }],
+  }));
+
+  const animatedOrbStyle = useAnimatedStyle(() => ({
+    opacity: orbOpacity.value,
   }));
 
   const sec   = SECTIONS[sectionIdx];
@@ -619,20 +832,24 @@ export default function ManualEntryScreen() {
     }
   };
 
-  const transition = useCallback((dir: "fwd" | "bwd", cb: () => void) => {
-    const exitTo    = dir === "fwd" ? -W * 0.45 : W * 0.45;
-    const enterFrom = dir === "fwd" ?  W * 0.45 : -W * 0.45;
-    
-    opacity.value = withTiming(0, { duration: 130 });
-    translateX.value = withTiming(exitTo, { duration: 130 }, (finished) => {
-      if (finished) {
+  const transition = useCallback(
+    (dir: "fwd" | "bwd", cb: () => void) => {
+      const exitTo = dir === "fwd" ? -W * 0.42 : W * 0.42;
+      const enterFrom = dir === "fwd" ? W * 0.42 : -W * 0.42;
+      const springExit = { damping: 26, stiffness: 280, mass: 0.82 } as const;
+
+      opacity.value = withSpring(0, springExit);
+      translateX.value = withSpring(exitTo, springExit, (finished) => {
+        if (!finished) return;
         translateX.value = enterFrom;
+        opacity.value = 0;
         if (cb) runOnJS(cb)();
-        opacity.value = withTiming(1, { duration: 200 });
-        translateX.value = withTiming(0, { duration: 200 });
-      }
-    });
-  }, [opacity, translateX]);
+        opacity.value = withSpring(1, SPRING_SCREEN);
+        translateX.value = withSpring(0, SPRING_SCREEN);
+      });
+    },
+    [opacity, translateX],
+  );
 
   const goBack = () => {
     haptic("light");
@@ -676,11 +893,7 @@ export default function ManualEntryScreen() {
         setEdu(newEdu());
       }
       if (section === 2 && exp.company.trim()) {
-        await store.saveExperience({
-          ...exp,
-          start_date: `${exp.start_year}-01-01`,
-          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-01-01`,
-        });
+        await store.saveExperience(experiencePayloadFromForm(exp));
         setExp(newExp());
       }
       if (section === 3 && proj.title.trim()) {
@@ -702,10 +915,10 @@ export default function ManualEntryScreen() {
   const proceedToNextSection = async () => {
     haptic("medium");
     setSaving(true);
+    setSaveBanner(null);
     const store = useProfileStore.getState();
-    
+
     try {
-      // Save current draft if valid
       if (sectionIdx === 1 && edu.institution.trim()) {
         await store.saveEducation({
           ...edu,
@@ -713,77 +926,90 @@ export default function ManualEntryScreen() {
           end_year: edu.end_year && edu.end_year !== "Present" ? Number(edu.end_year) : null,
         });
         setEdu(newEdu());
-      }
-      if (sectionIdx === 2 && exp.company.trim()) {
-        await store.saveExperience({
-          ...exp,
-          start_date: `${exp.start_year}-01-01`,
-          end_date: exp.is_current || !exp.end_year ? null : `${exp.end_year}-01-01`,
-        });
+      } else if (sectionIdx === 2 && exp.company.trim()) {
+        await store.saveExperience(experiencePayloadFromForm(exp));
         setExp(newExp());
-      }
-      if (sectionIdx === 3 && proj.title.trim()) {
+      } else if (sectionIdx === 3 && proj.title.trim()) {
         await store.saveProject(proj);
         setProj(newProj());
-      }
-      if (sectionIdx === 5 && res.title.trim()) {
+      } else if (sectionIdx === 5 && res.title.trim()) {
         await store.saveResearch(res);
         setRes(newRes());
       }
     } catch (err) {
       console.error("[Manual] nextSection save error:", err);
+      setSaveBanner("Could not save this entry. Fix any issues and try again.");
+      setSaving(false);
+      return;
     }
 
     if (sectionIdx < 6) {
-      transition("fwd", () => { 
-        setSectionIdx((s) => s + 1); 
-        setStepIdx(0); 
+      transition("fwd", () => {
+        setSectionIdx((s) => s + 1);
+        setStepIdx(0);
       });
+      setSaving(false);
     } else {
-      handleFinish();
+      setSaving(false);
+      await handleFinish();
     }
   };
 
-  const handleFinish = async () => {
-    // We don't block by 'saving' here because proceedToNextSection might have set it
-    // instead we just do one final sync
+  const handleFinish = async (): Promise<boolean> => {
     haptic("medium");
+    setSaveBanner(null);
     setSaving(true);
     const store = useProfileStore.getState();
 
     try {
-      if (profile?.id) {
-        // Final sync for contact and skills
-        await store.updateProfile({
-          headline,
-          bio,
-          phone: contact.phone || profile.phone,
-          email: contact.email || profile.email,
-          address: contact.address,
-        });
+      if (!profile?.id) {
+        setSaveBanner("Profile not loaded. Go back and sign in again.");
+        return false;
+      }
 
-        if (skills.length > 0) {
-          await store.bulkSaveSkills(skills.map(s => ({
+      await store.updateProfile({
+        headline,
+        bio,
+        phone: contact.phone || profile.phone,
+        email: contact.email || profile.email,
+        address: contact.address,
+      });
+
+      if (skills.length > 0) {
+        await store.bulkSaveSkills(
+          skills.map((s) => ({
             name: s,
             category: "General",
             level: "intermediate" as const,
-          })));
-        }
+          })),
+        );
       }
+
+      if (returnToReview) {
+        setOnboardingStep("manual_review");
+        setManualReviewStepIndex(7);
+        router.replace({ pathname: "/(onboarding)/manual-review", params: { step: "7" } });
+        return true;
+      }
+
+      setOnboardingStep("theme");
+      router.replace("/(onboarding)/theme");
+      return true;
     } catch (err) {
       console.error("[Manual] Final save error:", err);
+      setSaveBanner("Could not finish onboarding. Check connection and try again.");
+      return false;
     } finally {
       setSaving(false);
-      setOnboardingStep("theme");
-      router.push("/(onboarding)/theme");
     }
   };
 
 
   // ── Validation ──
-  const isReviewStep  = stepIdx === STEPS[sectionIdx] - 1 && sectionIdx !== 4;
-  const isSkillsStep  = sectionIdx === 4;
-  const canContinue   = (() => {
+  const isReviewStep = stepIdx === STEPS[sectionIdx] - 1 && sectionIdx !== 4;
+  const isSkillsStep = sectionIdx === 4;
+
+  const canContinue = useMemo(() => {
     if (isReviewStep || isSkillsStep) return true;
     if (sectionIdx === 0) {
       if (stepIdx === 0) return headline.trim().length > 0;
@@ -798,7 +1024,12 @@ export default function ManualEntryScreen() {
     if (sectionIdx === 2) {
       if (stepIdx === 0) return exp.company.trim().length > 0;
       if (stepIdx === 1) return exp.role.trim().length > 0;
-      if (stepIdx === 2) return exp.start_year.length > 0;
+      if (stepIdx === 2) {
+        return (
+          exp.start_year.trim().length > 0 &&
+          (exp.is_current || exp.end_year.trim().length > 0)
+        );
+      }
       if (stepIdx === 3) return true;
     }
     if (sectionIdx === 3) {
@@ -813,11 +1044,23 @@ export default function ManualEntryScreen() {
       if (stepIdx === 2) return true;
     }
     if (sectionIdx === 6) {
-      if (stepIdx === 0) return contact.email.trim().includes("@"); // Email
-      if (stepIdx === 1) return true; // Address
+      if (stepIdx === 0) return contact.email.trim().includes("@");
+      if (stepIdx === 1) return true;
     }
     return true;
-  })();
+  }, [
+    isReviewStep,
+    isSkillsStep,
+    sectionIdx,
+    stepIdx,
+    headline,
+    bio,
+    edu,
+    exp,
+    proj,
+    res,
+    contact,
+  ]);
 
   // ── Next handler ──
   const handleNext = () => {
@@ -937,10 +1180,23 @@ export default function ManualEntryScreen() {
                 lines={[item.institution, `${item.degree}${item.field ? ` in ${item.field}` : ""}`, `${item.start_year}${item.end_year ? ` – ${item.end_year}` : ""}`]}
                 accentColor={color}
                 onEdit={() => {
-                  setEdu({ ...item, start_year: String(item.start_year), end_year: item.end_year ? String(item.end_year) : "" });
+                  setEdu({
+                    institution: item.institution,
+                    degree: item.degree,
+                    field: item.field ?? "",
+                    start_year: String(item.start_year ?? ""),
+                    end_year: item.end_year != null ? String(item.end_year) : "",
+                    description: item.description ?? "",
+                  });
                   setStepIdx(0);
                 }}
-                onDelete={() => useProfileStore.getState().deleteEducation(item.id!)}
+                onDelete={
+                  item.id
+                    ? () => {
+                        void useProfileStore.getState().deleteEducation(item.id!);
+                      }
+                    : undefined
+                }
               />
             ))}
           </View>
@@ -991,31 +1247,29 @@ export default function ManualEntryScreen() {
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Saved!" sub={`${exp.role} at ${exp.company}`} />
           <View style={{ gap: 12 }}>
-            {experiences.map((item, idx) => (
+            {experiences.map((item, idx) => {
+              const startY = yearFromIso(item.start_date) || "—";
+              const endY = item.is_current ? "Present" : yearFromIso(item.end_date) || "—";
+              return (
               <EntryCard
                 key={item.id || idx}
                 label="Experience"
-                lines={[
-                  item.role, 
-                  item.company, 
-                  item.is_current 
-                    ? `${item.start_date.split("-")[0]} – Present` 
-                    : `${item.start_date.split("-")[0]} – ${item.end_date ? item.end_date.split("-")[0] : ""}`
-                ]}
+                lines={[item.role, item.company, `${startY} – ${endY}`]}
                 accentColor={color}
                 onEdit={() => {
-                  const [sy, sm] = (item.start_date || "").split("-");
-                  const [ey, em] = (item.end_date || "").split("-");
-                  setExp({
-                    ...item,
-                    start_year: sy, start_month: MONTHS[parseInt(sm) - 1] || "Jan",
-                    end_year: ey || "", end_month: em ? MONTHS[parseInt(em) - 1] : "Jan",
-                  });
+                  setExp(experienceFormFromRecord(item));
                   setStepIdx(0);
                 }}
-                onDelete={() => useProfileStore.getState().deleteExperience(item.id!)}
+                onDelete={
+                  item.id
+                    ? () => {
+                        void useProfileStore.getState().deleteExperience(item.id!);
+                      }
+                    : undefined
+                }
               />
-            ))}
+              );
+            })}
           </View>
           <TouchableOpacity style={[S.addBtn, { borderColor: color + "50", backgroundColor: color + "0F" }]} onPress={() => addAnotherEntry(2)}>
             <Feather name="plus" size={15} color={color} />
@@ -1091,7 +1345,13 @@ export default function ManualEntryScreen() {
                   });
                   setStepIdx(0);
                 }}
-                onDelete={() => useProfileStore.getState().deleteProject(item.id!)}
+                onDelete={
+                  item.id
+                    ? () => {
+                        void useProfileStore.getState().deleteProject(item.id!);
+                      }
+                    : undefined
+                }
               />
             ))}
           </View>
@@ -1175,13 +1435,28 @@ export default function ManualEntryScreen() {
               <EntryCard
                 key={item.id || idx}
                 label="Research"
-                lines={[item.title, item.subtitle || "", item.description.substring(0, 100) + "..."]}
+                lines={[
+                  item.title,
+                  item.subtitle || "",
+                  formatResearchPreview(item.description),
+                ].filter((line) => line.length > 0)}
                 accentColor={color}
                 onEdit={() => {
-                  setRes({ ...item, subtitle: item.subtitle || "" });
+                  setRes({
+                    title: item.title,
+                    subtitle: item.subtitle ?? "",
+                    description: item.description ?? "",
+                    image_url: item.image_url ?? "",
+                  });
                   setStepIdx(0);
                 }}
-                onDelete={() => useProfileStore.getState().deleteResearch(item.id!)}
+                onDelete={
+                  item.id
+                    ? () => {
+                        void useProfileStore.getState().deleteResearch(item.id!);
+                      }
+                    : undefined
+                }
               />
             ))}
           </View>
@@ -1218,13 +1493,13 @@ export default function ManualEntryScreen() {
   return (
     <View style={[S.root]}>
       {/* Animated background orb */}
-      <View style={S.orbContainer} pointerEvents="none">
+      <Animated.View style={[S.orbContainer, animatedOrbStyle]} pointerEvents="none">
         <LinearGradient
           colors={[color + "30", color + "10", "transparent"]}
           style={S.orb}
           start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
         />
-      </View>
+      </Animated.View>
 
       <KeyboardAwareScrollViewCompat style={{ flex: 1 }}>
         <View style={[S.inner, { paddingTop: topPad, paddingBottom: botPad }]}>
@@ -1243,9 +1518,38 @@ export default function ManualEntryScreen() {
             </View>
           </View>
 
+          {returnToReview ? (
+            <TouchableOpacity
+              onPress={() => {
+                setOnboardingStep("manual_review");
+                setManualReviewStepIndex(reviewReturnStepRef.current);
+                router.replace({
+                  pathname: "/(onboarding)/manual-review",
+                  params: { step: String(reviewReturnStepRef.current) },
+                });
+              }}
+              style={S.reviewBanner}
+              activeOpacity={0.85}
+            >
+              <Feather name="list" size={16} color="#6AFAD0" />
+              <Text style={S.reviewBannerTxt}>Back to resume summary</Text>
+              <Feather name="chevron-right" size={16} color="rgba(255,255,255,0.45)" />
+            </TouchableOpacity>
+          ) : null}
+
           {draftSavedAt ? (
             <Text style={{ fontSize: 11, color: "#6AFAD0", textAlign: "right", marginBottom: 6, marginTop: -4 }}>
               Draft saved to your profile
+            </Text>
+          ) : null}
+          {draftError ? (
+            <Text style={{ fontSize: 11, color: "#ff8a8a", textAlign: "right", marginBottom: 6, marginTop: -4 }}>
+              {draftError}
+            </Text>
+          ) : null}
+          {saveBanner ? (
+            <Text style={{ fontSize: 12, color: "#ffcc80", textAlign: "center", marginBottom: 8, paddingHorizontal: 12 }}>
+              {saveBanner}
             </Text>
           ) : null}
 
@@ -1259,10 +1563,11 @@ export default function ManualEntryScreen() {
             {/* Review step footer */}
             {isReviewStep && (
               <View style={{ width: "100%", gap: 10 }}>
-                <TouchableOpacity onPress={proceedToNextSection} style={S.primaryBtnWrap}>
+                <TouchableOpacity onPress={proceedToNextSection} disabled={saving} style={S.primaryBtnWrap}>
                   <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
+                    {saving ? <ActivityIndicator color="#fff" /> : null}
                     <Text style={S.primaryBtnTxt}>{sectionIdx < 6 ? `Next: ${SECTIONS[sectionIdx + 1].label}` : "Finish"}</Text>
-                    <Feather name="arrow-right" size={16} color="#fff" />
+                    {!saving ? <Feather name="arrow-right" size={16} color="#fff" /> : null}
                   </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={skipSection} style={S.ghostBtn}>
@@ -1273,10 +1578,11 @@ export default function ManualEntryScreen() {
 
             {/* Skills section footer */}
             {isSkillsStep && (
-              <TouchableOpacity onPress={proceedToNextSection} style={S.primaryBtnWrap}>
+              <TouchableOpacity onPress={proceedToNextSection} disabled={saving} style={S.primaryBtnWrap}>
                 <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
+                  {saving ? <ActivityIndicator color="#fff" /> : null}
                   <Text style={S.primaryBtnTxt}>{`Next: ${SECTIONS[sectionIdx + 1].label}`}</Text>
-                  <Feather name="arrow-right" size={16} color="#fff" />
+                  {!saving ? <Feather name="arrow-right" size={16} color="#fff" /> : null}
                 </LinearGradient>
               </TouchableOpacity>
             )}
@@ -1284,10 +1590,18 @@ export default function ManualEntryScreen() {
             {/* Normal step footer */}
             {!isReviewStep && !isSkillsStep && (
               <View style={{ width: "100%", gap: 10 }}>
-                <TouchableOpacity onPress={handleNext} disabled={!canContinue} style={[S.primaryBtnWrap, !canContinue && { opacity: 0.3 }]}>
+                <TouchableOpacity
+                  onPress={handleNext}
+                  disabled={!canContinue || saving}
+                  style={[
+                    S.primaryBtnWrap,
+                    !canContinue ? { opacity: 0.3 } : saving ? { opacity: 0.92 } : null,
+                  ]}
+                >
                   <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
+                    {saving ? <ActivityIndicator color="#fff" /> : null}
                     <Text style={S.primaryBtnTxt}>Continue</Text>
-                    <Feather name="arrow-right" size={16} color="#fff" />
+                    {!saving ? <Feather name="arrow-right" size={16} color="#fff" /> : null}
                   </LinearGradient>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={skipSection} style={S.ghostBtn}>
@@ -1387,4 +1701,17 @@ const S = StyleSheet.create({
   monthYearTxt: { fontSize: 15, fontWeight: "700" },
   toggleRow:    { flexDirection: "row", alignItems: "center", paddingVertical: 14, paddingHorizontal: 16, borderRadius: 14, borderWidth: 1, gap: 10 },
   toggleDot:    { width: 10, height: 10, borderRadius: 5 },
+  reviewBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 10,
+    borderRadius: 14,
+    backgroundColor: "rgba(106,250,208,0.1)",
+    borderWidth: 1,
+    borderColor: "rgba(106,250,208,0.28)",
+  },
+  reviewBannerTxt: { flex: 1, fontSize: 14, fontWeight: "700", color: "#9cf5d8" },
 });

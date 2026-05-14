@@ -17,6 +17,8 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { Feather, AntDesign } from "@expo/vector-icons";
 
+import { ComingSoonGateway } from "@/components/ComingSoonGateway";
+
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
@@ -32,6 +34,8 @@ function RootLayoutNav() {
       <Stack.Screen name="(auth)" />
       <Stack.Screen name="(onboarding)" />
       <Stack.Screen name="(main)" />
+      <Stack.Screen name="terms" />
+      <Stack.Screen name="privacy" />
       <Stack.Screen name="+not-found" />
     </Stack>
   );
@@ -87,7 +91,9 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <BottomSheetModalProvider>
-                <RootLayoutNav />
+                <ComingSoonGateway>
+                  <RootLayoutNav />
+                </ComingSoonGateway>
               </BottomSheetModalProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
