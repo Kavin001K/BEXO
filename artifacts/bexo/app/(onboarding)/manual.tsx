@@ -115,7 +115,7 @@ const COMMON_TECH = [
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type EduEntry  = { institution: string; degree: string; field: string; start_year: string; end_year: string; description: string };
+type EduEntry  = { id?: string; institution: string; degree: string; field: string; start_year: string; end_year: string; description: string };
 type ExpEntry  = {
   id?: string;
   company: string;
@@ -128,7 +128,7 @@ type ExpEntry  = {
   description: string;
 };
 type ProjEntry = { id?: string; title: string; description: string; tech_stack: string[]; live_url: string; github_url: string; image_url: string };
-type ResEntry  = { title: string; subtitle: string; description: string; image_url: string };
+type ResEntry  = { id?: string; title: string; subtitle: string; description: string; image_url: string; file_url: string };
 type ContactEntry = { phone: string; email: string; address: string };
 
 const newEdu  = (): EduEntry  => ({ institution: "", degree: "", field: "", start_year: "", end_year: "", description: "" });
@@ -143,7 +143,7 @@ const newExp  = (): ExpEntry  => ({
   description: "",
 });
 const newProj = (): ProjEntry => ({ title: "", description: "", tech_stack: [], live_url: "", github_url: "", image_url: "" });
-const newRes  = (): ResEntry  => ({ title: "", subtitle: "", description: "", image_url: "" });
+const newRes  = (): ResEntry  => ({ title: "", subtitle: "", description: "", image_url: "", file_url: "" });
 const newContact = (): ContactEntry => ({ phone: "", email: "", address: "" });
 
 function experienceFormFromRecord(item: Experience): ExpEntry {
@@ -1181,6 +1181,7 @@ export default function ManualEntryScreen() {
                 accentColor={color}
                 onEdit={() => {
                   setEdu({
+                    id: item.id,
                     institution: item.institution,
                     degree: item.degree,
                     field: item.field ?? "",
@@ -1443,10 +1444,12 @@ export default function ManualEntryScreen() {
                 accentColor={color}
                 onEdit={() => {
                   setRes({
+                    id: item.id,
                     title: item.title,
                     subtitle: item.subtitle ?? "",
                     description: item.description ?? "",
                     image_url: item.image_url ?? "",
+                    file_url: item.file_url ?? "",
                   });
                   setStepIdx(0);
                 }}
@@ -1510,7 +1513,7 @@ export default function ManualEntryScreen() {
               <Feather name="arrow-left" size={20} color="rgba(255,255,255,0.75)" />
             </TouchableOpacity>
             <View style={{ flex: 1, marginHorizontal: 14 }}>
-              <SegmentedProgress sectionIdx={sectionIdx} stepIdx={isReviewStep ? STEPS[sectionIdx] : stepIdx} totalSteps={STEPS[sectionIdx]} />
+              <SegmentedProgress sectionIdx={sectionIdx} stepIdx={stepIdx} totalSteps={STEPS[sectionIdx]} />
             </View>
             <View style={[S.badge, { backgroundColor: color + "1A", borderColor: color + "44" }]}>
               <Feather name={sec.icon} size={11} color={color} />
