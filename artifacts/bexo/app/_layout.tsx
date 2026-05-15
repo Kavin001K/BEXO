@@ -91,11 +91,19 @@ export default function RootLayout() {
   }, []);
 
   useEffect(() => {
+    // Safety: Force hide splash screen after 7 seconds no matter what
+    const timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 7000);
+
     if (fontsReady && !isAuthLoading) {
       SplashScreen.hideAsync().catch(() => {
         /* already hidden or unavailable */
       });
+      clearTimeout(timer);
     }
+
+    return () => clearTimeout(timer);
   }, [fontsReady, isAuthLoading]);
 
   if (!fontsReady) return null;

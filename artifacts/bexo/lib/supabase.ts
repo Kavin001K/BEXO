@@ -11,8 +11,23 @@ if (Platform.OS !== "web") {
   setupURLPolyfill();
 }
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "https://placeholder.supabase.co";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key";
+const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const rawKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+// Validation helper to catch unresolved EAS variables like "$VAR"
+const isValidUrl = (url?: string) => {
+  if (!url || typeof url !== "string") return false;
+  if (url.startsWith("$")) return false;
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const supabaseUrl = isValidUrl(rawUrl) ? rawUrl! : "https://placeholder.supabase.co";
+const supabaseAnonKey = (rawKey && !rawKey.startsWith("$")) ? rawKey : "placeholder-anon-key";
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -37,6 +52,5 @@ if (Platform.OS !== "web") {
 }
 
 export const isSupabaseConfigured =
-  !!process.env.EXPO_PUBLIC_SUPABASE_URL &&
-  !!process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY &&
-  process.env.EXPO_PUBLIC_SUPABASE_URL !== "https://placeholder.supabase.co";
+  isValidUrl(rawUrl) &&
+  supabaseAnonKey !== "placeholder-anon-key";

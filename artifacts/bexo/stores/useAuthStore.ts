@@ -145,36 +145,42 @@ export const useAuthStore = create<AuthState>()(
       set({ isLoading: false });
       return;
     }
+
+    // Safety: Ensure we don't hang forever if getSession or fetchProfile hangs
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Auth initialization timeout")), 10000)
+    );
+
     try {
-      const { data, error } = await supabase.auth.getSession();
-      
-      if (error) {
-        console.error("[BEXO Auth] Initialization error:", error.message);
-        if (error.message.includes("Refresh Token") || error.message.includes("not found")) {
-          await supabase.auth.signOut();
-          set(RESET_STATE);
-          return;
+      const initPromise = (async () => {
+        const { data, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error("[BEXO Auth] Initialization error:", error.message);
+          if (error.message.includes("Refresh Token") || error.message.includes("not found")) {
+            await supabase.auth.signOut();
+            set(RESET_STATE);
+            return;
+          }
         }
-      }
 
-      const session = data.session;
-      
-      if (session?.user) {
-        // IMPORTANT: Wait for profile fetch to FULLY resolve before marking auth as not loading.
-        // This ensures the root navigator has all the data it needs to decide the route.
-        try {
-          await useProfileStore.getState().fetchProfile(session.user.id);
-        } catch (pErr) {
-          console.error("[BEXO Auth] Profile fetch failed during init:", pErr);
+        const session = data.session;
+        
+        if (session?.user) {
+          try {
+            await useProfileStore.getState().fetchProfile(session.user.id);
+          } catch (pErr) {
+            console.error("[BEXO Auth] Profile fetch failed during init:", pErr);
+          }
+          set({ session, user: session.user });
         }
-        set({ session, user: session.user });
-      }
+      })();
 
+      await Promise.race([initPromise, timeoutPromise]);
       set({ isLoading: false });
-
       ensureSupabaseAuthListener();
     } catch (err: any) {
-      console.error("[BEXO Auth] Unexpected init failure:", err);
+      console.error("[BEXO Auth] Unexpected init failure or timeout:", err);
       set({ isLoading: false });
     }
   },
