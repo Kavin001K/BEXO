@@ -1078,7 +1078,7 @@ export default function ManualEntryScreen() {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="What's your headline?" sub="A short, catchy summary of who you are" />
-          <GlassInput value={headline} onChangeText={setHeadline} placeholder="e.g. Product Designer at BEXO" accentColor={color} autoFocus returnKeyType="next" onSubmitEditing={canContinue ? handleNext : undefined} />
+          <GlassInput value={headline} onChangeText={setHeadline} placeholder="e.g. Product Designer" accentColor={color} autoFocus returnKeyType="next" maxLength={25} onSubmitEditing={canContinue ? handleNext : undefined} />
           <TouchableOpacity
             onPress={() => suggestAbout("headline")}
             disabled={aiSuggestLoading !== null || !headline.trim()}
@@ -1094,7 +1094,7 @@ export default function ManualEntryScreen() {
             }}
           >
             <Text style={{ fontSize: 13, fontWeight: "700", color: !headline.trim() ? "rgba(255,255,255,0.3)" : color }}>
-              {aiSuggestLoading === "headline" ? "Generating…" : headline.trim() ? "Suggest a headline with AI" : "Enter a headline to use AI"}
+              {aiSuggestLoading === "headline" ? "Generating…" : headline.trim() ? "✨ Refine headline with AI" : "Enter a few words to use AI"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1118,7 +1118,7 @@ export default function ManualEntryScreen() {
             }}
           >
             <Text style={{ fontSize: 13, fontWeight: "700", color: !bio.trim() ? "rgba(255,255,255,0.3)" : color }}>
-              {aiSuggestLoading === "bio" ? "Generating…" : bio.trim() ? "Suggest a bio with AI" : "Enter a bio to use AI"}
+              {aiSuggestLoading === "bio" ? "Generating…" : bio.trim() ? "✨ Refine bio with AI" : "Enter a few words to use AI"}
             </Text>
           </TouchableOpacity>
         </View>

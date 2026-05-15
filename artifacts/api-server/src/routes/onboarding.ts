@@ -58,23 +58,26 @@ router.post("/suggest-about", async (req, res) => {
       return;
     }
 
-    const prompt = `You help students write portfolio copy. Return ONLY valid JSON.
+    const prompt = `You are a world-class portfolio copywriter.
 Name: ${full_name.trim()}
-Current headline idea: ${headline_hint ?? ""}
-Current bio idea: ${bio_hint ?? ""}
+Current headline hint: ${headline_hint ?? "not provided"}
+Current bio hint: ${bio_hint ?? "not provided"}
 Skills: ${(skills ?? []).join(", ")}
 
+Task: Refine the portfolio copy.
 Rules:
-- headline: max 90 chars, punchy
-- bio: 2-3 sentences, first person, professional
-Return shape: {"headline":"...","bio":"..."}`;
+- HEADLINE: Max 25 characters. Must be extremely concise. Focus on the core value proposition (e.g. "Fullstack Developer"). It MUST fit on 1 short line.
+- BIO: 2-3 sentences max. Professional, first-person.
+- CONTEXT: If a hint is provided (like "Developer"), strictly follow that career path for suggestions.
+
+Return shape (JSON): {"headline":"...","bio":"..."}`;
 
     const text = await callGemini(prompt);
     const clean = text.trim().replace(/```json\n?|\n?```/g, "");
     
     try {
       const parsed = JSON.parse(clean);
-      const headline = (parsed.headline ?? "").trim().slice(0, 120);
+      const headline = (parsed.headline ?? "").trim().slice(0, 25); // Strict limit
       const bio = (parsed.bio ?? "").trim().slice(0, 500);
 
       if (target === "headline") res.json({ headline, bio: "" });

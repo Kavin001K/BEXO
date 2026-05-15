@@ -212,7 +212,7 @@ export default function CardsScreen() {
             placeholderTextColor={colors.mutedForeground}
             value={headline}
             onChangeText={setHeadline}
-            maxLength={100}
+            maxLength={25}
             selectionColor={colors.primary}
             autoFocus
           />

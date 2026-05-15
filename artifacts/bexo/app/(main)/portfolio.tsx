@@ -216,12 +216,26 @@ export default function PortfolioScreen() {
                   <Text style={[styles.heroName, { color: colors.foreground }]}>
                     {profile?.full_name ?? "Your Name"}
                   </Text>
-                  {profile?.headline ? (
-                    <Text style={[styles.heroHeadline, { color: colors.secondaryForeground }]}>
-                      {profile.headline}
-                    </Text>
-                  ) : null}
                 </View>
+              </View>
+              {profile?.headline ? (
+                <Text style={[styles.heroHeadline, { color: colors.secondaryForeground }]}>
+                  {profile.headline}
+                </Text>
+              ) : null}
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 }}>
+                <TouchableOpacity
+                  style={styles.handleRow}
+                  activeOpacity={0.7}
+                  onPress={() => Linking.openURL(`https://${profile?.handle ?? "handle"}.mybexo.com`)}
+                >
+                  <Feather name="link" size={13} color={colors.primary} />
+                  <Text style={[styles.heroHandle, { color: colors.primary }]}>
+                    {profile?.handle ?? "handle"}.mybexo.com
+                  </Text>
+                </TouchableOpacity>
+
                 {buildStatus === "done" && (
                   <View style={[styles.liveChip, { backgroundColor: "#6AFAD015", borderColor: "#6AFAD044", borderWidth: 1 }]}>
                     <View style={styles.liveDot} />
@@ -230,29 +244,11 @@ export default function PortfolioScreen() {
                 )}
                 {(buildStatus === "building" || buildStatus === "queued") && (
                   <View style={[styles.liveChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "44", borderWidth: 1 }]}>
-                    <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 6, transform: [{ scale: 0.7 }] }} />
+                    <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4, transform: [{ scale: 0.6 }] }} />
                     <Text style={[styles.liveChipText, { color: colors.primary }]}>Syncing</Text>
                   </View>
                 )}
               </View>
-              <TouchableOpacity
-                style={styles.handleRow}
-                activeOpacity={0.7}
-                onPress={() => Linking.openURL(`https://${profile?.handle ?? "handle"}.mybexo.com`)}
-              >
-                <Feather name="link" size={13} color={colors.primary} />
-                <Text style={[styles.heroHandle, { color: colors.primary }]}>
-                  {profile?.handle ?? "handle"}.mybexo.com
-                </Text>
-              </TouchableOpacity>
-              {profile?.location ? (
-                <View style={styles.metaRow}>
-                  <Feather name="map-pin" size={13} color={colors.secondaryForeground} />
-                  <Text style={[styles.metaText, { color: colors.secondaryForeground }]} numberOfLines={2}>
-                    {profile.location}
-                  </Text>
-                </View>
-              ) : null}
             </View>
           </View>
           {profile?.bio ? (

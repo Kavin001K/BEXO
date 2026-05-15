@@ -648,6 +648,7 @@ export default function EditProfileScreen() {
                     textAlignVertical={multiline ? "top" : "center"}
                     selectionColor={colors.primary}
                     autoCapitalize={key === "email" || key.includes("url") ? "none" : "words"}
+                    maxLength={key === "headline" ? 25 : undefined}
                     keyboardType={key === "email" ? "email-address" : "default"}
                   />
                 </View>
