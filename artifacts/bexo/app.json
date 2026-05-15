@@ -6,7 +6,7 @@
       "web"
     ],
     "name": "BEXO",
-    "slug": "mybexo",
+    "slug": "bexo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -26,7 +26,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.mybexo.app"
+      "bundleIdentifier": "com.mybexo.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.mybexo.app",
@@ -35,7 +38,10 @@
         "backgroundColor": "#0A0A0F"
       },
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET"
       ]
     },
     "web": {
@@ -72,8 +78,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "6c1ecc80-1e4f-4aa7-9f6f-6d6b4c4973fe"
+        "projectId": "f3faad6f-afc2-4dcd-98e5-995657ff49e9"
       }
-    }
+    },
+    "owner": "kavin2005"
   }
 }
