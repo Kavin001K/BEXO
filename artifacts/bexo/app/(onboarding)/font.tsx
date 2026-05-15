@@ -19,54 +19,85 @@ import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
+import { 
+  useFonts,
+  Inter_600SemiBold,
+  Inter_400Regular 
+} from "@expo-google-fonts/inter";
+import { 
+  Poppins_700Bold,
+  Poppins_400Regular 
+} from "@expo-google-fonts/poppins";
+import { 
+  PlayfairDisplay_600SemiBold,
+  PlayfairDisplay_400Regular 
+} from "@expo-google-fonts/playfair-display";
+import { 
+  Montserrat_500Medium,
+  Montserrat_400Regular 
+} from "@expo-google-fonts/montserrat";
+import { 
+  SpaceGrotesk_700Bold,
+  SpaceGrotesk_400Regular 
+} from "@expo-google-fonts/space-grotesk";
+
 const FONTS = [
   {
     id: "modern",
     label: "Modern",
-    family: "Inter",
+    family: "Inter_600SemiBold",
     desc: "Clean, contemporary, versatile",
     sample: "Your Portfolio",
-    weight: "600" as const,
   },
   {
     id: "professional",
     label: "Professional",
-    family: "Poppins",
+    family: "Poppins_700Bold",
     desc: "Trustworthy, clear, corporate-ready",
     sample: "Your Portfolio",
-    weight: "700" as const,
   },
   {
     id: "creative",
     label: "Creative",
-    family: "Playfair Display",
+    family: "PlayfairDisplay_600SemiBold",
     desc: "Expressive, editorial, artistic",
     sample: "Your Portfolio",
-    weight: "600" as const,
   },
   {
     id: "classic",
     label: "Classic",
-    family: "Montserrat",
+    family: "Montserrat_500Medium",
     desc: "Timeless, elegant, refined",
     sample: "Your Portfolio",
-    weight: "500" as const,
   },
   {
     id: "bold",
     label: "Bold",
-    family: "Space Grotesk",
+    family: "SpaceGrotesk_700Bold",
     desc: "Strong, impactful, developer-like",
     sample: "Your Portfolio",
-    weight: "700" as const,
   },
 ];
+
 
 export default function FontScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
   const { setOnboardingStep } = useProfileStore();
+
+  const [fontsLoaded] = useFonts({
+    Inter_600SemiBold,
+    Inter_400Regular,
+    Poppins_700Bold,
+    Poppins_400Regular,
+    PlayfairDisplay_600SemiBold,
+    PlayfairDisplay_400Regular,
+    Montserrat_500Medium,
+    Montserrat_400Regular,
+    SpaceGrotesk_700Bold,
+    SpaceGrotesk_400Regular,
+  });
 
   const [selected, setSelected] = useState("modern");
   const [loading, setLoading] = useState(false);
@@ -86,6 +117,11 @@ export default function FontScreen() {
     setOnboardingStep("preference");
     router.push("/(onboarding)/preference");
   };
+
+  if (!fontsLoaded) return null;
+
+  const currentFont = FONTS.find((f) => f.id === selected) || FONTS[0];
+
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -118,6 +154,19 @@ export default function FontScreen() {
           The right font makes your portfolio feel intentional and premium.
         </Animated.Text>
 
+        <Animated.View 
+          entering={FadeInDown.delay(100).springify()}
+          style={[styles.previewContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <Text style={[styles.previewTag, { color: colors.primary }]}>PREVIEW</Text>
+          <Text style={[styles.previewTitle, { color: colors.foreground, fontFamily: currentFont.family }]}>
+            Hello, I'm a Designer
+          </Text>
+          <Text style={[styles.previewBody, { color: colors.mutedForeground, fontFamily: currentFont.family.replace("600SemiBold", "400Regular").replace("700Bold", "400Regular").replace("500Medium", "400Regular") }]}>
+            Passionate about creating beautiful experiences that make a difference in people's lives.
+          </Text>
+        </Animated.View>
+
         <Animated.View entering={FadeInDown.delay(120).springify()} style={{ gap: 10 }}>
           {FONTS.map((font) => {
             const isSelected = selected === font.id;
@@ -141,7 +190,7 @@ export default function FontScreen() {
                       styles.fontSample,
                       {
                         color: isSelected ? colors.primary : colors.foreground,
-                        fontWeight: font.weight,
+                        fontFamily: font.family,
                       },
                     ]}
                   >
@@ -152,7 +201,7 @@ export default function FontScreen() {
                       {font.label}
                     </Text>
                     <Text style={[styles.fontFamily, { color: colors.mutedForeground }]}>
-                      {font.family}
+                      {font.family.split('_')[0]}
                     </Text>
                   </View>
                   <Text style={[styles.fontDesc, { color: colors.mutedForeground }]}>
@@ -203,6 +252,27 @@ const styles = StyleSheet.create({
   fontLabel: { fontSize: 13, fontWeight: "700" },
   fontFamily: { fontSize: 11 },
   fontDesc: { fontSize: 11, lineHeight: 16 },
+  previewContainer: {
+    padding: 24,
+    borderRadius: 24,
+    borderWidth: 1,
+    marginVertical: 10,
+    gap: 8,
+  },
+  previewTag: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 1,
+    marginBottom: 4,
+  },
+  previewTitle: {
+    fontSize: 28,
+    letterSpacing: -0.5,
+  },
+  previewBody: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
   checkCircle: {
     width: 28,
     height: 28,

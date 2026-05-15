@@ -6,8 +6,8 @@ import { resolvePrimaryModel, resolveFallbackModel } from "./ai-models";
  */
 function resolveGoogleApiKey(): string {
   return (
-    process.env.GOOGLE_API_KEY?.trim() || 
     process.env.GEMINI_API_KEY?.trim() || 
+    process.env.GOOGLE_API_KEY?.trim() || 
     process.env.EXPO_PUBLIC_GOOGLE_API_KEY?.trim() ||
     ""
   ).replace(/["']/g, "");

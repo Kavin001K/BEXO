@@ -63,6 +63,10 @@
   "dependencies": {
     "@expo-google-fonts/dm-sans": "^0.4.2",
     "@expo-google-fonts/jetbrains-mono": "^0.4.1",
+    "@expo-google-fonts/montserrat": "^0.4.2",
+    "@expo-google-fonts/playfair-display": "^0.4.2",
+    "@expo-google-fonts/poppins": "^0.4.1",
+    "@expo-google-fonts/space-grotesk": "^0.4.1",
     "@expo-google-fonts/syne": "^0.4.2",
     "@gorhom/bottom-sheet": "^5.1.1",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -75,6 +79,7 @@
     "expo-file-system": "~19.0.0",
     "expo-image-manipulator": "^14.0.8",
     "expo-keep-awake": "~15.0.8",
+    "expo-secure-store": "~15.0.8",
     "expo-updates": "~29.0.17",
     "fs-extra": "^11.2.0",
     "gsap": "^3.15.0",

@@ -20,6 +20,15 @@ CREATE TABLE IF NOT EXISTS profiles (
   github_url TEXT,
   is_published BOOLEAN DEFAULT false,
   portfolio_theme TEXT DEFAULT 'default',
+  portfolio_font TEXT,
+  website_preference TEXT,
+  rebuild_preferences TEXT,
+  address TEXT,
+  consent_accepted_at TIMESTAMPTZ,
+  phone_verified BOOLEAN DEFAULT false,
+  email_verified BOOLEAN DEFAULT false,
+  notifications_enabled BOOLEAN DEFAULT true,
+  is_public BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

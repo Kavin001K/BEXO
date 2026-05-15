@@ -15,7 +15,7 @@ import { useColors } from "@/hooks/useColors";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { useAuthStore } from "@/stores/useAuthStore";
 
-export default function SettingsScreen() {
+function SettingsScreen() {
   const colors  = useColors();
   const insets  = useSafeAreaInsets();
   const signOut = useAuthStore((s) => s.signOut);
@@ -188,6 +188,8 @@ export default function SettingsScreen() {
     </View>
   );
 }
+
+export default SettingsScreen;
 
 const S = StyleSheet.create({
   container: { flex: 1 },
