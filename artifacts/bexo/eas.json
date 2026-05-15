@@ -7,7 +7,10 @@
     "development": {
       "environment": "development",
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
     },
     "preview": {
       "environment": "preview",
@@ -17,11 +20,11 @@
       },
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "$EXPO_PUBLIC_SUPABASE_ANON_KEY",
-        "EXPO_PUBLIC_API_BASE_URL": "$EXPO_PUBLIC_API_BASE_URL",
-        "EXPO_PUBLIC_FRONTEND_URL": "$EXPO_PUBLIC_FRONTEND_URL",
-        "EXPO_PUBLIC_GOOGLE_API_KEY": "$EXPO_PUBLIC_GOOGLE_API_KEY"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://gtjbnvpvqzddkbatyqtr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0amJudnB2cXpkZGtiYXR5cXRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzM1MjIsImV4cCI6MjA5MzE0OTUyMn0.erIoHrwITtul-JY8y4wx0C0k0q37SQ0Ok7xYOXtWiBs",
+        "EXPO_PUBLIC_API_BASE_URL": "https://backend.mybexo.com",
+        "EXPO_PUBLIC_FRONTEND_URL": "https://mybexo.com",
+        "EXPO_PUBLIC_GOOGLE_API_KEY": "AIzaSyAhe3veNtVM6QS2ucW7Aqeqq7hBhEXzC28"
       }
     },
     "production": {
@@ -32,11 +35,11 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_SUPABASE_URL": "$EXPO_PUBLIC_SUPABASE_URL",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "$EXPO_PUBLIC_SUPABASE_ANON_KEY",
-        "EXPO_PUBLIC_API_BASE_URL": "$EXPO_PUBLIC_API_BASE_URL",
-        "EXPO_PUBLIC_FRONTEND_URL": "$EXPO_PUBLIC_FRONTEND_URL",
-        "EXPO_PUBLIC_GOOGLE_API_KEY": "$EXPO_PUBLIC_GOOGLE_API_KEY"
+        "EXPO_PUBLIC_SUPABASE_URL": "https://gtjbnvpvqzddkbatyqtr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd0amJudnB2cXpkZGtiYXR5cXRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc1NzM1MjIsImV4cCI6MjA5MzE0OTUyMn0.erIoHrwITtul-JY8y4wx0C0k0q37SQ0Ok7xYOXtWiBs",
+        "EXPO_PUBLIC_API_BASE_URL": "https://backend.mybexo.com",
+        "EXPO_PUBLIC_FRONTEND_URL": "https://mybexo.com",
+        "EXPO_PUBLIC_GOOGLE_API_KEY": "AIzaSyAhe3veNtVM6QS2ucW7Aqeqq7hBhEXzC28"
       }
     }
   },
