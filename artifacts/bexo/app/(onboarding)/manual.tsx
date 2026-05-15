@@ -1476,7 +1476,7 @@ export default function ManualEntryScreen() {
       if (stepIdx === 0) return (
         <View style={S.stepWrap}>
           <QuestionHeader section={sec} title="Work email?" sub="Your professional email address" />
-          <GlassInput value={contact.email} onChangeText={(v) => setContact({ ...contact, email: v })} placeholder="e.g. kavin@bexo.com" accentColor={color} keyboardType="email-address" autoCapitalize="none" autoFocus returnKeyType="next" onSubmitEditing={handleNext} />
+          <GlassInput value={contact.email} onChangeText={(v) => setContact({ ...contact, email: v })} placeholder="e.g. kavin@mybexo.com" accentColor={color} keyboardType="email-address" autoCapitalize="none" autoFocus returnKeyType="next" onSubmitEditing={handleNext} />
         </View>
       );
       if (stepIdx === 1) return (

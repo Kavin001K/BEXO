@@ -132,6 +132,7 @@ export default function FontScreen() {
         end={{ x: 0.5, y: 1 }}
       />
       <ScrollView
+        stickyHeaderIndices={[2]}
         contentContainerStyle={[
           styles.scroll,
           {
@@ -154,18 +155,20 @@ export default function FontScreen() {
           The right font makes your portfolio feel intentional and premium.
         </Animated.Text>
 
-        <Animated.View 
-          entering={FadeInDown.delay(100).springify()}
-          style={[styles.previewContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
-        >
-          <Text style={[styles.previewTag, { color: colors.primary }]}>PREVIEW</Text>
-          <Text style={[styles.previewTitle, { color: colors.foreground, fontFamily: currentFont.family }]}>
-            Hello, I'm a Designer
-          </Text>
-          <Text style={[styles.previewBody, { color: colors.mutedForeground, fontFamily: currentFont.family.replace("600SemiBold", "400Regular").replace("700Bold", "400Regular").replace("500Medium", "400Regular") }]}>
-            Passionate about creating beautiful experiences that make a difference in people's lives.
-          </Text>
-        </Animated.View>
+        <View style={{ backgroundColor: colors.background, paddingVertical: 10 }}>
+          <Animated.View 
+            entering={FadeInDown.delay(100).springify()}
+            style={[styles.previewContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          >
+            <Text style={[styles.previewTag, { color: colors.primary }]}>PREVIEW</Text>
+            <Text style={[styles.previewTitle, { color: colors.foreground, fontFamily: currentFont.family }]}>
+              Hello, I'm a Designer
+            </Text>
+            <Text style={[styles.previewBody, { color: colors.mutedForeground, fontFamily: currentFont.family.replace("600SemiBold", "400Regular").replace("700Bold", "400Regular").replace("500Medium", "400Regular") }]}>
+              Passionate about creating beautiful experiences that make a difference in people's lives.
+            </Text>
+          </Animated.View>
+        </View>
 
         <Animated.View entering={FadeInDown.delay(120).springify()} style={{ gap: 10 }}>
           {FONTS.map((font) => {

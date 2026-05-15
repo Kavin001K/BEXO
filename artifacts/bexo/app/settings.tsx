@@ -91,52 +91,10 @@ function SettingsScreen() {
           </View>
         </Animated.View>
 
-        {/* --- ANALYTICS PREVIEW --- */}
+        {/* --- SETTINGS --- */}
         <Animated.View entering={FadeInDown.delay(120).springify()}>
-          <Text style={[S.sectionLabel, { color: colors.mutedForeground }]}>ANALYTICS</Text>
-          <LinearGradient 
-            colors={[colors.card, colors.surface]} 
-            style={[S.card, { borderColor: colors.border, padding: 16 }]}
-          >
-            <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 16 }}>
-              <View>
-                <Text style={{ fontSize: 12, color: colors.mutedForeground }}>Profile Views</Text>
-                <Text style={{ fontSize: 24, fontWeight: "800", color: colors.foreground }}>1,284</Text>
-              </View>
-              <View style={[S.chartIcon, { backgroundColor: colors.primary + "20" }]}>
-                <Feather name="trending-up" size={20} color={colors.primary} />
-              </View>
-            </View>
-            <View style={{ flexDirection: "row", gap: 20 }}>
-              <View>
-                <Text style={{ fontSize: 10, color: colors.mutedForeground, textTransform: "uppercase" }}>Avg. Session</Text>
-                <Text style={{ fontSize: 14, fontWeight: "700", color: colors.foreground }}>2m 40s</Text>
-              </View>
-              <View>
-                <Text style={{ fontSize: 10, color: colors.mutedForeground, textTransform: "uppercase" }}>CTR</Text>
-                <Text style={{ fontSize: 14, fontWeight: "700", color: "#6AFAD0" }}>12.4%</Text>
-              </View>
-            </View>
-          </LinearGradient>
-        </Animated.View>
-
-        {/* --- VISIBILITY & CONTROL --- */}
-        <Animated.View entering={FadeInDown.delay(180).springify()}>
-          <Text style={[S.sectionLabel, { color: colors.mutedForeground }]}>VISIBILITY & CONTROL</Text>
+          <Text style={[S.sectionLabel, { color: colors.mutedForeground }]}>PREFERENCES</Text>
           <View style={[S.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <View style={S.infoRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={[S.infoLabel, { color: colors.foreground }]}>Public Profile</Text>
-                <Text style={{ fontSize: 11, color: colors.mutedForeground }}>Make your portfolio visible to everyone</Text>
-              </View>
-              <Switch 
-                value={profile?.is_public ?? true} 
-                onValueChange={toggleVisibility}
-                trackColor={{ false: "#333", true: colors.primary }}
-                thumbColor={Platform.OS === "ios" ? "#fff" : (profile?.is_public ? "#fff" : "#999")}
-              />
-            </View>
-            <View style={[S.divider, { backgroundColor: colors.border }]} />
             <View style={S.infoRow}>
               <View style={{ flex: 1 }}>
                 <Text style={[S.infoLabel, { color: colors.foreground }]}>Push Notifications</Text>
@@ -152,11 +110,13 @@ function SettingsScreen() {
         </Animated.View>
 
         {/* --- ACTIONS --- */}
-        <Animated.View entering={FadeInDown.delay(240).springify()} style={{ gap: 8 }}>
+        <Animated.View entering={FadeInDown.delay(180).springify()} style={{ gap: 8 }}>
           {[
             { label: "Edit Personal Details", icon: "user",   route: "/edit-profile" },
-            { label: "Privacy Policy",      icon: "shield", route: "https://bexo.com/privacy" },
-            { label: "Help & Support",       icon: "help-circle", route: "mailto:support@bexo.com" },
+            { label: "FAQ",                icon: "help-circle", route: "/faq" },
+            { label: "Privacy Policy",      icon: "shield", route: "/privacy" },
+            { label: "Terms of Service",    icon: "file-text", route: "/terms" },
+            { label: "Contact Support",     icon: "mail", route: "mailto:support@mybexo.com" },
           ].map((item) => (
             <TouchableOpacity
               key={item.label}
@@ -176,12 +136,13 @@ function SettingsScreen() {
           ))}
         </Animated.View>
 
-        <Animated.View entering={FadeInDown.delay(300).springify()}>
+        <Animated.View entering={FadeInDown.delay(240).springify()}>
           <TouchableOpacity style={[S.logoutBtn, { borderColor: "#FA6A6A" }]} onPress={handleLogout}>
             <Feather name="log-out" size={17} color="#FA6A6A" />
             <Text style={S.logoutText}>Log Out</Text>
           </TouchableOpacity>
         </Animated.View>
+
 
         <Text style={[S.version, { color: colors.mutedForeground }]}>BEXO v1.0.0 • Build 24</Text>
       </ScrollView>
