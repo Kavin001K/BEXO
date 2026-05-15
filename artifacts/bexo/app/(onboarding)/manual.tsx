@@ -222,7 +222,7 @@ const QS = StyleSheet.create({
 
 // ─── GlassInput ───────────────────────────────────────────────────────────────
 function GlassInput({
-  value, onChangeText, placeholder, multiline, accentColor, autoFocus, keyboardType, returnKeyType, onSubmitEditing, autoCapitalize,
+  value, onChangeText, placeholder, multiline, accentColor, autoFocus, keyboardType, returnKeyType, onSubmitEditing, autoCapitalize, maxLength,
 }: {
   value: string; onChangeText: (v: string) => void; placeholder: string;
   multiline?: boolean; accentColor: string; autoFocus?: boolean;
@@ -230,6 +230,7 @@ function GlassInput({
   returnKeyType?: "done" | "go" | "next" | "search" | "send";
   onSubmitEditing?: () => void;
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  maxLength?: number;
 }) {
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
@@ -281,6 +282,7 @@ function GlassInput({
           onBlur={() => setFocused(false)}
           autoCorrect={false}
           autoCapitalize={autoCapitalize ?? "words"}
+          maxLength={maxLength}
         />
       </TouchableOpacity>
     </Animated.View>

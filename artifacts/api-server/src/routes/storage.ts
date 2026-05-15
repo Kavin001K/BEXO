@@ -1,100 +1,157 @@
-import { Router, raw } from "express";
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { callGemini } from "../lib/ai";
+import express from "express";
+import multer from "multer";
+import { uploadToR2, objectExists, renameObject } from "../lib/r2.js";
+import { supabaseAdmin } from "../lib/supabase.js";
+import { callGemini } from "../lib/ai.js";
+import sharp from "sharp";
 
-const router = Router();
-
-const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID ?? "";
-const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID ?? "";
-const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY ?? "";
-const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME ?? "bexo";
-const R2_ENDPOINT = `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`;
-
-const r2 = new S3Client({
-  region: "auto",
-  endpoint: R2_ENDPOINT,
-  credentials: {
-    accessKeyId: R2_ACCESS_KEY_ID,
-    secretAccessKey: R2_SECRET_ACCESS_KEY,
+const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
   },
-  forcePathStyle: true,
-});
-
-// Public base URL for the R2 bucket (if a custom domain is configured on the bucket, use that instead)
-const R2_PUBLIC_BASE = process.env.R2_PUBLIC_URL ?? `${R2_ENDPOINT}/${R2_BUCKET_NAME}`;
-
-/**
- * POST /api/storage/upload-url
- * Body: { key: string, contentType: string }
- * Returns: { url: string (presigned PUT URL), publicUrl: string }
- */
-router.post("/upload-url", async (req, res) => {
-  try {
-    const { key, contentType } = req.body as { key?: string; contentType?: string };
-    if (!key) {
-      res.status(400).json({ error: "key is required" });
-      return;
-    }
-
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      ContentType: contentType ?? "application/octet-stream",
-    });
-
-    const url = await getSignedUrl(r2, command, { expiresIn: 300 }); // 5 minute window
-
-    res.json({
-      url,
-      publicUrl: `${R2_PUBLIC_BASE}/${key}`,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message ?? "Failed to generate upload URL" });
-  }
 });
 
 /**
  * POST /api/storage/upload
- * Headers: x-key, content-type
- * Body: binary data
- * This route is used to proxy uploads and avoid CORS issues on web.
+ * Handles all file uploads with organized folder structure.
+ * Automatically rotates old avatars and resumes into a 'bin' folder.
+ * Converts images to JPG for consistency.
  */
-router.post("/upload", raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
+/**
+ * POST /api/storage/upload
+ * Handles all file uploads with organized folder structure.
+ * Supports both multipart/form-data (req.file) and raw binary body (req.body).
+ */
+router.post("/upload", upload.single("file"), express.raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
   try {
-    const key = req.headers["x-key"] as string;
-    const contentType = req.headers["content-type"] as string;
+    let finalBuffer: Buffer | undefined;
+    let finalContentType: string | undefined;
+    let originalName: string = "unknown";
 
-    if (!key) {
-      res.status(400).json({ error: "x-key header is required" });
-      return;
+    // 1. Extract file data from either Multer or raw body
+    if (req.file) {
+      finalBuffer = req.file.buffer;
+      finalContentType = req.file.mimetype;
+      originalName = req.file.originalname;
+    } else if (Buffer.isBuffer(req.body) && req.body.length > 0) {
+      finalBuffer = req.body;
+      finalContentType = (req.headers["content-type"] as string) || "application/octet-stream";
+      originalName = (req.headers["x-key"] as string)?.split("/").pop() || "upload";
     }
 
-    const command = new PutObjectCommand({
-      Bucket: R2_BUCKET_NAME,
-      Key: key,
-      ContentType: contentType || "application/octet-stream",
-      Body: req.body as Buffer,
-    });
+    if (!finalBuffer) {
+      console.warn("[Storage] No file data found in request");
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
-    await r2.send(command);
+    const syncType = req.headers["x-sync-type"] as string; // 'avatar' | 'resume'
+    const profileId = req.headers["x-profile-id"] as string;
+    const authHeader = req.headers["authorization"];
+    const profileUrlColumn: "avatar_url" | "resume_url" | undefined =
+      syncType === "avatar" ? "avatar_url" : syncType === "resume" ? "resume_url" : undefined;
 
-    res.json({
-      success: true,
-      publicUrl: `${R2_PUBLIC_BASE}/${key}`,
+    let customKey: string | undefined;
+
+    // 2. Fetch user handle if profileId is provided
+    let handle = "common";
+    if (profileId) {
+      const { data: profile } = await supabaseAdmin
+        .from("profiles")
+        .select("handle")
+        .eq("id", profileId)
+        .single();
+      
+      if (profile?.handle) {
+        handle = profile.handle.toLowerCase();
+      }
+    }
+
+    // 3. Handle specialized sync logic (Avatar/Resume)
+    if (syncType === "avatar" && profileId) {
+      // Server-side normalization of avatar to high-quality JPG
+      try {
+        finalBuffer = await sharp(finalBuffer)
+          .jpeg({ quality: 90, mozjpeg: true })
+          .toBuffer();
+        finalContentType = "image/jpeg";
+      } catch (err) {
+        console.error("[Storage] Sharp avatar processing failed:", err);
+        // Fallback to original buffer if sharp fails
+      }
+      
+      const stableKey = `${handle}/avatar.jpg`;
+      const binKey = `${handle}/bin/avatar-${Date.now()}.jpg`;
+
+      if (await objectExists(stableKey)) {
+        await renameObject(stableKey, binKey);
+      }
+      
+      customKey = stableKey;
+    } else if (syncType === "resume" && profileId) {
+      const stableKey = `${handle}/resume.pdf`;
+      const binKey = `${handle}/bin/resume-${Date.now()}.pdf`;
+
+      if (await objectExists(stableKey)) {
+        await renameObject(stableKey, binKey);
+      }
+      
+      customKey = stableKey;
+    } else {
+      // Default organized storage for attachments or projects
+      const timestamp = Date.now();
+      customKey = (req.headers["x-key"] as string) || `${handle}/attachments/${timestamp}-${originalName}`;
+    }
+
+    // 4. Upload to R2
+    const publicUrl = await uploadToR2(
+      finalBuffer,
+      originalName,
+      finalContentType || "application/octet-stream",
+      customKey
+    );
+
+    // 5. Sync to Supabase if profileId and auth are present
+    if (profileId && authHeader) {
+      const token = authHeader.replace("Bearer ", "");
+      const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+
+      if (user) {
+        const { data: profile } = await supabaseAdmin
+          .from("profiles")
+          .select("user_id")
+          .eq("id", profileId)
+          .single();
+
+        if (profile && profile.user_id === user.id && profileUrlColumn) {
+          await supabaseAdmin
+            .from("profiles")
+            .update({ [profileUrlColumn]: publicUrl })
+            .eq("id", profileId);
+
+          console.log(`[Storage] Synced ${syncType} for ${handle} to Supabase`);
+        }
+      }
+    }
+
+    // Return versioned URL to client for immediate UI feedback
+    return res.status(200).json({ 
+      publicUrl: `${publicUrl}?v=${Date.now()}`,
+      cleanUrl: publicUrl,
+      key: customKey 
     });
-  } catch (err: any) {
-    console.error("[Storage] Proxy upload failed:", err);
-    res.status(500).json({ error: err.message ?? "Failed to upload file via proxy" });
+  } catch (error: any) {
+    console.error("[Storage Error]:", error);
+    return res.status(500).json({ error: error.message || "Internal server error" });
   }
 });
 
 /**
  * POST /api/storage/parse-pdf
- * Body: binary PDF data
- * Returns: { text: string }
+ * Extracts text from binary PDF data using Gemini.
  */
-router.post("/parse-pdf", raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
+router.post("/parse-pdf", express.raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
   try {
     if (!req.body || !Buffer.isBuffer(req.body)) {
       res.status(400).json({ error: "Request body must be binary PDF data" });
@@ -148,8 +205,7 @@ Rules:
 
 /**
  * POST /api/storage/parse-resume
- * Body: { text: string }
- * Returns: ParsedResume JSON
+ * Converts resume text to structured JSON using AI.
  */
 router.post("/parse-resume", async (req, res) => {
   try {
@@ -220,8 +276,7 @@ router.post("/parse-resume", async (req, res) => {
 
 /**
  * POST /api/storage/generate-bio
- * Body: { full_name, headline?, skills?, education?, experience? }
- * Returns: { bio: string }
+ * Generates a professional bio based on profile context.
  */
 router.post("/generate-bio", async (req, res) => {
   try {

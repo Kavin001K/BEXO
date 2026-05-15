@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Image, KeyboardAvoidingView,
@@ -129,14 +129,22 @@ export default function VerifyScreen() {
       // Force the profile store to fetch latest data to check completeness
       const profileStore = useProfileStore.getState();
       await profileStore.fetchProfile(user.id);
-      const profile = profileStore.profile;
+      
+      const isComplete = profileStore.isProfileComplete();
 
-      if (!profile || !profile.handle) {
-        // If no profile or no handle/URL exists, they MUST go to email first
-        profileStore.setOnboardingStep("email");
-        router.replace("/(onboarding)/email");
+      if (!isComplete) {
+        // If profile is incomplete, start/resume onboarding
+        // If we found a profile but it's incomplete, we still start from email 
+        // because it's the first step that checks/saves the basic info.
+        if (profileStore.onboardingStep === "completed") {
+          profileStore.setOnboardingStep("email");
+        }
+        let step = useProfileStore.getState().onboardingStep;
+        if (step === "completed") step = "email";
+        const segment = step === "manual_review" ? "manual-review" : step;
+        router.replace(`/(onboarding)/${segment}` as Href);
       } else {
-        router.replace("/(main)/dashboard");
+        router.replace("/(main)/(tabs)/dashboard");
       }
     } catch (e: any) {
       setError(sanitizeError(e));

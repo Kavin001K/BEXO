@@ -76,12 +76,19 @@ export interface Profile {
   is_public?: boolean | null;
   notifications_enabled?: boolean | null;
   portfolio_theme: string;
+  /** Card color palette slug (midnight, ocean, …). */
+  identity_card_palette?: string | null;
+  /** Card layout: standard | compact | bold. */
+  identity_card_template?: string | null;
+  /** Expo Google Font postscript name for the digital card only. */
+  identity_card_font?: string | null;
   dob?: string | null;
   portfolio_font?: string | null;
   website_preference?: string | null;
   rebuild_preferences?: string | null;
   address?: string | null;
   consent_accepted_at?: string | null;
+  updated_at?: string | null;
 }
 
 export interface CompletionResult {
@@ -138,7 +145,7 @@ interface ProfileState {
   setManualReviewStepIndex: (index: number) => void;
   checkHandle: (handle: string) => Promise<boolean>;
   createProfile: (payload: any) => Promise<void>;
-  fetchProfile: (userId: string) => Promise<void>;
+  fetchProfile: (userId?: string) => Promise<void>;
   updateProfile: (updates: Partial<Profile>) => Promise<void>;
   addEducation: (edu: Education) => void;
   addExperience: (exp: Experience) => void;
@@ -159,6 +166,7 @@ interface ProfileState {
   deleteSkill: (id: string) => Promise<void>;
   saveResearch: (res: Research) => Promise<void>;
   deleteResearch: (id: string) => Promise<void>;
+  isProfileComplete: () => boolean;
   getCompletionResult: () => CompletionResult;
 
   // New bulk methods
@@ -169,6 +177,7 @@ interface ProfileState {
   bulkSaveResearch: (items: Research[]) => Promise<void>;
   replaceAllDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
   mergeDataFromResume: (parsed: ParsedResume, resumePath: string) => Promise<void>;
+  syncOnboardingStepFromData: () => void;
   refreshFromDB: () => Promise<void>;
   reset: () => void;
 }
@@ -217,6 +226,13 @@ export const useProfileStore = create<ProfileState>()(
       addExperience: (exp) => set((s) => ({ experiences: [...s.experiences, exp] })),
       addProject: (proj) => set((s) => ({ projects: [...s.projects, proj] })),
       addSkill: (skill) => set((s) => ({ skills: [...s.skills, skill] })),
+
+      isProfileComplete: () => {
+        const { profile } = get();
+        if (!profile) return false;
+        // Basic completeness check: must have handle, full_name, and email
+        return !!(profile.handle?.trim() && profile.full_name?.trim() && profile.email?.trim());
+      },
 
       getCompletionResult: (): CompletionResult => {
         const { profile, education, experiences, projects, skills } = get();
@@ -277,13 +293,22 @@ export const useProfileStore = create<ProfileState>()(
         set({ profile: data });
       },
 
-      fetchProfile: async (userId: string) => {
+      fetchProfile: async (userId?: string) => {
+        // Fallback to current authenticated user if no ID is provided
+        const effectiveId = userId || get().profile?.user_id || (await supabase.auth.getUser()).data.user?.id;
+
+        if (!effectiveId || effectiveId === "undefined") {
+          console.warn("[ProfileStore] fetchProfile: No valid user ID available.");
+          set({ isLoading: false });
+          return;
+        }
+
         set({ isLoading: true });
         try {
           const { data: profile, error: pErr } = await supabase
             .from("profiles")
             .select("*")
-            .eq("user_id", userId)
+            .eq("user_id", effectiveId)
             .maybeSingle();
 
           if (pErr) throw pErr;
@@ -309,6 +334,10 @@ export const useProfileStore = create<ProfileState>()(
             research: res.data ?? [],
             isLoading: false,
           });
+
+          // After fetching, sync the onboarding step based on actual data density.
+          // This fulfills the "start from where they left off properly" requirement.
+          get().syncOnboardingStepFromData();
         } catch (e: any) {
           console.error("[ProfileStore] fetchProfile error:", sanitizeError(e));
           set({ isLoading: false });
@@ -592,6 +621,68 @@ export const useProfileStore = create<ProfileState>()(
         }
       },
 
+      syncOnboardingStepFromData: () => {
+        const { profile, education, experiences, onboardingStep } = get();
+        
+        // If already completed, stay completed
+        if (onboardingStep === "completed") return;
+
+        // 1. Email check
+        if (!profile?.email?.trim()) {
+          set({ onboardingStep: "email" });
+          return;
+        }
+
+        // 2. Photo check
+        if (!profile?.avatar_url) {
+          set({ onboardingStep: "photo" });
+          return;
+        }
+
+        // 3. Identity check (Handle & Name)
+        if (!profile?.handle?.trim() || !profile?.full_name?.trim()) {
+          set({ onboardingStep: "handle" });
+          return;
+        }
+
+        // 4. DOB check
+        if (!profile?.dob) {
+          set({ onboardingStep: "dob" });
+          return;
+        }
+
+        // 5. Resume/Experience check
+        // If they have no education AND no experiences AND no resume, they need to upload/import
+        if (education.length === 0 && experiences.length === 0 && !profile?.resume_url) {
+          set({ onboardingStep: "resume" });
+          return;
+        }
+
+        // 6. Manual review/entry check
+        // If they have a resume but still no data, they might be in the summary/parsing phase
+        if (profile?.resume_url && education.length === 0 && experiences.length === 0) {
+          // Check if we have parsed data waiting to be reviewed
+          if (get().parsedResumeData) {
+            set({ onboardingStep: "manual_review" });
+          } else {
+            set({ onboardingStep: "manual" });
+          }
+          return;
+        }
+
+        // 7. Portfolio Theme/Font check (last steps)
+        if (!profile?.portfolio_theme || profile.portfolio_theme === "default") {
+          // If they haven't picked a theme yet
+          set({ onboardingStep: "theme" });
+          return;
+        }
+
+        // Default: If they have basic data, move them towards completion
+        if (get().isProfileComplete()) {
+          set({ onboardingStep: "completed" });
+        }
+      },
+
       refreshFromDB: async () => {
         const profile = get().profile;
         if (!profile) return;
@@ -617,12 +708,9 @@ export const useProfileStore = create<ProfileState>()(
       partialize: (state) => ({
         onboardingStep: state.onboardingStep,
         manualReviewStepIndex: state.manualReviewStepIndex,
-        profile: state.profile,
-        education: state.education,
-        experiences: state.experiences,
-        projects: state.projects,
-        skills: state.skills,
-        research: state.research,
+        // We exclude heavy data arrays and the full profile object 
+        // to stay within SecureStore's 2048-byte limit.
+        // fetchProfile() is called during app init to restore these.
       }),
     }
   )

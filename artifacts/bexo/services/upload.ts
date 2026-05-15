@@ -1,6 +1,8 @@
 import * as ImageManipulator from "expo-image-manipulator";
 import { apiFetch } from "@/lib/apiConfig";
 import { decode } from "base64-arraybuffer";
+import { supabase } from "@/lib/supabase";
+import { useProfileStore } from "@/stores/useProfileStore";
 
 async function uriToBase64(uri: string): Promise<string> {
   if (uri.startsWith("data:")) return uri.split(",")[1];
@@ -23,26 +25,52 @@ async function uriToBase64(uri: string): Promise<string> {
 }
 
 /**
- * Upload a file to Cloudflare R2 via the API server.
+ * Upload a file to Cloudflare R2 via the API server using FormData.
  */
 async function uploadToR2(
   key: string,
   uri: string,
   contentType: string,
-  onProgress?: (pct: number) => void
+  onProgress?: (pct: number) => void,
+  syncType?: "avatar" | "resume"
 ): Promise<string> {
   onProgress?.(10);
-  const base64 = await uriToBase64(uri);
-  const buffer = decode(base64);
-  onProgress?.(50);
+  
+  const { data: { session } } = await supabase.auth.getSession();
+  const profile = useProfileStore.getState().profile;
+
+  const formData = new FormData();
+  
+  // React Native's fetch handles FormData with file objects correctly
+  const fileToUpload = {
+    uri: uri,
+    name: key.split("/").pop(),
+    type: contentType,
+  };
+  
+  // @ts-ignore
+  formData.append("file", fileToUpload);
+
+  const headers: Record<string, string> = {
+    "x-key": key,
+  };
+
+  if (session?.access_token) {
+    headers["authorization"] = `Bearer ${session.access_token}`;
+  }
+  if (profile?.id) {
+    headers["x-profile-id"] = profile.id;
+  }
+  if (syncType) {
+    headers["x-sync-type"] = syncType;
+  }
+
+  onProgress?.(40);
 
   const response = await apiFetch("/storage/upload", {
     method: "POST",
-    headers: {
-      "x-key": key,
-      "content-type": contentType,
-    },
-    body: buffer,
+    headers,
+    body: formData as any,
   });
 
   if (!response.ok) {
@@ -73,7 +101,7 @@ export async function uploadAvatar(
   onProgress?.(30);
 
   const key = `avatars/${userId}-${Date.now()}.jpg`;
-  return uploadToR2(key, compressed.uri, "image/jpeg", (p) => onProgress?.(30 + p * 0.7));
+  return uploadToR2(key, compressed.uri, "image/jpeg", (p) => onProgress?.(30 + p * 0.7), "avatar");
 }
 
 /**
@@ -88,7 +116,7 @@ export async function uploadResume(
   const base64 = await uriToBase64(localUri);
   const key = `resumes/${userId}-${Date.now()}.pdf`;
   
-  const publicUrl = await uploadToR2(key, localUri, "application/pdf", (p) => onProgress?.(10 + p * 0.9));
+  const publicUrl = await uploadToR2(key, localUri, "application/pdf", (p) => onProgress?.(10 + p * 0.9), "resume");
   
   return { path: publicUrl, base64 };
 }

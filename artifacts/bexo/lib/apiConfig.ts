@@ -64,13 +64,17 @@ export async function apiFetch(
     console.log(`[API] Fetching: ${url}`, options.method ?? "GET");
   }
 
+  const headers: Record<string, string> = { ...((options.headers as any) || {}) };
+  
+  // Only add application/json if no Content-Type is set and body isn't FormData
+  if (!headers["Content-Type"] && !headers["content-type"] && !(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
   try {
     const res = await fetch(url, {
       ...options,
-      headers: {
-        "Content-Type": "application/json",
-        ...(options.headers ?? {}),
-      },
+      headers,
     });
     if (__DEV__) {
       console.log(`[API] Response: ${res.status} from ${url}`);

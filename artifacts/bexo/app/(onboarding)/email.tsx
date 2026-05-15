@@ -30,16 +30,17 @@ export default function EmailScreen() {
   const { user, setCollectedEmail, collectedEmail } = useAuthStore();
   const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
 
-  const [value, setValue] = useState(collectedEmail || "");
+  const profile = useProfileStore((s) => s.profile);
+  const [value, setValue] = useState(profile?.email || collectedEmail || "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Sync state if store changes (e.g., navigating back)
+  // Sync state if store changes (e.g., navigating back or profile fetched)
   useEffect(() => {
-    if (collectedEmail && !value) {
-      setValue(collectedEmail);
+    if ((profile?.email || collectedEmail) && !value) {
+      setValue(profile?.email || collectedEmail || "");
     }
-  }, [collectedEmail]);
+  }, [profile?.email, collectedEmail]);
 
   const handleSuccess = () => {
     setOnboardingStep("photo");

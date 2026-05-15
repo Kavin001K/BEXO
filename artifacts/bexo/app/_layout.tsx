@@ -1,8 +1,10 @@
-import {
-  DMSans_400Regular,
-  DMSans_500Medium,
-  DMSans_700Bold,
-} from "@expo-google-fonts/dm-sans";
+import { DMSans_400Regular, DMSans_500Medium, DMSans_700Bold } from "@expo-google-fonts/dm-sans";
+import { JetBrainsMono_400Regular, JetBrainsMono_700Bold } from "@expo-google-fonts/jetbrains-mono";
+import { Montserrat_700Bold, Montserrat_800ExtraBold } from "@expo-google-fonts/montserrat";
+import { PlayfairDisplay_700Bold, PlayfairDisplay_900Black } from "@expo-google-fonts/playfair-display";
+import { Poppins_600SemiBold, Poppins_800ExtraBold } from "@expo-google-fonts/poppins";
+import { SpaceGrotesk_700Bold } from "@expo-google-fonts/space-grotesk";
+import { Syne_700Bold, Syne_800ExtraBold } from "@expo-google-fonts/syne";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as Font from "expo-font";
 import { Stack } from "expo-router";
@@ -57,6 +59,17 @@ export default function RootLayout() {
       DMSans_400Regular,
       DMSans_500Medium,
       DMSans_700Bold,
+      JetBrainsMono_400Regular,
+      JetBrainsMono_700Bold,
+      Montserrat_700Bold,
+      Montserrat_800ExtraBold,
+      PlayfairDisplay_700Bold,
+      PlayfairDisplay_900Black,
+      Poppins_600SemiBold,
+      Poppins_800ExtraBold,
+      SpaceGrotesk_700Bold,
+      Syne_700Bold,
+      Syne_800ExtraBold,
       ...Feather.font,
       ...AntDesign.font,
     })

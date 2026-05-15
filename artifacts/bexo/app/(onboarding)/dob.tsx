@@ -33,16 +33,17 @@ function calcAge(dob: Date): number {
 export default function DobScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const user = useAuthStore((s) => s.user);
+  const profile = useProfileStore((s) => s.profile);
   const { setOnboardingStep, updateProfile } = useProfileStore();
 
   const dayRef   = useRef<TextInput>(null);
   const monthRef = useRef<TextInput>(null);
   const yearRef  = useRef<TextInput>(null);
 
-  const [day, setDay]     = useState("");
-  const [month, setMonth] = useState("");
-  const [year, setYear]   = useState("");
+  const initialDob = profile?.dob ? new Date(profile.dob) : null;
+  const [day, setDay]     = useState(initialDob ? String(initialDob.getDate()) : "");
+  const [month, setMonth] = useState(initialDob ? String(initialDob.getMonth() + 1) : "");
+  const [year, setYear]   = useState(initialDob ? String(initialDob.getFullYear()) : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 

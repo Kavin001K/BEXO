@@ -27,9 +27,10 @@ export default function PhotoScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const user = useAuthStore((s) => s.user);
-  const { updateProfile, setOnboardingStep } = useProfileStore();
-
-  const [imageUri, setImageUri] = useState<string | null>(null);
+  const profile = useProfileStore((s) => s.profile);
+  const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
+  const updateProfile = useProfileStore((s) => s.updateProfile);
+  const [imageUri, setImageUri] = useState<string | null>(profile?.avatar_url || null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
 

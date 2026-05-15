@@ -15,15 +15,15 @@ export default function RootIndex() {
   useEffect(() => {
     if (!isAuthLoading && !isProfileLoading) {
       if (session) {
-        const hasFinishedOnboarding = onboardingStep === "completed";
-        const hasHandle = !!profile?.handle;
+        const isComplete = useProfileStore.getState().isProfileComplete();
+        const hasFinishedOnboarding = onboardingStep === "completed" && isComplete;
         
-        if (hasFinishedOnboarding && hasHandle) {
-          router.replace("/(main)/dashboard");
+        if (hasFinishedOnboarding) {
+          router.replace("/(main)/(tabs)/dashboard");
         } else {
           // Resume from exactly where they left off
           const step = onboardingStep || "email";
-          // Safety mapping: rename 'contact' to 'email' if needed, though we already renamed the file
+          // Safety mapping: rename 'manual_review' to 'manual-review' for route consistency
           const route = step === "completed" ? "email" : step === "manual_review" ? "manual-review" : step;
           router.replace(`/(onboarding)/${route}`);
         }

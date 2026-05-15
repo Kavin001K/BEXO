@@ -108,6 +108,13 @@ export default function DashboardScreen() {
   const [refreshing,     setRefreshing]     = useState(false);
   const [showMissing,    setShowMissing]    = useState(false);
   const [dashboardReady, setDashboardReady] = useState(false);
+  const [imgError, setImgError] = useState(false);
+
+  React.useEffect(() => {
+    setImgError(false);
+  }, [profile?.avatar_url]);
+
+  const showFallback = !profile?.avatar_url || imgError;
 
   const params  = useLocalSearchParams<{ onboarding_complete?: string }>();
 
@@ -115,6 +122,7 @@ export default function DashboardScreen() {
     () => getCompletionResult(),
     [profile, education, experiences, projects, skills]
   );
+
 
   useEffect(() => {
     if (params.onboarding_complete === "true") {
@@ -182,8 +190,14 @@ export default function DashboardScreen() {
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const botPad = insets.bottom + (Platform.OS === "web" ? 34 : 80);
+  /** Keep scroll content out from under the FAB so list rows stay tappable (FAB sits above in z-order). */
+  const fabClearance = 68 + 20;
 
-  const firstName = useMemo(() => profile?.full_name?.split(" ")[0] ?? "Student", [profile?.full_name]);
+  const firstName = useMemo(() => {
+    const name = profile?.full_name?.split(" ")[0] ?? "Student";
+    return name.charAt(0).toUpperCase() + name.slice(1).toLowerCase();
+  }, [profile?.full_name]);
+
   const greeting = useMemo(() => {
     const hours = new Date().getHours();
     if (hours < 12) return "Good morning";
@@ -204,6 +218,7 @@ export default function DashboardScreen() {
   const isLive     = buildStatus === "done" && !!portfolioUrl;
   const isBuilding = buildStatus === "building" || buildStatus === "queued";
 
+
   return (
     <View style={[S.container, { backgroundColor: colors.background }]}>
       <LinearGradient
@@ -215,53 +230,58 @@ export default function DashboardScreen() {
         pointerEvents="none"
       />
       <ScrollView
-        contentContainerStyle={[S.scroll, { paddingTop: topPad + 16, paddingBottom: botPad }]}
+        contentContainerStyle={[
+          S.scroll,
+          {
+            paddingTop: topPad + 16,
+            paddingBottom: botPad + fabClearance,
+          },
+        ]}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
         }
       >
         {/* Header */}
+        {/* Header with Greeting and Avatar */}
         <Animated.View entering={FadeIn.duration(400)} style={S.header}>
           <View style={S.headerLeft}>
-            <View>
-              <Text style={[S.greeting, { color: colors.mutedForeground }]}>
-                {greeting},
-              </Text>
-              <Text style={[S.userName, { color: colors.foreground }]}>
-                {firstName}
-              </Text>
-            </View>
+            <Text style={[S.greeting, { color: colors.mutedForeground }]}>
+              {greeting},
+            </Text>
+            <Text style={[S.userName, { color: colors.foreground }]}>
+              {firstName}
+            </Text>
           </View>
-          <View style={S.headerRight}>
-            <View style={S.brandContainer}>
-              <Image 
-                source={require("../../assets/images/icon.png")} 
-                style={{ width: 20, height: 20, borderRadius: 5 }} 
-                contentFit="cover" 
+
+          <TouchableOpacity 
+            onPress={() => router.navigate("/settings")} 
+            activeOpacity={0.8}
+            style={[S.avatarThumb, { borderColor: colors.primary + "44" }]}
+          >
+            {profile?.avatar_url ? (
+              <Image
+                source={{ 
+                  uri: `${profile.avatar_url}${profile.avatar_url.includes('?') ? '&' : '?'}v=${profile.updated_at ? encodeURIComponent(profile.updated_at) : Date.now()}` 
+                }}
+                style={[S.avatarThumbImg, imgError && { position: 'absolute', opacity: 0 }]}
+                contentFit="cover"
+                onLoad={() => setImgError(false)}
+                onError={() => setImgError(true)}
               />
-              <Text style={[S.appName, { color: colors.mutedForeground }]}>BEXO</Text>
-            </View>
-            <TouchableOpacity 
-              onPress={() => router.navigate("/settings")} 
-              activeOpacity={0.8}
-              style={[S.avatarThumb, { borderColor: colors.primary + "44" }]}
-            >
-              {profile?.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={S.avatarThumbImg} contentFit="cover" />
-              ) : (
-                <Text style={[S.avatarInitial, { color: colors.primary }]}>
-                  {firstName[0]?.toUpperCase() ?? "B"}
-                </Text>
-              )}
-            </TouchableOpacity>
-          </View>
+            ) : null}
+            {(!profile?.avatar_url || imgError) && (
+              <Text style={[S.avatarInitial, { color: colors.primary }]}>
+                {firstName[0]?.toUpperCase() ?? "B"}
+              </Text>
+            )}
+          </TouchableOpacity>
         </Animated.View>
 
         {/* Portfolio status card */}
         <Animated.View entering={FadeInDown.delay(80).springify()}>
           {isLive ? (
-            <TouchableOpacity onPress={() => router.push("/(main)/portfolio")} activeOpacity={0.9}>
+            <TouchableOpacity onPress={() => router.push("/(main)/(tabs)/portfolio")} activeOpacity={0.9}>
               <LinearGradient
                 colors={["#7C6AFA", "#FA6A6A"]}
                 style={S.liveCard}
@@ -292,7 +312,7 @@ export default function DashboardScreen() {
           ) : (
             <TouchableOpacity
               style={[S.buildPromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push("/(main)/portfolio")}
+              onPress={() => router.push("/(main)/(tabs)/portfolio")}
             >
               <LinearGradient
                 colors={[colors.primary + "15", "transparent"]}
@@ -339,12 +359,17 @@ export default function DashboardScreen() {
           />
           <QuickAction
             icon="layers" label="My Portfolio" sublabel="View, manage & rebuild site"
-            onPress={() => router.navigate("/(main)/portfolio")} delay={370}
+            onPress={() => router.navigate("/(main)/(tabs)/portfolio")} delay={370}
+          />
+          <QuickAction
+            icon="credit-card" label="Digital Card" sublabel="Customize & share identity"
+            accent="#00C2FF"
+            onPress={() => router.push("/(main)/cards")} delay={380}
           />
           <QuickAction
             icon="plus-circle" label="Post an Update" sublabel="Certificate, project or award"
             accent="#FA6A6A"
-            onPress={() => router.navigate("/(main)/update")} delay={400}
+            onPress={() => router.navigate("/(main)/(tabs)/update")} delay={410}
           />
         </View>
 
@@ -358,7 +383,7 @@ export default function DashboardScreen() {
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => {
                     usePortfolioStore.getState().setActivePortfolioTab("education");
-                    router.navigate("/(main)/portfolio");
+                    router.navigate("/(main)/(tabs)/portfolio");
                   }}
                   hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
@@ -373,7 +398,7 @@ export default function DashboardScreen() {
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => {
                     usePortfolioStore.getState().setActivePortfolioTab("experience");
-                    router.navigate("/(main)/portfolio");
+                    router.navigate("/(main)/(tabs)/portfolio");
                   }}
                   hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
@@ -388,7 +413,7 @@ export default function DashboardScreen() {
                   style={[S.chip, { backgroundColor: colors.card, borderColor: colors.border }]}
                   onPress={() => {
                     usePortfolioStore.getState().setActivePortfolioTab("projects");
-                    router.navigate("/(main)/portfolio");
+                    router.navigate("/(main)/(tabs)/portfolio");
                   }}
                   hitSlop={{ top: 15, bottom: 15, left: 10, right: 10 }}
                 >
@@ -408,7 +433,7 @@ export default function DashboardScreen() {
             <Text style={[S.sectionTitle, { color: colors.foreground }]}>Activity Feed</Text>
             <TouchableOpacity
               style={[S.addChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "33" }]}
-              onPress={() => router.navigate("/(main)/update")}
+              onPress={() => router.navigate("/(main)/(tabs)/update")}
             >
               <Feather name="plus" size={12} color={colors.primary} />
               <Text style={[S.addChipText, { color: colors.primary }]}>Post</Text>
@@ -426,7 +451,7 @@ export default function DashboardScreen() {
               </Text>
               <TouchableOpacity
                 style={[S.emptyBtn, { backgroundColor: colors.primary }]}
-                onPress={() => router.navigate("/(main)/update")}
+                onPress={() => router.navigate("/(main)/(tabs)/update")}
               >
                 <Text style={S.emptyBtnText}>Post first update</Text>
               </TouchableOpacity>
@@ -443,13 +468,17 @@ export default function DashboardScreen() {
         </Animated.View>
       </ScrollView>
 
-      {/* FAB */}
-      <Animated.View entering={FadeIn.delay(600).springify()} style={[S.fab, { bottom: botPad + 16 }]}>
+      {/* FAB: wrapper uses box-none so only the circle captures taps; content uses fabGutter so rows are not under it */}
+      <Animated.View
+        entering={FadeIn.delay(600).springify()}
+        pointerEvents="box-none"
+        style={[S.fab, { bottom: botPad + 16 }]}
+      >
         <TouchableOpacity
           style={[S.fabBtn, { backgroundColor: colors.primary }]}
           onPress={() => {
             if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-            router.push("/(main)/update");
+            router.push("/(main)/(tabs)/update");
           }}
           activeOpacity={0.85}
         >
@@ -481,26 +510,13 @@ const S = StyleSheet.create({
   loadingInner: { alignItems: "center", gap: 12 },
   loadingText: { fontSize: 14 },
   scroll: { paddingHorizontal: 20, gap: 20 },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 4 },
-  headerLeft: { flex: 1 },
-  headerRight: { alignItems: "flex-end", gap: 10 },
-  brandContainer: { 
-    flexDirection: "row", 
-    alignItems: "center", 
-    gap: 6, 
-    backgroundColor: "rgba(255,255,255,0.05)", 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)"
-  },
-  avatarThumb: { width: 48, height: 48, borderRadius: 24, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#1A1A24" },
-  avatarThumbImg: { width: 48, height: 48, borderRadius: 24 },
-  avatarInitial: { fontSize: 20, fontWeight: "900" },
-  appName: { fontSize: 11, fontWeight: "900", letterSpacing: 2, opacity: 0.8 },
-  greeting: { fontSize: 14, fontWeight: "600", marginBottom: -2, opacity: 0.6 },
-  userName: { fontSize: 32, fontWeight: "900", letterSpacing: -1 },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
+  headerLeft: { flex: 1, justifyContent: "center" },
+  avatarThumb: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#1A1A24" },
+  avatarThumbImg: { width: 56, height: 56, borderRadius: 28 },
+  avatarInitial: { fontSize: 24, fontWeight: "900" },
+  greeting: { fontSize: 16, fontWeight: "600", marginBottom: 2, opacity: 0.6 },
+  userName: { fontSize: 40, fontWeight: "900", letterSpacing: -1.5, lineHeight: 44 },
   liveCard: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     padding: 22, borderRadius: 24,
@@ -521,11 +537,11 @@ const S = StyleSheet.create({
   bpIcon: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   bpLabel: { fontSize: 17, fontWeight: "800", letterSpacing: -0.2 },
   bpSub: { fontSize: 13, marginTop: 2, opacity: 0.8 },
-  statsRow: { flexDirection: "row", gap: 12 },
-  statCard: { flex: 1, borderRadius: 24, borderWidth: 1, padding: 18, alignItems: "center", gap: 8, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
-  statIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  statValue: { fontSize: 26, fontWeight: "900", letterSpacing: -0.5 },
-  statLabel: { fontSize: 12, fontWeight: "700", opacity: 0.7 },
+  statsRow: { flexDirection: "row", gap: 12, marginVertical: 8 },
+  statCard: { flex: 1, borderRadius: 20, borderWidth: 1, padding: 14, alignItems: "flex-start", gap: 10, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8 },
+  statIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  statValue: { fontSize: 22, fontWeight: "900", letterSpacing: -0.5 },
+  statLabel: { fontSize: 11, fontWeight: "700", opacity: 0.6, textTransform: "uppercase", letterSpacing: 0.5 },
   section: { gap: 14, marginTop: 8 },
   sectionTitle: { fontSize: 19, fontWeight: "900", letterSpacing: -0.4 },
   sectionRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

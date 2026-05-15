@@ -31,15 +31,16 @@ export default function HandleScreen() {
   const { user, collectedEmail, collectedPhone } = useAuthStore();
   const { createProfile, checkHandle, setOnboardingStep } = useProfileStore();
 
-  const [handle, setHandle] = useState("");
+  const profile = useProfileStore((s) => s.profile);
+  const [handle, setHandle] = useState(profile?.handle || "");
   const [fullName, setFullName] = useState(
-    user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? ""
+    profile?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || ""
   );
   const [checking, setChecking] = useState(false);
-  const [available, setAvailable] = useState<boolean | null>(null);
+  const [available, setAvailable] = useState<boolean | null>(profile?.handle ? true : null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [isManualHandle, setIsManualHandle] = useState(false);
+  const [isManualHandle, setIsManualHandle] = useState(!!profile?.handle);
 
   const slug = handle.toLowerCase().replace(/[^a-z0-9-]/g, "");
 

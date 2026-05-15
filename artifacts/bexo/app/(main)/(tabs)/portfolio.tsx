@@ -1,11 +1,9 @@
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
-import React, { useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import React, { useState, useMemo } from "react";
 import {
-  ActivityIndicator,
-  Image,
   Linking,
   Platform,
   ScrollView,
@@ -14,8 +12,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { Image } from "expo-image";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { IdentityCard } from "@/components/IdentityCard";
+import { getIdentityCardProps } from "@/constants/identityCard";
 import { RebuildModal } from "@/components/portfolio/RebuildModal";
 import { SkillTag } from "@/components/ui/SkillTag";
 import { useColors } from "@/hooks/useColors";
@@ -51,21 +52,36 @@ function formatExpDateRange(exp: { start_date?: string; end_date?: string | null
 export default function PortfolioScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { profile, education, experiences, projects, skills, isLoading } = useProfileStore();
-  const { buildStatus, updates, activePortfolioTab, setActivePortfolioTab, fetchUpdates } = usePortfolioStore();
+  const { profile, education, experiences, projects, skills, isLoading, fetchProfile } = useProfileStore();
+  const {
+    buildStatus,
+    updates,
+    activePortfolioTab,
+    setActivePortfolioTab,
+    fetchUpdates,
+    fetchAnalytics,
+    analytics,
+  } = usePortfolioStore();
   const [showRebuild, setShowRebuild] = useState(false);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      // Re-fetch all relevant data when the screen comes into focus
+      void fetchProfile(profile?.user_id);
+      
+      if (profile?.id) {
+        void fetchAnalytics(profile.id);
+        void fetchUpdates(profile.id);
+      }
+      // Stable dependencies from stores do not cause re-renders
+    }, [profile?.id, profile?.user_id, fetchProfile, fetchAnalytics, fetchUpdates])
+  );
 
   const activeTab = activePortfolioTab as TabId;
   const setActiveTab = (tab: TabId) => {
     if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setActivePortfolioTab(tab);
   };
-
-  React.useEffect(() => {
-    if (profile?.id) {
-      fetchUpdates(profile.id);
-    }
-  }, [profile?.id]);
 
   const TABS: { id: TabId; label: string }[] = [
     { id: "overview",   label: "Overview"   },
@@ -80,39 +96,45 @@ export default function PortfolioScreen() {
 
   // Merge profile data with AI updates
   const allExperience = [
-    ...experiences,
-    ...updates.filter(u => u.type === "role").map(u => ({
+    ...(experiences ?? []),
+    ...(updates?.filter(u => u.type === "role").map(u => ({
       role: u.title,
       company: "Scan Result",
       description: u.description,
       start_date: new Date(u.created_at).getFullYear().toString(),
       is_current: false,
       id: u.id
-    }))
+    })) ?? [])
   ];
 
   const allProjects = [
-    ...projects,
-    ...updates.filter(u => u.type === "project").map(u => ({
+    ...(projects ?? []),
+    ...(updates?.filter(u => u.type === "project").map(u => ({
       title: u.title,
       description: u.description,
-      tech_stack: u.description.match(/#[a-zA-Z0-9]+/g)?.map(t => t.slice(1)) || [],
+      tech_stack: u.description?.match(/#[a-zA-Z0-9]+/g)?.map(t => t.slice(1)) || [],
       id: u.id
-    }))
+    })) ?? [])
   ];
 
   const allEducation = [
-    ...education,
-    ...updates.filter(u => u.type === "education").map(u => ({
+    ...(education ?? []),
+    ...(updates?.filter(u => u.type === "education").map(u => ({
       institution: u.title,
-      degree: u.description.split(",")[0] || "Certification",
-      field: u.description.split(",")[1] || "",
+      degree: u.description?.split(",")[0] || "Certification",
+      field: u.description?.split(",")[1] || "",
       start_year: new Date(u.created_at).getFullYear(),
       id: u.id
-    }))
+    })) ?? [])
   ];
 
-  const allAchievements = updates.filter(u => u.type === "achievement");
+  const allAchievements = updates?.filter(u => u.type === "achievement") ?? [];
+
+  const identityCardVisual = useMemo(() => getIdentityCardProps(profile), [profile]);
+
+  const goToCustomizeCard = React.useCallback(() => {
+    router.push("/(main)/cards");
+  }, []);
 
   // Skeleton loading state while profile data is loading
   if (isLoading || !profile) {
@@ -188,117 +210,20 @@ export default function PortfolioScreen() {
           </View>
         </View>
 
-        {/* Hero card — full profile identity (visible on every tab) */}
-        <View style={[styles.heroCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <LinearGradient
-            colors={["#7C6AFA18", "#FA6A6A0A"]}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <View style={styles.heroIdentityRow}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={() => router.push("/edit-profile")}
-              style={[styles.avatar, { backgroundColor: colors.surface, borderColor: colors.primary }]}
-            >
-              {profile?.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={styles.avatarImg} />
-              ) : (
-                <Text style={[styles.avatarInitial, { color: colors.primary }]}>
-                  {profile?.full_name?.[0]?.toUpperCase() ?? "B"}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <View style={styles.heroTextCol}>
-              <View style={styles.heroTitleRow}>
-                <View style={styles.heroNameBlock}>
-                  <Text style={[styles.heroName, { color: colors.foreground }]}>
-                    {profile?.full_name ?? "Your Name"}
-                  </Text>
-                </View>
-              </View>
-              {profile?.headline ? (
-                <Text style={[styles.heroHeadline, { color: colors.secondaryForeground }]}>
-                  {profile.headline}
-                </Text>
-              ) : null}
-
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 4 }}>
-                <TouchableOpacity
-                  style={styles.handleRow}
-                  activeOpacity={0.7}
-                  onPress={() => Linking.openURL(`https://${profile?.handle ?? "handle"}.mybexo.com`)}
-                >
-                  <Feather name="link" size={13} color={colors.primary} />
-                  <Text style={[styles.heroHandle, { color: colors.primary }]}>
-                    {profile?.handle ?? "handle"}.mybexo.com
-                  </Text>
-                </TouchableOpacity>
-
-                {buildStatus === "done" && (
-                  <View style={[styles.liveChip, { backgroundColor: "#6AFAD015", borderColor: "#6AFAD044", borderWidth: 1 }]}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveChipText}>Live</Text>
-                  </View>
-                )}
-                {(buildStatus === "building" || buildStatus === "queued") && (
-                  <View style={[styles.liveChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "44", borderWidth: 1 }]}>
-                    <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 4, transform: [{ scale: 0.6 }] }} />
-                    <Text style={[styles.liveChipText, { color: colors.primary }]}>Syncing</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-          {profile?.bio ? (
-            <>
-              <View style={[styles.heroDivider, { backgroundColor: colors.border }]} />
-              <Text style={[styles.heroBio, { color: colors.secondaryForeground }]}>
-                {profile.bio}
-              </Text>
-            </>
-          ) : null}
-          {(profile?.github_url || profile?.linkedin_url || profile?.website) ? (
-            <View style={styles.socialWrap}>
-              <Text style={[styles.socialSectionLabel, { color: colors.mutedForeground }]}>Links</Text>
-              <View style={styles.socialRow}>
-                {profile.github_url ? (
-                  <TouchableOpacity
-                    style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => Linking.openURL(normalizeUrl(profile.github_url!))}
-                    activeOpacity={0.75}
-                  >
-                    <Feather name="github" size={12} color={colors.foreground} />
-                    <Text style={[styles.socialLabel, { color: colors.foreground }]}>GitHub</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {profile.linkedin_url ? (
-                  <TouchableOpacity
-                    style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => Linking.openURL(normalizeUrl(profile.linkedin_url!))}
-                    activeOpacity={0.75}
-                  >
-                    <Feather name="linkedin" size={12} color={colors.primary} />
-                    <Text style={[styles.socialLabel, { color: colors.primary }]}>LinkedIn</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {profile.website ? (
-                  <TouchableOpacity
-                    style={[styles.socialChip, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}
-                    onPress={() => Linking.openURL(normalizeUrl(profile.website!))}
-                    activeOpacity={0.75}
-                  >
-                    <Feather name="globe" size={12} color={colors.secondaryForeground} />
-                    <Text style={[styles.socialLabel, { color: colors.foreground }]} numberOfLines={1}>
-                      {displayHost(profile.website)}
-                    </Text>
-                  </TouchableOpacity>
-                ) : null}
-              </View>
-            </View>
-          ) : null}
-        </View>
+        {/* Hero card — redesigned flipping card */}
+        <IdentityCard
+          profile={profile}
+          stats={{
+            views: analytics?.views ?? 0,
+            projects: allProjects.length,
+          }}
+          themeColor={identityCardVisual.themeColor}
+          borderColor={identityCardVisual.borderColor}
+          accent={identityCardVisual.accent}
+          fontFamily={identityCardVisual.fontFamily}
+          templateId={identityCardVisual.templateId}
+          onViewCard={goToCustomizeCard}
+        />
 
         {/* Tabs */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} style={styles.tabsContainer}>
@@ -348,11 +273,11 @@ export default function PortfolioScreen() {
                     </Text>
                   </View>
                 ) : null}
-                {skills.length > 0 ? (
+                {(skills?.length ?? 0) > 0 ? (
                   <View style={[styles.glancePill, { backgroundColor: colors.surface }]}>
                     <Feather name="layers" size={13} color={colors.primary} />
                     <Text style={[styles.glancePillText, { color: colors.foreground }]}>
-                      {skills.length} skill{skills.length !== 1 ? "s" : ""}
+                      {skills?.length} skill{skills?.length !== 1 ? "s" : ""}
                     </Text>
                   </View>
                 ) : null}
@@ -367,7 +292,7 @@ export default function PortfolioScreen() {
               </View>
             )}
 
-            {skills.length > 0 && (
+            {skills && skills.length > 0 && (
               <View style={styles.subSection}>
                 <View style={styles.subHeader}>
                   <View style={styles.titleWithIcon}>
@@ -604,7 +529,7 @@ export default function PortfolioScreen() {
 
         {activeTab === "skills" && (
           <View style={styles.section}>
-            {skills.length === 0 ? (
+            {!skills || skills.length === 0 ? (
               <EmptySection label="No skills added yet" onAdd={() => router.push("/edit-profile")} colors={colors} />
             ) : (
               <View style={styles.tagRow}>
@@ -685,50 +610,73 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, borderWidth: 1,
   },
   actionLabel: { fontSize: 13, fontWeight: "600" },
+  cardContainer: {
+    height: 220,
+    width: "100%",
+    transform: [{ perspective: 1000 }],
+    marginBottom: 10,
+  },
   heroCard: {
     borderRadius: 26,
     borderWidth: 1,
-    padding: 22,
-    gap: 0,
+    padding: 20,
+    height: "100%",
     overflow: "hidden",
     ...Platform.select({
-      web: { boxShadow: "0 20px 50px rgba(0,0,0,0.12)" },
-      default: { shadowColor: "#000", shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.14, shadowRadius: 28, elevation: 8 },
+      web: { boxShadow: "0 20px 50px rgba(0,0,0,0.2)" },
+      default: { shadowColor: "#000", shadowOffset: { width: 0, height: 16 }, shadowOpacity: 0.2, shadowRadius: 28, elevation: 8 },
     }),
   },
-  heroIdentityRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 16,
+  cardBack: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0, bottom: 0,
   },
-  heroTextCol: {
+  cardInner: { flex: 1, justifyContent: 'space-between' },
+  cardMainRow: { flexDirection: 'row', gap: 16, alignItems: 'center' },
+  cardAvatarWrap: {
+    width: 120,
+    height: 120,
+    borderRadius: 20,
+    borderWidth: 2,
+    overflow: 'hidden',
+  },
+  cardAvatarImg: { width: '100%', height: '100%' },
+  cardInfoCol: { flex: 1, gap: 4 },
+  cardName: { fontSize: 20, fontWeight: '900', color: '#fff', letterSpacing: 0.5 },
+  cardHeadline: { fontSize: 13, color: 'rgba(255,255,255,0.5)', fontWeight: '600' },
+  cardStatsRow: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  cardStatBox: {
     flex: 1,
-    minWidth: 0,
-    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: 10,
+    alignItems: 'center',
   },
-  heroTitleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  heroNameBlock: {
-    flex: 1,
-    minWidth: 0,
+  cardStatNum: { fontSize: 18, fontWeight: '800', color: '#fff' },
+  cardStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.4)', fontWeight: '700', textTransform: 'uppercase' },
+  cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  logoContainer: { flexDirection: 'row', alignItems: 'center' },
+  logoText: { fontWeight: '900', letterSpacing: 1 },
+  logoX: { fontWeight: '900', marginHorizontal: -2, top: -1 },
+  viewCardBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
   },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 6,
-    marginTop: 2,
-  },
-  metaText: {
-    flex: 1,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
-  },
+  viewCardBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  backTitle: { fontSize: 18, fontWeight: '800', color: '#fff', textAlign: 'center' },
+  backContentRow: { flexDirection: 'row', gap: 16, alignItems: 'center', marginTop: 10 },
+  backBioCol: { flex: 1 },
+  backBio: { fontSize: 13, color: 'rgba(255,255,255,0.6)', lineHeight: 18, fontWeight: '500' },
+  qrContainer: { backgroundColor: '#fff', padding: 8, borderRadius: 16 },
+  backUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'center', marginTop: 10 },
+  backUrlText: { fontSize: 14, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
   heroDivider: {
     height: StyleSheet.hairlineWidth,
     marginTop: 16,

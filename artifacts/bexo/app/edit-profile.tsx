@@ -258,6 +258,7 @@ export default function EditProfileScreen() {
       console.log("[EditProfile] Starting avatar upload...");
       const url = await uploadAvatar(user.id, croppedUri);
       await updateProfile({ avatar_url: url });
+      setProfileForm((f) => ({ ...f, avatar_url: url })); // Sync local form state
       setAvatarUri(croppedUri);
       console.log("[EditProfile] Avatar update complete");
     } catch (e: any) {
