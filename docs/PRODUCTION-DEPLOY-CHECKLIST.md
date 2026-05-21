@@ -9,8 +9,8 @@ Set these on your host (Railway, VPS, Docker, etc.):
 | Variable | Purpose |
 |----------|---------|
 | `GEMINI_API_KEY` or `GOOGLE_API_KEY` | Resume parse, bio, onboarding AI |
-| `GOOGLE_MODEL` | e.g. `gemini-2.5-flash` |
-| `GOOGLE_MODEL_FALLBACK` | e.g. `gemini-2.0-flash` (do **not** use `*-flash-lite` on free tier — quota limit is often 0) |
+| `GOOGLE_MODEL` | e.g. `gemini-2.5-flash-lite` (primary — PDF/resume/onboarding) |
+| `GOOGLE_MODEL_FALLBACK` | e.g. `gemini-3.5-flash` (secondary when primary fails) |
 | `SUPABASE_URL` | Database |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server writes |
 | `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_PUBLIC_URL` | File uploads |

@@ -15,7 +15,7 @@ function resolveGoogleApiKey(): string {
 
 /**
  * Universal Gemini caller using only Direct Google SDK.
- * Optimized for Gemini 2.5 Flash Lite and Gemini 3 Flash Preview.
+ * Primary: gemini-2.5-flash-lite; fallback: gemini-3.5-flash (see ai-models.ts).
  */
 export async function callGemini(
   prompt: string | any[],
