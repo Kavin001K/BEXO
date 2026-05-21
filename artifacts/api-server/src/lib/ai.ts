@@ -47,14 +47,25 @@ export async function callGemini(
     
     return text;
   } catch (err: any) {
-    console.warn(`[AI] Google SDK failed for ${modelToUse}: ${err.message}`);
-    
-    // Auto-retry with fallback if primary fails and we haven't tried fallback yet
+    const msg = String(err?.message ?? err);
+    console.warn(`[AI] Google SDK failed for ${modelToUse}: ${msg}`);
+
+    const isQuota =
+      msg.includes("429") ||
+      msg.includes("quota") ||
+      msg.includes("Too Many Requests");
+    if (isQuota) {
+      throw new Error(
+        "Gemini API quota exceeded. Enable billing in Google AI Studio or wait a minute and retry.",
+      );
+    }
+
+    // Retry with fallback only for model/load errors — not quota (fallback often has worse limits)
     if (!modelNameOverride && modelToUse !== fallbackModel) {
       console.warn(`[AI] Retrying with fallback model ${fallbackModel}...`);
       return callGemini(prompt, fallbackModel);
     }
-    
+
     throw err;
   }
 }
