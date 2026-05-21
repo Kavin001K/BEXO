@@ -24,18 +24,20 @@ import Animated, {
 import { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { YearPickerSheet } from "@/components/YearPickerSheet";
 import { MonthPickerSheet } from "@/components/MonthPickerSheet";
-import { LinearGradient } from "expo-linear-gradient";
-import * as Haptics from "expo-haptics";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 
+import { BexoButton } from "@/components/ui/BexoButton";
+import { ScreenShell } from "@/components/ui/ScreenShell";
+import { useColors } from "@/hooks/useColors";
+import { tapLight, tapMedium, success } from "@/lib/haptics";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore, type Education, type Experience, type Project, type Research } from "@/stores/useProfileStore";
 import { apiFetch } from "@/lib/apiConfig";
 
-const { width: W, height: SCREEN_H } = Dimensions.get("window");
+const { width: W } = Dimensions.get("window");
 
 /** Snappy springs (Reanimated defaults tuned for step transitions). */
 const SPRING_SCREEN = { damping: 22, stiffness: 210, mass: 0.85 } as const;
@@ -176,6 +178,7 @@ function experiencePayloadFromForm(exp: ExpEntry): Experience {
 }
 
 function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: number; stepIdx: number; totalSteps: number }) {
+  const colors = useColors();
   const sec = SECTIONS[sectionIdx];
   const target = Math.min((stepIdx + 1) / Math.max(totalSteps, 1), 1);
   const progress = useSharedValue(target);
@@ -190,11 +193,11 @@ function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: nu
 
   return (
     <View style={{ flex: 1, gap: 6 }}>
-      <Text style={{ fontSize: 10, fontWeight: "900", color: sec.color, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: -2 }}>
+      <Text style={{ fontSize: 10, fontWeight: "900", color: colors.primary, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: -2 }}>
         {sec.label}
       </Text>
-      <View style={{ height: 4, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
-        <Animated.View style={[{ height: 4, borderRadius: 2, backgroundColor: sec.color }, barStyle]} />
+      <View style={{ height: 4, borderRadius: 2, backgroundColor: colors.border, overflow: "hidden" }}>
+        <Animated.View style={[{ height: 4, borderRadius: 2, backgroundColor: colors.primary }, barStyle]} />
       </View>
     </View>
   );
@@ -202,22 +205,23 @@ function SegmentedProgress({ sectionIdx, stepIdx, totalSteps }: { sectionIdx: nu
 
 // ─── QuestionHeader ───────────────────────────────────────────────────────────
 function QuestionHeader({ section, title, sub }: { section: typeof SECTIONS[number]; title: string; sub?: string }) {
+  const colors = useColors();
   return (
     <Animated.View entering={FadeInDown.duration(320).springify()} style={{ marginBottom: 22 }}>
-      <View style={[QS.badge, { backgroundColor: section.color + "18", borderColor: section.color + "40" }]}>
-        <Feather name={section.icon} size={11} color={section.color} />
-        <Text style={[QS.badgeTxt, { color: section.color }]}>{section.label}</Text>
+      <View style={[QS.badge, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "33" }]}>
+        <Feather name={section.icon} size={11} color={colors.primary} />
+        <Text style={[QS.badgeTxt, { color: colors.primary }]}>{section.label}</Text>
       </View>
-      <Text style={QS.title}>{title}</Text>
-      {sub ? <Text style={QS.sub}>{sub}</Text> : null}
+      <Text style={[QS.title, { color: colors.foreground }]}>{title}</Text>
+      {sub ? <Text style={[QS.sub, { color: colors.mutedForeground }]}>{sub}</Text> : null}
     </Animated.View>
   );
 }
 const QS = StyleSheet.create({
   badge:    { flexDirection: "row", alignItems: "center", alignSelf: "flex-start", paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, borderWidth: 1, gap: 5, marginBottom: 14 },
   badgeTxt: { fontSize: 10, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.7 },
-  title:    { fontSize: 30, fontWeight: "800", color: "#fff", letterSpacing: -0.4, lineHeight: 38, marginBottom: 6 },
-  sub:      { fontSize: 14, color: "rgba(255,255,255,0.42)", lineHeight: 20 },
+  title:    { fontSize: 30, fontWeight: "800", letterSpacing: -0.4, lineHeight: 38, marginBottom: 6 },
+  sub:      { fontSize: 14, lineHeight: 20 },
 });
 
 // ─── GlassInput ───────────────────────────────────────────────────────────────
@@ -232,6 +236,7 @@ function GlassInput({
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   maxLength?: number;
 }) {
+  const colors = useColors();
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<TextInput>(null);
   const scale = useSharedValue(1);
@@ -254,10 +259,10 @@ function GlassInput({
   }, [autoFocus]);
 
   const iosFocusStyle = Platform.OS === "ios" && focused
-    ? { shadowColor: accentColor, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 14 }
+    ? { shadowColor: colors.primary, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.2, shadowRadius: 10 }
     : {};
   const webFocusStyle = Platform.OS === "web" && focused
-    ? ({ boxShadow: `0 0 20px ${accentColor}44` } as object)
+    ? ({ boxShadow: `0 0 0 2px ${colors.primary}33` } as object)
     : {};
 
   return (
@@ -265,15 +270,27 @@ function GlassInput({
       <TouchableOpacity
         activeOpacity={1}
         onPress={() => inputRef.current?.focus()}
-        style={[GI.wrap, { borderColor: focused ? accentColor + "99" : "rgba(255,255,255,0.1)" }, iosFocusStyle, webFocusStyle]}
+        style={[
+          GI.wrap,
+          {
+            borderColor: focused ? colors.primary : colors.border,
+            backgroundColor: colors.surface,
+          },
+          iosFocusStyle,
+          webFocusStyle,
+        ]}
       >
         <TextInput
           ref={inputRef}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor="rgba(255,255,255,0.22)"
-          style={[GI.input, multiline && { height: 96, textAlignVertical: "top", paddingTop: 4 }]}
+          placeholderTextColor={colors.mutedForeground}
+          style={[
+            GI.input,
+            { color: colors.foreground },
+            multiline && { height: 96, textAlignVertical: "top", paddingTop: 4 },
+          ]}
           multiline={multiline}
           keyboardType={keyboardType ?? "default"}
           returnKeyType={returnKeyType ?? "done"}
@@ -289,12 +306,13 @@ function GlassInput({
   );
 }
 const GI = StyleSheet.create({
-  wrap:  { backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 16, borderWidth: 1, paddingHorizontal: 18, paddingVertical: Platform.OS === "web" ? 14 : 16 },
-  input: { fontSize: 18, color: "#fff", fontWeight: "500", padding: 0 },
+  wrap:  { borderRadius: 16, borderWidth: 1, paddingHorizontal: 18, paddingVertical: Platform.OS === "web" ? 14 : 16 },
+  input: { fontSize: 18, fontWeight: "500", padding: 0 },
 });
 
 // ─── ChipRow ──────────────────────────────────────────────────────────────────
 function ChipRow({ options, value, onChange, accentColor }: { options: string[]; value: string; onChange: (v: string) => void; accentColor: string }) {
+  const colors = useColors();
   return (
     <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
       {options.map((opt) => {
@@ -302,10 +320,18 @@ function ChipRow({ options, value, onChange, accentColor }: { options: string[];
         return (
           <TouchableOpacity
             key={opt}
-            onPress={() => { onChange(opt); if (Platform.OS !== "web") Haptics.selectionAsync(); }}
-            style={[CR.chip, sel ? { backgroundColor: accentColor, borderColor: accentColor } : { backgroundColor: "rgba(255,255,255,0.06)", borderColor: "rgba(255,255,255,0.14)" }]}
+            onPress={() => {
+              onChange(opt);
+              void tapLight();
+            }}
+            style={[
+              CR.chip,
+              sel
+                ? { backgroundColor: colors.primary, borderColor: colors.primary }
+                : { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}
           >
-            <Text style={[CR.label, { color: sel ? "#fff" : "rgba(255,255,255,0.7)" }]}>{opt}</Text>
+            <Text style={[CR.label, { color: sel ? colors.primaryForeground : colors.foreground }]}>{opt}</Text>
           </TouchableOpacity>
         );
       })}
@@ -329,7 +355,7 @@ function MonthGrid({ value, onChange, accentColor }: { value: string; onChange: 
         return (
           <TouchableOpacity
             key={m}
-            onPress={() => { onChange(m); if (Platform.OS !== "web") Haptics.selectionAsync(); }}
+            onPress={() => { onChange(m); void tapLight(); }}
             style={[MG.chip, sel ? { backgroundColor: accentColor, borderColor: accentColor } : { backgroundColor: "rgba(255,255,255,0.05)", borderColor: "rgba(255,255,255,0.12)" }]}
           >
             <Text style={[MG.txt, { color: sel ? "#fff" : "rgba(255,255,255,0.65)" }]}>{m}</Text>
@@ -347,7 +373,7 @@ const MG = StyleSheet.create({
 // ─── TechTagGrid ──────────────────────────────────────────────────────────────
 function TechTagGrid({ selected, onChange, accentColor }: { selected: string[]; onChange: (v: string[]) => void; accentColor: string }) {
   const toggle = (t: string) => {
-    if (Platform.OS !== "web") Haptics.selectionAsync();
+    void tapLight();
     onChange(selected.includes(t) ? selected.filter((x) => x !== t) : [...selected, t]);
   };
   return (
@@ -375,7 +401,7 @@ const TT = StyleSheet.create({
 // ─── SkillCategoryGrid ────────────────────────────────────────────────────────
 function SkillCategoryGrid({ selected, onChange, accentColor }: { selected: string[]; onChange: (v: string[]) => void; accentColor: string }) {
   const toggle = (s: string) => {
-    if (Platform.OS !== "web") Haptics.selectionAsync();
+    void tapLight();
     onChange(selected.includes(s) ? selected.filter((x) => x !== s) : [...selected, s]);
   };
   return (
@@ -440,7 +466,7 @@ function AIBulletsPanel({ role, company, onAddBullet, accentColor }: {
       {shown && !loading && bullets.map((b, i) => (
         <TouchableOpacity
           key={i}
-          onPress={() => { onAddBullet(b); if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }}
+          onPress={() => { onAddBullet(b); void success(); }}
           style={[AB.bullet, { borderColor: "rgba(255,255,255,0.09)" }]}
         >
           <View style={[AB.dot, { backgroundColor: accentColor }]} />
@@ -556,7 +582,7 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
 
       <TouchableOpacity
         onPress={() => {
-          if (Platform.OS !== "web") Haptics.selectionAsync();
+          void tapLight();
           setExp({ ...exp, is_current: !exp.is_current });
         }}
         style={[S.toggleRow, { borderColor: exp.is_current ? color + "70" : "rgba(255,255,255,0.1)", backgroundColor: exp.is_current ? color + "12" : "transparent" }]}
@@ -600,6 +626,7 @@ function ExpDateSection({ exp, setExp, color, monthSheetRef, yearSheetRef, setMo
 // Main ManualEntryScreen
 // ─────────────────────────────────────────────────────────────────────────────
 export default function ManualEntryScreen() {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ focusSection?: string; returnTo?: string; resumeStep?: string }>();
   const returnToReview = params.returnTo === "manual-review";
@@ -726,9 +753,9 @@ export default function ManualEntryScreen() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok && Array.isArray(data.skills)) {
+        if (res.ok && Array.isArray(data.skills)) {
         setSkills((prev) => [...new Set([...prev, ...data.skills])]);
-        if (Platform.OS !== "web") Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        void success();
       }
     } catch (err) {
       console.error("[Manual] suggestSkills error:", err);
@@ -791,16 +818,6 @@ export default function ManualEntryScreen() {
   // Transition animation
   const opacity = useSharedValue(1);
   const translateX = useSharedValue(0);
-  const orbOpacity = useSharedValue(0.62);
-
-  useEffect(() => {
-    orbOpacity.value = withRepeat(
-      withSequence(withTiming(0.9, { duration: 3200 }), withTiming(0.52, { duration: 3200 })),
-      -1,
-      true,
-    );
-    return () => cancelAnimation(orbOpacity);
-  }, [orbOpacity]);
 
   useEffect(
     () => () => {
@@ -815,23 +832,14 @@ export default function ManualEntryScreen() {
     transform: [{ translateX: translateX.value }],
   }));
 
-  const animatedOrbStyle = useAnimatedStyle(() => ({
-    opacity: orbOpacity.value,
-  }));
-
   const sec   = SECTIONS[sectionIdx];
   const color = sec.color;
 
   // Section-specific logic used by handleNext and renderContent
 
   const haptic = (style: "light" | "medium" | "select" = "select") => {
-    try {
-      if (Platform.OS === "web") return;
-      if (style === "select") Haptics.selectionAsync();
-      else Haptics.impactAsync(style === "medium" ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light);
-    } catch (e) {
-      console.warn("Haptics failed", e);
-    }
+    if (style === "medium") void tapMedium();
+    else void tapLight();
   };
 
   const transition = useCallback(
@@ -1496,30 +1504,21 @@ export default function ManualEntryScreen() {
   const botPad = insets.bottom + (Platform.OS === "web" ? 24 : 8);
 
   return (
-    <View style={[S.root]}>
-      {/* Animated background orb */}
-      <Animated.View style={[S.orbContainer, animatedOrbStyle]} pointerEvents="none">
-        <LinearGradient
-          colors={[color + "30", color + "10", "transparent"]}
-          style={S.orb}
-          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-        />
-      </Animated.View>
-
-      <KeyboardAwareScrollViewCompat style={{ flex: 1 }}>
+    <ScreenShell scroll={false} keyboard padded={false} style={{ flex: 1 }}>
+      <KeyboardAwareScrollViewCompat style={{ flex: 1, backgroundColor: colors.background }}>
         <View style={[S.inner, { paddingTop: topPad, paddingBottom: botPad }]}>
 
           {/* ── Header ── */}
           <View style={S.header}>
-            <TouchableOpacity onPress={goBack} style={S.backBtn} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Feather name="arrow-left" size={20} color="rgba(255,255,255,0.75)" />
+            <TouchableOpacity onPress={goBack} style={[S.backBtn, { borderColor: colors.border, backgroundColor: colors.surface }]} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Feather name="arrow-left" size={20} color={colors.foreground} />
             </TouchableOpacity>
             <View style={{ flex: 1, marginHorizontal: 14 }}>
               <SegmentedProgress sectionIdx={sectionIdx} stepIdx={stepIdx} totalSteps={STEPS[sectionIdx]} />
             </View>
-            <View style={[S.badge, { backgroundColor: color + "1A", borderColor: color + "44" }]}>
-              <Feather name={sec.icon} size={11} color={color} />
-              <Text style={{ fontSize: 11, color, fontWeight: "700", marginLeft: 4 }}>{sectionIdx + 1}/7</Text>
+            <View style={[S.badge, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "33" }]}>
+              <Feather name={sec.icon} size={11} color={colors.primary} />
+              <Text style={{ fontSize: 11, color: colors.primary, fontWeight: "700", marginLeft: 4 }}>{sectionIdx + 1}/7</Text>
             </View>
           </View>
 
@@ -1533,27 +1532,27 @@ export default function ManualEntryScreen() {
                   params: { step: String(reviewReturnStepRef.current) },
                 });
               }}
-              style={S.reviewBanner}
+              style={[S.reviewBanner, { backgroundColor: colors.primary + "10", borderColor: colors.primary + "28" }]}
               activeOpacity={0.85}
             >
-              <Feather name="list" size={16} color="#6AFAD0" />
-              <Text style={S.reviewBannerTxt}>Back to resume summary</Text>
-              <Feather name="chevron-right" size={16} color="rgba(255,255,255,0.45)" />
+              <Feather name="list" size={16} color={colors.primary} />
+              <Text style={[S.reviewBannerTxt, { color: colors.foreground }]}>Back to resume summary</Text>
+              <Feather name="chevron-right" size={16} color={colors.mutedForeground} />
             </TouchableOpacity>
           ) : null}
 
           {draftSavedAt ? (
-            <Text style={{ fontSize: 11, color: "#6AFAD0", textAlign: "right", marginBottom: 6, marginTop: -4 }}>
+            <Text style={{ fontSize: 11, color: colors.primary, textAlign: "right", marginBottom: 6, marginTop: -4 }}>
               Draft saved to your profile
             </Text>
           ) : null}
           {draftError ? (
-            <Text style={{ fontSize: 11, color: "#ff8a8a", textAlign: "right", marginBottom: 6, marginTop: -4 }}>
+            <Text style={{ fontSize: 11, color: colors.destructive, textAlign: "right", marginBottom: 6, marginTop: -4 }}>
               {draftError}
             </Text>
           ) : null}
           {saveBanner ? (
-            <Text style={{ fontSize: 12, color: "#ffcc80", textAlign: "center", marginBottom: 8, paddingHorizontal: 12 }}>
+            <Text style={{ fontSize: 12, color: colors.destructive, textAlign: "center", marginBottom: 8, paddingHorizontal: 12 }}>
               {saveBanner}
             </Text>
           ) : null}
@@ -1568,49 +1567,38 @@ export default function ManualEntryScreen() {
             {/* Review step footer */}
             {isReviewStep && (
               <View style={{ width: "100%", gap: 10 }}>
-                <TouchableOpacity onPress={proceedToNextSection} disabled={saving} style={S.primaryBtnWrap}>
-                  <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
-                    {saving ? <ActivityIndicator color="#fff" /> : null}
-                    <Text style={S.primaryBtnTxt}>{sectionIdx < 6 ? `Next: ${SECTIONS[sectionIdx + 1].label}` : "Finish"}</Text>
-                    {!saving ? <Feather name="arrow-right" size={16} color="#fff" /> : null}
-                  </LinearGradient>
-                </TouchableOpacity>
+                <BexoButton
+                  label={sectionIdx < 6 ? `Next: ${SECTIONS[sectionIdx + 1].label}` : "Finish"}
+                  onPress={proceedToNextSection}
+                  loading={saving}
+                  icon={!saving ? <Feather name="arrow-right" size={16} color={colors.primaryForeground} /> : undefined}
+                />
                 <TouchableOpacity onPress={skipSection} style={S.ghostBtn}>
-                  <Text style={S.ghostBtnTxt}>Skip next section</Text>
+                  <Text style={[S.ghostBtnTxt, { color: colors.mutedForeground }]}>Skip next section</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-            {/* Skills section footer */}
             {isSkillsStep && (
-              <TouchableOpacity onPress={proceedToNextSection} disabled={saving} style={S.primaryBtnWrap}>
-                <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
-                  {saving ? <ActivityIndicator color="#fff" /> : null}
-                  <Text style={S.primaryBtnTxt}>{`Next: ${SECTIONS[sectionIdx + 1].label}`}</Text>
-                  {!saving ? <Feather name="arrow-right" size={16} color="#fff" /> : null}
-                </LinearGradient>
-              </TouchableOpacity>
+              <BexoButton
+                label={`Next: ${SECTIONS[sectionIdx + 1].label}`}
+                onPress={proceedToNextSection}
+                loading={saving}
+                icon={!saving ? <Feather name="arrow-right" size={16} color={colors.primaryForeground} /> : undefined}
+              />
             )}
 
-            {/* Normal step footer */}
             {!isReviewStep && !isSkillsStep && (
               <View style={{ width: "100%", gap: 10 }}>
-                <TouchableOpacity
+                <BexoButton
+                  label="Continue"
                   onPress={handleNext}
+                  loading={saving}
                   disabled={!canContinue || saving}
-                  style={[
-                    S.primaryBtnWrap,
-                    !canContinue ? { opacity: 0.3 } : saving ? { opacity: 0.92 } : null,
-                  ]}
-                >
-                  <LinearGradient colors={[color, color + "BB"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={S.primaryBtn}>
-                    {saving ? <ActivityIndicator color="#fff" /> : null}
-                    <Text style={S.primaryBtnTxt}>Continue</Text>
-                    {!saving ? <Feather name="arrow-right" size={16} color="#fff" /> : null}
-                  </LinearGradient>
-                </TouchableOpacity>
+                  icon={!saving ? <Feather name="arrow-right" size={16} color={colors.primaryForeground} /> : undefined}
+                />
                 <TouchableOpacity onPress={skipSection} style={S.ghostBtn}>
-                  <Text style={S.ghostBtnTxt}>Skip entire section</Text>
+                  <Text style={[S.ghostBtnTxt, { color: colors.mutedForeground }]}>Skip entire section</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -1679,26 +1667,20 @@ export default function ManualEntryScreen() {
         }}
         onClose={() => setExpMonthPickerFor(null)}
       />
-    </View>
+    </ScreenShell>
   );
 }
 
 // ─── StyleSheet ───────────────────────────────────────────────────────────────
 const S = StyleSheet.create({
-  root:         { flex: 1, backgroundColor: "#0A0A0F" },
-  orbContainer: { position: "absolute", top: -80, left: -80, width: SCREEN_H * 0.65, height: SCREEN_H * 0.65, borderRadius: 9999, overflow: "hidden" },
-  orb:          { flex: 1 },
   inner:        { flex: 1, paddingHorizontal: 22 },
   header:       { flexDirection: "row", alignItems: "center", marginBottom: 28 },
-  backBtn:      { width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(255,255,255,0.07)", alignItems: "center", justifyContent: "center" },
+  backBtn:      { width: 40, height: 40, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   badge:        { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, borderWidth: 1 },
   stepWrap:     { gap: 14 },
   footer:       { paddingTop: 14, alignItems: "flex-end" },
-  primaryBtnWrap: { alignSelf: "stretch" },
-  primaryBtn:   { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingVertical: 15, borderRadius: 16 },
-  primaryBtnTxt: { fontSize: 15, fontWeight: "800", color: "#fff", letterSpacing: 0.15 },
   ghostBtn:     { alignSelf: "center", paddingVertical: 6 },
-  ghostBtnTxt:  { fontSize: 12, color: "rgba(255,255,255,0.28)", textDecorationLine: "underline" },
+  ghostBtnTxt:  { fontSize: 12, textDecorationLine: "underline" },
   addBtn:       { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 13, borderWidth: 1 },
   yearBtn:      { flex: 1, backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 16, borderWidth: 1, padding: 16, alignItems: "center" },
   fieldLabel:   { fontSize: 10, fontWeight: "700", color: "rgba(255,255,255,0.38)", textTransform: "uppercase", letterSpacing: 0.8 },
@@ -1714,9 +1696,7 @@ const S = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 10,
     borderRadius: 14,
-    backgroundColor: "rgba(106,250,208,0.1)",
     borderWidth: 1,
-    borderColor: "rgba(106,250,208,0.28)",
   },
-  reviewBannerTxt: { flex: 1, fontSize: 14, fontWeight: "700", color: "#9cf5d8" },
+  reviewBannerTxt: { flex: 1, fontSize: 14, fontWeight: "700" },
 });

@@ -1,26 +1,18 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState } from "react";
-import {
-  Image, KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Image, StyleSheet, Text, TouchableOpacity } from "react-native";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { FormField } from "@/components/ui/FormField";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ScreenShell } from "@/components/ui/ScreenShell";
 import { useColors } from "@/hooks/useColors";
 import { useAuthStore } from "@/stores/useAuthStore";
 
 export default function CollectEmailScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { user, collectedEmail, setCollectedEmail } = useAuthStore();
   const [email, setEmail] = useState(collectedEmail || user?.email || "");
   const [error, setError] = useState("");
@@ -36,99 +28,50 @@ export default function CollectEmailScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={["#7C6AFA18", "transparent"]}
-        style={styles.glow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
+    <ScreenShell>
+      <Animated.View entering={FadeIn.duration(500)} style={styles.logoWrap}>
+        <Image source={require("../../assets/images/icon.png")} style={styles.logo} />
+      </Animated.View>
+
+      <ScreenHeader
+        title="What's your email?"
+        subtitle="We'll use this to notify you about portfolio activity and opportunities."
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            {
-              paddingTop: insets.top + (Platform.OS === "web" ? 67 : 20),
-              paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-            },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={{ marginBottom: 10 }}>
-            <Image 
-              source={require("../../assets/images/icon.png")} 
-              style={{ width: 100, height: 40 }} 
-              resizeMode="contain" 
-            />
-          </View>
 
-          <Text style={[styles.headline, { color: colors.foreground }]}>
-            What's your email?
-          </Text>
-          <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            We'll use this to notify you about portfolio activity and opportunities.
-          </Text>
+      <Animated.View entering={FadeInDown.delay(200).springify()} style={styles.form}>
+        <FormField
+          label="Email address"
+          placeholder="you@example.com"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          textContentType="emailAddress"
+          returnKeyType="done"
+          onSubmitEditing={handleContinue}
+          autoFocus
+          error={error}
+        />
 
-          <TextInput
-            style={[
-              styles.input,
-              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
-            ]}
-            placeholder="you@example.com"
-            placeholderTextColor={colors.mutedForeground}
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            textContentType="emailAddress"
-            returnKeyType="done"
-            onSubmitEditing={handleContinue}
-            selectionColor={colors.primary}
-            autoFocus
-          />
+        <BexoButton
+          label="Continue"
+          onPress={handleContinue}
+          icon={<Feather name="arrow-right" size={16} color="#fff" />}
+        />
 
-          {error ? (
-            <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
-          ) : null}
-
-          <BexoButton label="Continue" onPress={handleContinue} icon={<Feather name="arrow-right" size={16} color="#fff" />} />
-
-          <TouchableOpacity onPress={() => router.replace("/dashboard")}>
-            <Text style={[styles.skip, { color: colors.mutedForeground }]}>Skip for now</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </View>
+        <TouchableOpacity onPress={() => router.replace("/dashboard")} style={styles.skipWrap}>
+          <Text style={[styles.skip, { color: colors.mutedForeground }]}>Skip for now</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 250 },
-  scroll: { paddingHorizontal: 28, gap: 20, alignItems: "stretch" },
-  iconBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    alignSelf: "flex-start",
-  },
-  headline: { fontSize: 28, fontWeight: "800", letterSpacing: -0.3 },
-  sub: { fontSize: 15, lineHeight: 22 },
-  input: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
-  },
-  error: { fontSize: 13, marginTop: -8 },
-  skip: { textAlign: "center", fontSize: 14 },
+  logoWrap: { alignItems: "center", marginBottom: 8 },
+  logo: { width: 72, height: 72, borderRadius: 18 },
+  form: { gap: 16, marginTop: 4 },
+  skipWrap: { alignItems: "center", paddingVertical: 8 },
+  skip: { fontSize: 14, fontWeight: "500" },
 });

@@ -1,31 +1,42 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Platform,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
 import { BexoButton } from "@/components/ui/BexoButton";
+import { FormField } from "@/components/ui/FormField";
 import { LocationInput } from "@/components/ui/LocationInput";
 import { SkillTag } from "@/components/ui/SkillTag";
 import { useColors } from "@/hooks/useColors";
+import { tapLight } from "@/lib/haptics";
 import { supabase } from "@/lib/supabase";
 import { useProfileStore } from "@/stores/useProfileStore";
 
 const SUGGESTED_SKILLS = [
-  "JavaScript", "TypeScript", "React", "Node.js", "Python",
-  "Machine Learning", "Swift", "Flutter", "UI/UX Design",
-  "SQL", "AWS", "Docker", "Git", "Figma", "Next.js"
+  "JavaScript",
+  "TypeScript",
+  "React",
+  "Node.js",
+  "Python",
+  "Machine Learning",
+  "Swift",
+  "Flutter",
+  "UI/UX Design",
+  "SQL",
+  "AWS",
+  "Docker",
+  "Git",
+  "Figma",
+  "Next.js",
 ];
 
 type CardId = "headline" | "bio" | "skills" | "location";
@@ -38,41 +49,41 @@ const CARDS: { id: CardId; title: string; subtitle: string }[] = [
 
 export default function CardsScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
-  const { profile, parsedResumeData, skills: parsedSkills, setSkills, updateProfile, setOnboardingStep } = useProfileStore();
+  const { profile, parsedResumeData, skills: parsedSkills, updateProfile, setOnboardingStep } =
+    useProfileStore();
 
   const [headline, setHeadline] = useState(parsedResumeData?.headline ?? profile?.headline ?? "");
   const [bio, setBio] = useState(parsedResumeData?.bio ?? profile?.bio ?? "");
   const [location, setLocation] = useState(profile?.location ?? "");
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
-    parsedSkills.map((s) => s.name).filter(Boolean)
+    parsedSkills.map((s) => s.name).filter(Boolean),
   );
   const [customSkill, setCustomSkill] = useState("");
   const [saving, setSaving] = useState(false);
 
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Determine which cards actually need data (auto-skip filled ones)
   const needsData = (id: CardId): boolean => {
     switch (id) {
-      case "headline": return !headline.trim();
-      case "bio": return !bio.trim();
-      case "skills": return parsedSkills.length === 0 && selectedSkills.length === 0;
-      case "location": return !location.trim();
-      default: return true;
+      case "headline":
+        return !headline.trim();
+      case "bio":
+        return !bio.trim();
+      case "skills":
+        return parsedSkills.length === 0 && selectedSkills.length === 0;
+      case "location":
+        return !location.trim();
+      default:
+        return true;
     }
   };
 
-  // Find first card that needs data
-  const findFirstMissing = () => {
-    return CARDS.findIndex((c) => needsData(c.id));
-  };
+  const findFirstMissing = () => CARDS.findIndex((c) => needsData(c.id));
 
   const initialIdx = findFirstMissing();
   const [cardIdx, setCardIdx] = useState(initialIdx === -1 ? 0 : initialIdx);
 
   useEffect(() => {
-    // If no cards need data, just finish immediately
     if (initialIdx === -1) {
       handleFinish();
     }
@@ -81,13 +92,12 @@ export default function CardsScreen() {
   const current = CARDS[cardIdx];
 
   const goNext = async () => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void tapLight();
     Animated.sequence([
       Animated.timing(slideAnim, { toValue: -40, duration: 150, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
     ]).start();
 
-    // Find next card that needs data after current
     let nextIdx = -1;
     for (let i = cardIdx + 1; i < CARDS.length; i++) {
       if (needsData(CARDS[i].id)) {
@@ -107,7 +117,6 @@ export default function CardsScreen() {
     setSaving(true);
     try {
       await updateProfile({ headline, bio, location: location.trim() || undefined });
-      // Refresh profile from store in case it was just created
       const { profile: latestProfile } = useProfileStore.getState();
       const profileId = latestProfile?.id;
       if (!profileId) {
@@ -132,7 +141,7 @@ export default function CardsScreen() {
 
   const toggleSkill = (skill: string) => {
     setSelectedSkills((prev) =>
-      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill]
+      prev.includes(skill) ? prev.filter((s) => s !== skill) : [...prev, skill],
     );
   };
 
@@ -145,7 +154,6 @@ export default function CardsScreen() {
   };
 
   const isLast = (() => {
-    // Check if there are any cards after the current one that still need data
     for (let i = cardIdx + 1; i < CARDS.length; i++) {
       if (needsData(CARDS[i].id)) return false;
     }
@@ -156,178 +164,131 @@ export default function CardsScreen() {
     current.id === "headline"
       ? !!headline.trim()
       : current.id === "bio"
-      ? !!bio.trim()
-      : current.id === "location"
-      ? !!location.trim()
-      : selectedSkills.length > 0;
+        ? !!bio.trim()
+        : current.id === "location"
+          ? !!location.trim()
+          : selectedSkills.length > 0;
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={["#7C6AFA18", "transparent"]}
-        style={styles.glow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-      <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
-            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-          },
-        ]}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.stepRow}>
-          {CARDS.map((c, i) => (
-            <View
-              key={c.id}
-              style={[styles.dot, {
-                backgroundColor: i < cardIdx
-                  ? colors.primary
-                  : i === cardIdx
-                  ? colors.primary
-                  : colors.border,
-                opacity: i < cardIdx ? 0.5 : 1,
-              }]}
-            />
-          ))}
-        </View>
-
-        <Animated.View style={{ transform: [{ translateX: slideAnim }] }}>
-          <Text style={[styles.headline, { color: colors.foreground }]}>
-            {current.title}
-          </Text>
-          <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-            {current.subtitle}
-          </Text>
-        </Animated.View>
-
-        {current.id === "headline" && (
-          <TextInput
-            style={[styles.input, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-            placeholder='e.g. "CS Student · Full-Stack Developer"'
-            placeholderTextColor={colors.mutedForeground}
-            value={headline}
-            onChangeText={setHeadline}
-            maxLength={25}
-            selectionColor={colors.primary}
-            autoFocus
+    <OnboardingShell
+      stepKey="cards"
+      title={current.title}
+      subtitle={current.subtitle}
+      showBack={cardIdx > 0}
+      onBack={cardIdx > 0 ? () => setCardIdx(cardIdx - 1) : undefined}
+      footer={
+        <>
+          <BexoButton
+            label={isLast ? (saving ? "Saving..." : "Build my portfolio") : "Continue"}
+            onPress={goNext}
+            loading={saving}
+            disabled={!canContinue}
+            icon={isLast ? <Feather name="zap" size={16} color={colors.primaryForeground} /> : undefined}
           />
-        )}
-
-        {current.id === "bio" && (
-          <TextInput
+          {cardIdx > 0 && (
+            <BexoButton label="Back" onPress={() => setCardIdx(cardIdx - 1)} variant="ghost" disabled={saving} />
+          )}
+        </>
+      }
+    >
+      <View style={styles.stepRow}>
+        {CARDS.map((c, i) => (
+          <View
+            key={c.id}
             style={[
-              styles.input,
-              styles.textarea,
-              { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
+              styles.dot,
+              {
+                backgroundColor: i <= cardIdx ? colors.primary : colors.border,
+                opacity: i < cardIdx ? 0.45 : 1,
+                width: i === cardIdx ? 20 : 8,
+              },
             ]}
-            placeholder="Tell your story — what drives you, what you're building, where you're headed..."
-            placeholderTextColor={colors.mutedForeground}
-            value={bio}
-            onChangeText={setBio}
-            multiline
-            maxLength={400}
-            textAlignVertical="top"
-            selectionColor={colors.primary}
-            autoFocus
           />
-        )}
+        ))}
+      </View>
 
-        {current.id === "skills" && (
-          <View style={styles.skillsSection}>
-            {/* Selected skills */}
-            {selectedSkills.length > 0 && (
-              <View style={styles.tagRow}>
-                {selectedSkills.map((s) => (
-                  <SkillTag key={s} label={s} selected onPress={() => toggleSkill(s)} />
-                ))}
-              </View>
-            )}
-            {/* Suggestions */}
-            <Text style={[styles.suggestLabel, { color: colors.mutedForeground }]}>
-              Suggested
-            </Text>
+      {current.id === "headline" && (
+        <FormField
+          label="Headline"
+          placeholder='e.g. "CS Student · Full-Stack Developer"'
+          value={headline}
+          onChangeText={setHeadline}
+          maxLength={25}
+          autoFocus
+        />
+      )}
+
+      {current.id === "bio" && (
+        <FormField
+          label="Bio"
+          placeholder="Tell your story — what drives you, what you're building..."
+          value={bio}
+          onChangeText={setBio}
+          multiline
+          maxLength={400}
+          style={styles.textarea}
+          autoFocus
+        />
+      )}
+
+      {current.id === "skills" && (
+        <View style={styles.skillsSection}>
+          {selectedSkills.length > 0 && (
             <View style={styles.tagRow}>
-              {SUGGESTED_SKILLS.filter((s) => !selectedSkills.includes(s)).map((s) => (
-                <SkillTag key={s} label={s} onPress={() => toggleSkill(s)} />
+              {selectedSkills.map((s) => (
+                <SkillTag key={s} label={s} selected onPress={() => toggleSkill(s)} />
               ))}
             </View>
-            {/* Custom */}
-            <View style={styles.customRow}>
-              <TextInput
-                style={[
-                  styles.customInput,
-                  { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
-                ]}
-                placeholder="Add custom skill..."
-                placeholderTextColor={colors.mutedForeground}
-                value={customSkill}
-                onChangeText={setCustomSkill}
-                onSubmitEditing={addCustomSkill}
-                returnKeyType="done"
-                selectionColor={colors.primary}
-              />
-              <TouchableOpacity
-                style={[styles.addBtn, { backgroundColor: colors.primary }]}
-                onPress={addCustomSkill}
-              >
-                <Feather name="plus" size={18} color="#fff" />
-              </TouchableOpacity>
-            </View>
+          )}
+          <Text style={[styles.suggestLabel, { color: colors.mutedForeground }]}>Suggested</Text>
+          <View style={styles.tagRow}>
+            {SUGGESTED_SKILLS.filter((s) => !selectedSkills.includes(s)).map((s) => (
+              <SkillTag key={s} label={s} onPress={() => toggleSkill(s)} />
+            ))}
           </View>
-        )}
+          <View style={styles.customRow}>
+            <TextInput
+              style={[
+                styles.customInput,
+                { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
+              ]}
+              placeholder="Add custom skill..."
+              placeholderTextColor={colors.mutedForeground}
+              value={customSkill}
+              onChangeText={setCustomSkill}
+              onSubmitEditing={addCustomSkill}
+              returnKeyType="done"
+              selectionColor={colors.primary}
+            />
+            <TouchableOpacity
+              style={[styles.addBtn, { backgroundColor: colors.primary }]}
+              onPress={addCustomSkill}
+            >
+              <Feather name="plus" size={18} color={colors.primaryForeground} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
-        {current.id === "location" && (
+      {current.id === "location" && (
+        <View style={styles.locationBlock}>
+          <Text style={[styles.locationLabel, { color: colors.foreground }]}>Location</Text>
           <LocationInput
             value={location}
             onChangeText={setLocation}
             placeholder="Search your city..."
             autoFocus
           />
-        )}
-
-        <BexoButton
-          label={isLast ? (saving ? "Saving..." : "Build My Portfolio") : "Continue"}
-          onPress={goNext}
-          loading={saving}
-          disabled={!canContinue}
-          icon={isLast ? <Feather name="zap" size={16} color="#fff" /> : undefined}
-        />
-
-        {cardIdx > 0 && (
-          <BexoButton
-            label="Back"
-            onPress={() => setCardIdx(cardIdx - 1)}
-            variant="ghost"
-            disabled={saving}
-          />
-        )}
-      </ScrollView>
-    </View>
+        </View>
+      )}
+    </OnboardingShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 280 },
-  scroll: { paddingHorizontal: 28, gap: 18 },
-  stepRow: { flexDirection: "row", gap: 6, marginBottom: 8 },
-  dot: { width: 20, height: 4, borderRadius: 2 },
-  headline: { fontSize: 30, fontWeight: "800", letterSpacing: -0.4 },
-  sub: { fontSize: 14, lineHeight: 21 },
-  input: {
-    borderRadius: 14,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
-  },
-  textarea: { minHeight: 140 },
+  stepRow: { flexDirection: "row", gap: 6, marginBottom: 4 },
+  dot: { height: 8, borderRadius: 4 },
+  textarea: { minHeight: 140, textAlignVertical: "top" },
   skillsSection: { gap: 12 },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   suggestLabel: { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
@@ -348,4 +309,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  locationBlock: { gap: 8 },
+  locationLabel: { fontSize: 14, fontWeight: "600" },
 });

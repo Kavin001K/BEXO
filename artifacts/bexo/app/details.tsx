@@ -1,7 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { Image } from "expo-image";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImagePicker from "expo-image-picker";
@@ -22,7 +20,9 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
+import { tapMedium } from "@/lib/haptics";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 import { uploadAttachments } from "@/services/achievementParser";
@@ -107,7 +107,7 @@ export default function DetailsScreen() {
 
   const handleSave = async () => {
     setLoading(true);
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await tapMedium();
     try {
       if (type === "update") {
         await updateUpdate(id, { title, description, link_url: linkUrl });
@@ -252,10 +252,7 @@ export default function DetailsScreen() {
             {headerImage ? (
               <Image source={{ uri: headerImage }} style={styles.headerImage} contentFit="cover" />
             ) : (
-              <LinearGradient
-                colors={[colors.primary + "33", colors.background]}
-                style={styles.headerPlaceholder}
-              >
+              <View style={[styles.headerPlaceholder, { backgroundColor: colors.secondary }]}>
                 <Feather
                   name={
                     type === "update" ? "award" :
@@ -265,13 +262,20 @@ export default function DetailsScreen() {
                   size={48}
                   color={colors.primary}
                 />
-              </LinearGradient>
+              </View>
             )}
             <TouchableOpacity
-              style={[styles.backBtn, { top: insets.top + 10 }]}
+              style={[
+                styles.backBtn,
+                {
+                  top: insets.top + 10,
+                  backgroundColor: colors.card,
+                  borderColor: colors.border,
+                },
+              ]}
               onPress={() => router.back()}
             >
-              <Feather name="arrow-left" size={20} color="#fff" />
+              <Feather name="arrow-left" size={20} color={colors.foreground} />
             </TouchableOpacity>
           </View>
           <View style={styles.content}>
@@ -495,15 +499,15 @@ const styles = StyleSheet.create({
     left: 20,
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(0,0,0,0.3)",
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
   content: { padding: 24, gap: 24 },
   titleRow: { flexDirection: "row", alignItems: "flex-start", gap: 16 },
   typeLabel: { fontSize: 11, fontWeight: "900", letterSpacing: 1, marginBottom: 4 },
-  title: { fontSize: 26, fontWeight: "900", letterSpacing: -0.5 },
+  title: { fontSize: 26, fontWeight: "900", fontFamily: fonts.sansBold, letterSpacing: -0.5 },
   titleInput: { fontSize: 26, fontWeight: "900", borderBottomWidth: 1, paddingBottom: 4 },
   editBtn: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   section: { gap: 8 },

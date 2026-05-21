@@ -33,15 +33,12 @@ function getApiBaseUrl(): string {
   }
 
   const debuggerHost =
-    Constants.expoConfig?.hostUri ?? (Constants as any).manifest?.debuggerHost;
+    Constants.expoConfig?.hostUri ?? (Constants as { manifest?: { debuggerHost?: string } }).manifest?.debuggerHost;
 
-  if (
-    __DEV__ &&
-    debuggerHost &&
-    !process.env.EXPO_PUBLIC_FORCE_PROD
-  ) {
+  if (__DEV__ && debuggerHost && !process.env.EXPO_PUBLIC_FORCE_PROD) {
     const ip = debuggerHost.split(":")[0];
-    const url = `http://${ip}:3000`;
+    const port = process.env.EXPO_PUBLIC_API_DEV_PORT?.trim() || "3000";
+    const url = `http://${ip}:${port}`;
     console.log(`[API] Auto-detected local backend: ${url}`);
     return url;
   }
@@ -55,26 +52,61 @@ function getApiBaseUrl(): string {
 
 export const API_BASE_URL = getApiBaseUrl();
 
+let loggedReleaseBase = false;
+
+const AI_OR_UPLOAD_PATHS = [
+  "/storage/parse-pdf",
+  "/storage/parse-resume",
+  "/storage/generate-bio",
+  "/storage/upload",
+  "/storage/upload-multi",
+  "/storage/scan-attachment",
+  "/onboarding/",
+];
+
+function needsLongTimeout(path: string): boolean {
+  return AI_OR_UPLOAD_PATHS.some((p) => path.startsWith(p));
+}
+
 export async function apiFetch(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<Response> {
   const url = `${API_BASE_URL}/api${path}`;
+
+  if (!__DEV__ && !loggedReleaseBase) {
+    loggedReleaseBase = true;
+    console.log(`[API] Release build using base: ${API_BASE_URL}`);
+  }
+
   if (__DEV__) {
     console.log(`[API] Fetching: ${url}`, options.method ?? "GET");
   }
 
-  const headers: Record<string, string> = { ...((options.headers as any) || {}) };
-  
-  // Only add application/json if no Content-Type is set and body isn't FormData
-  if (!headers["Content-Type"] && !headers["content-type"] && !(options.body instanceof FormData)) {
+  const headers: Record<string, string> = {
+    ...((options.headers as Record<string, string>) || {}),
+  };
+
+  if (
+    !headers["Content-Type"] &&
+    !headers["content-type"] &&
+    !(options.body instanceof FormData)
+  ) {
     headers["Content-Type"] = "application/json";
   }
+
+  const timeoutMs = needsLongTimeout(path) ? 90_000 : 30_000;
+  const signal =
+    options.signal ??
+    (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal
+      ? AbortSignal.timeout(timeoutMs)
+      : undefined);
 
   try {
     const res = await fetch(url, {
       ...options,
       headers,
+      signal,
     });
     if (__DEV__) {
       console.log(`[API] Response: ${res.status} from ${url}`);

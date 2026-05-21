@@ -1,10 +1,8 @@
 import { Feather } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   Image,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   ScrollView,
@@ -16,45 +14,36 @@ import {
   View,
   Linking,
 } from "react-native";
-import Animated, {
-  FadeIn,
-  FadeInDown,
-} from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { ScreenHeader } from "@/components/ui/ScreenHeader";
+import { ScreenShell } from "@/components/ui/ScreenShell";
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
 import { apiFetch } from "@/lib/apiConfig";
+import {
+  buildFullPhone,
+  COUNTRY_CODES,
+  isValidNationalNumber,
+  normalizePhoneInput,
+} from "@/lib/phoneNormalize";
 import { useAuthStore } from "@/stores/useAuthStore";
-
-const COUNTRY_CODES = [
-  { code: "+91",  label: "India (+91)" },
-  { code: "+1",   label: "US (+1)" },
-  { code: "+44",  label: "UK (+44)" },
-  { code: "+61",  label: "AU (+61)" },
-  { code: "+49",  label: "DE (+49)" },
-  { code: "+33",  label: "FR (+33)" },
-  { code: "+81",  label: "JP (+81)" },
-  { code: "+86",  label: "CN (+86)" },
-  { code: "+55",  label: "BR (+55)" },
-  { code: "+234", label: "NG (+234)" },
-];
 
 export default function LoginScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const setPhoneNumber = useAuthStore((s) => s.setPhoneNumber);
-  const setOtpSentAt   = useAuthStore((s) => s.setOtpSentAt);
-  const session        = useAuthStore((s) => s.session);
+  const setOtpSentAt = useAuthStore((s) => s.setOtpSentAt);
+  const session = useAuthStore((s) => s.session);
   const hasSeenWalkthrough = useAuthStore((s) => s.hasSeenWalkthrough);
   const dataConsentAccepted = useAuthStore((s) => s.dataConsentAccepted);
   const setDataConsentAccepted = useAuthStore((s) => s.setDataConsentAccepted);
 
-  const [countryCode, setCountryCode]         = useState("+91");
-  const [phone, setPhone]                     = useState("");
-  const [loading, setLoading]                 = useState(false);
+  const [countryCode, setCountryCode] = useState("+91");
+  const [phone, setPhone] = useState("");
+  const [loading, setLoading] = useState(false);
   const [showCountryPicker, setShowCountryPicker] = useState(false);
-  const [error, setError]                     = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!hasSeenWalkthrough) {
@@ -66,10 +55,16 @@ export default function LoginScreen() {
     }
   }, [session, hasSeenWalkthrough]);
 
-  const fullPhone = `${countryCode}${phone.replace(/\D/g, "")}`;
+  const fullPhone = buildFullPhone(countryCode, phone);
+
+  const handlePhoneChange = (text: string) => {
+    const normalized = normalizePhoneInput(text, countryCode, phone);
+    setPhone(normalized);
+    if (error) setError("");
+  };
 
   const handleSendOTP = async () => {
-    if (!phone || phone.replace(/\D/g, "").length < 7) {
+    if (!isValidNationalNumber(phone, countryCode)) {
       setError("Enter a valid phone number");
       return;
     }
@@ -89,212 +84,150 @@ export default function LoginScreen() {
       setPhoneNumber(fullPhone);
       setOtpSentAt(Date.now());
       router.push("/(auth)/verify");
-    } catch (e: any) {
-      setError(e.message ?? "Failed to send OTP via WhatsApp");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to send OTP via WhatsApp";
+      setError(msg);
     } finally {
       setLoading(false);
     }
   };
 
-  const topPad    = insets.top + (Platform.OS === "web" ? 67 : 20);
-  const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 20);
-
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={["#7C6AFA18", "#FA6A6A08", "transparent"]}
-        style={styles.glow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
+    <ScreenShell>
+      <Animated.View entering={FadeIn.duration(600)} style={styles.logoWrap}>
+        <Image source={require("../../assets/images/icon.png")} style={styles.logoImage} />
+      </Animated.View>
+
+      <ScreenHeader
+        title={"Your work deserves\na beautiful home."}
+        subtitle="Create a stunning portfolio in seconds. Show the world what you're capable of."
       />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
+
+      <Animated.View
+        entering={FadeInDown.delay(200).springify()}
+        style={[styles.whatsappBadge, { backgroundColor: "#25D36614", borderColor: "#25D36633" }]}
       >
-        <ScrollView
-          contentContainerStyle={[
-            styles.scroll,
-            { paddingTop: topPad + 20, paddingBottom: bottomPad + 20 },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Logo */}
-          <Animated.View entering={FadeIn.duration(600)} style={styles.logoWrap}>
-            <Image
-              source={require("../../assets/images/icon.png")}
-              style={styles.logoImage}
+        <View style={[styles.whatsappDot, { backgroundColor: "#25D366" }]} />
+        <Text style={[styles.whatsappText, { color: "#1B7A4A" }]}>Fast login with WhatsApp</Text>
+      </Animated.View>
+
+      <Animated.View entering={FadeInDown.delay(240).springify()} style={styles.form}>
+        <View style={styles.fieldBlock}>
+          <Text style={[styles.fieldLabel, { color: colors.foreground }]}>Mobile number</Text>
+          <View
+            style={[
+              styles.phoneRow,
+              { borderColor: error ? colors.destructive : colors.border, backgroundColor: colors.surface },
+            ]}
+          >
+            <TouchableOpacity
+              style={[styles.countryBtn, { borderRightColor: colors.border }]}
+              onPress={() => setShowCountryPicker(true)}
+            >
+              <Text style={[styles.countryText, { color: colors.foreground }]}>{countryCode}</Text>
+              <Feather name="chevron-down" size={13} color={colors.mutedForeground} />
+            </TouchableOpacity>
+            <TextInput
+              style={[styles.phoneInput, { color: colors.foreground }]}
+              placeholder="Your number"
+              placeholderTextColor={colors.mutedForeground}
+              keyboardType="phone-pad"
+              value={phone}
+              onChangeText={handlePhoneChange}
+              returnKeyType="done"
+              onSubmitEditing={handleSendOTP}
+              selectionColor={colors.primary}
+              autoComplete="tel"
+              textContentType="telephoneNumber"
             />
-          </Animated.View>
+          </View>
+          {error ? (
+            <Text style={[styles.fieldError, { color: colors.destructive }]}>{error}</Text>
+          ) : null}
+        </View>
 
-          <Animated.Text
-            entering={FadeInDown.delay(80).springify()}
-            style={[styles.headline, { color: colors.foreground }]}
-          >
-            Your work deserves{"\n"}a beautiful home.
-          </Animated.Text>
-
-          <Animated.Text
-            entering={FadeInDown.delay(160).springify()}
-            style={[styles.sub, { color: colors.mutedForeground }]}
-          >
-            Create a stunning portfolio in seconds. Show the world what you're capable of.
-          </Animated.Text>
-
-          {/* WhatsApp badge */}
-          <Animated.View
-            entering={FadeInDown.delay(200).springify()}
-            style={[styles.whatsappBadge, { backgroundColor: "#25D366" + "18", borderColor: "#25D366" + "44" }]}
-          >
-            <View style={[styles.whatsappDot, { backgroundColor: "#25D366" }]} />
-            <Text style={[styles.whatsappText, { color: "#25D366" }]}>
-              Fast login with WhatsApp
-            </Text>
-          </Animated.View>
-
-          {/* Form */}
-          <Animated.View entering={FadeInDown.delay(240).springify()} style={styles.form}>
-            {/* Phone row */}
-            <View
-              style={[
-                styles.phoneRow,
-                { borderColor: colors.border, backgroundColor: colors.surface },
-              ]}
-            >
-              <TouchableOpacity
-                style={[styles.countryBtn, { borderRightColor: colors.border }]}
-                onPress={() => setShowCountryPicker(true)}
-              >
-                <Text style={[styles.countryText, { color: colors.foreground }]}>
-                  {countryCode}
-                </Text>
-                <Feather name="chevron-down" size={13} color={colors.mutedForeground} />
-              </TouchableOpacity>
-              <TextInput
-                style={[styles.phoneInput, { color: colors.foreground }]}
-                placeholder="Mobile number"
-                placeholderTextColor={colors.mutedForeground}
-                keyboardType="phone-pad"
-                value={phone}
-                onChangeText={setPhone}
-                returnKeyType="done"
-                onSubmitEditing={handleSendOTP}
-                selectionColor={colors.primary}
-                autoComplete="tel"
-                textContentType="telephoneNumber"
-              />
-            </View>
-
-            {/* Country picker modal */}
-            <Modal
-              visible={showCountryPicker}
-              transparent
-              animationType="fade"
-              onRequestClose={() => setShowCountryPicker(false)}
-            >
-              <TouchableWithoutFeedback onPress={() => setShowCountryPicker(false)}>
-                <View style={styles.modalOverlay}>
-                  <TouchableWithoutFeedback>
-                    <View
-                      style={[
-                        styles.pickerModal,
-                        { backgroundColor: colors.card, borderColor: colors.border },
-                      ]}
-                    >
-                      <Text style={[styles.pickerTitle, { color: colors.foreground }]}>
-                        Select Country
-                      </Text>
-                      <ScrollView>
-                        {COUNTRY_CODES.map((c) => (
-                          <TouchableOpacity
-                            key={c.code}
-                            style={[
-                              styles.pickerItem,
-                              countryCode === c.code && { backgroundColor: colors.surface },
-                            ]}
-                            onPress={() => {
-                              setCountryCode(c.code);
-                              setShowCountryPicker(false);
-                            }}
-                          >
-                            <Text style={[styles.pickerLabel, { color: colors.foreground }]}>
-                              {c.label}
-                            </Text>
-                            {countryCode === c.code && (
-                              <Feather name="check" size={15} color={colors.primary} />
-                            )}
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  </TouchableWithoutFeedback>
+        <Modal
+          visible={showCountryPicker}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowCountryPicker(false)}
+        >
+          <TouchableWithoutFeedback onPress={() => setShowCountryPicker(false)}>
+            <View style={styles.modalOverlay}>
+              <TouchableWithoutFeedback>
+                <View
+                  style={[
+                    styles.pickerModal,
+                    { backgroundColor: colors.card, borderColor: colors.border },
+                  ]}
+                >
+                  <Text style={[styles.pickerTitle, { color: colors.foreground, fontFamily: fonts.sansBold }]}>
+                    Select country
+                  </Text>
+                  <ScrollView>
+                    {COUNTRY_CODES.map((c) => (
+                      <TouchableOpacity
+                        key={c.code}
+                        style={[
+                          styles.pickerItem,
+                          countryCode === c.code && { backgroundColor: colors.surface },
+                        ]}
+                        onPress={() => {
+                          setCountryCode(c.code);
+                          setShowCountryPicker(false);
+                        }}
+                      >
+                        <Text style={[styles.pickerLabel, { color: colors.foreground }]}>{c.label}</Text>
+                        {countryCode === c.code && (
+                          <Feather name="check" size={15} color={colors.primary} />
+                        )}
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
                 </View>
               </TouchableWithoutFeedback>
-            </Modal>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
 
-            {error ? (
-              <Animated.Text
-                entering={FadeIn.duration(200)}
-                style={[styles.error, { color: colors.accent }]}
-              >
-                {error}
-              </Animated.Text>
-            ) : null}
-
-            <TouchableOpacity
-              style={styles.consentRow}
-              onPress={() => setDataConsentAccepted(!dataConsentAccepted)}
-              activeOpacity={0.85}
+        <TouchableOpacity
+          style={styles.consentRow}
+          onPress={() => setDataConsentAccepted(!dataConsentAccepted)}
+          activeOpacity={0.85}
+        >
+          <Feather
+            name={dataConsentAccepted ? "check-square" : "square"}
+            size={22}
+            color={dataConsentAccepted ? colors.primary : colors.mutedForeground}
+          />
+          <Text style={[styles.consentText, { color: colors.mutedForeground }]}>
+            I agree to BEXO processing my phone number and profile data as described in the{" "}
+            <Text
+              style={{ color: colors.primary, fontWeight: "700" }}
+              onPress={() => Linking.openURL("https://mybexo.com/privacy")}
             >
-              <Feather
-                name={dataConsentAccepted ? "check-square" : "square"}
-                size={22}
-                color={dataConsentAccepted ? colors.primary : colors.mutedForeground}
-              />
-              <Text style={[styles.consentText, { color: colors.mutedForeground }]}>
-                I agree to BEXO processing my phone number and profile data as described in the{" "}
-                <Text
-                  style={{ color: colors.primary, fontWeight: "700" }}
-                  onPress={() => Linking.openURL("https://mybexo.com/privacy")}
-                >
-                  Privacy Notice
-                </Text>
-                {" "}and{" "}
-                <Text
-                  style={{ color: colors.primary, fontWeight: "700" }}
-                  onPress={() => Linking.openURL("https://mybexo.com/terms")}
-                >
-                  Terms
-                </Text>
-                . Required before we send an OTP.
-              </Text>
-            </TouchableOpacity>
+              Privacy Notice
+            </Text>{" "}
+            and{" "}
+            <Text
+              style={{ color: colors.primary, fontWeight: "700" }}
+              onPress={() => Linking.openURL("https://mybexo.com/terms")}
+            >
+              Terms
+            </Text>
+            . Required before we send an OTP.
+          </Text>
+        </TouchableOpacity>
 
-            <BexoButton label="Send me the code" onPress={handleSendOTP} loading={loading} />
-          </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </View>
+        <BexoButton label="Send me the code" onPress={handleSendOTP} loading={loading} />
+      </Animated.View>
+    </ScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 320 },
-  scroll: { paddingHorizontal: 28, gap: 20 },
-  logoWrap: { alignItems: "center", justifyContent: "center", marginBottom: 10 },
-  logoImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
-  },
-  headline: {
-    fontSize: 36,
-    fontWeight: "800",
-    lineHeight: 44,
-    letterSpacing: -0.5,
-  },
-  sub: { fontSize: 15, lineHeight: 22 },
+  logoWrap: { alignItems: "center", marginBottom: 8 },
+  logoImage: { width: 72, height: 72, borderRadius: 18 },
   whatsappBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -302,16 +235,15 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     paddingHorizontal: 14,
     paddingVertical: 8,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
+    marginBottom: 8,
   },
-  whatsappDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
+  whatsappDot: { width: 8, height: 8, borderRadius: 4 },
   whatsappText: { fontSize: 13, fontWeight: "600" },
-  form: { gap: 12 },
+  form: { gap: 16, marginTop: 4 },
+  fieldBlock: { gap: 8 },
+  fieldLabel: { fontSize: 14, fontWeight: "600" },
   phoneRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -332,13 +264,14 @@ const styles = StyleSheet.create({
   phoneInput: {
     flex: 1,
     paddingHorizontal: 14,
-    fontSize: 15,
+    fontSize: 16,
     height: "100%",
     ...(Platform.OS === "web" ? { outlineStyle: "none" as any } : {}),
   },
+  fieldError: { fontSize: 13, lineHeight: 18 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
+    backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
     alignItems: "center",
     padding: 20,
@@ -346,7 +279,7 @@ const styles = StyleSheet.create({
   pickerModal: {
     width: "100%",
     maxHeight: "60%",
-    borderRadius: 24,
+    borderRadius: 20,
     borderWidth: 1,
     paddingVertical: 8,
   },
@@ -364,8 +297,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   pickerLabel: { fontSize: 15, fontWeight: "500" },
-  error: { fontSize: 13 },
-  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, marginTop: 4 },
+  consentRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
   consentText: { flex: 1, fontSize: 13, lineHeight: 20 },
-  terms: { fontSize: 11, textAlign: "center", lineHeight: 16 },
 });

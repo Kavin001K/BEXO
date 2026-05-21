@@ -17,8 +17,11 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { MissingInfoFlow }           from "@/components/home/MissingInfoFlow";
+import { MissingInfoFlow } from "@/components/home/MissingInfoFlow";
+import { ProfileActionStrip } from "@/components/home/ProfileActionStrip";
 import { ProfileCompletenessBanner } from "@/components/home/ProfileCompletenessBanner";
+import { BuildStatusCard } from "@/components/ui/BuildStatusCard";
+import { useProfileBuildGate } from "@/hooks/useProfileBuildGate";
 import { UpdateCard }                 from "@/components/ui/UpdateCard";
 import { useColors }                  from "@/hooks/useColors";
 import { useAuthStore }               from "@/stores/useAuthStore";
@@ -72,7 +75,7 @@ const QuickAction = React.memo(function QuickAction({ icon, label, sublabel, onP
         style={[
           S.quickAction,
           { backgroundColor: colors.card, borderColor: colors.border },
-          accent ? { borderLeftWidth: 3, borderLeftColor: accent } : null,
+          accent ? { backgroundColor: accent + "08" } : null,
         ]}
         onPress={() => {
           scale.value = withSequence(withTiming(0.96, { duration: 80 }), withTiming(1, { duration: 120 }));
@@ -103,7 +106,7 @@ export default function DashboardScreen() {
   const { profile, skills, education, experiences, projects,
           fetchProfile, getCompletionResult } = useProfileStore();
   const { updates, analytics, buildStatus, portfolioUrl,
-          fetchUpdates, fetchBuildStatus, fetchAnalytics, subscribeToBuilds, triggerBuild } = usePortfolioStore();
+          fetchUpdates, fetchBuildStatus, fetchAnalytics, subscribeToBuilds } = usePortfolioStore();
 
   const [refreshing,     setRefreshing]     = useState(false);
   const [showMissing,    setShowMissing]    = useState(false);
@@ -116,7 +119,13 @@ export default function DashboardScreen() {
 
   const showFallback = !profile?.avatar_url || imgError;
 
-  const params  = useLocalSearchParams<{ onboarding_complete?: string }>();
+  const params = useLocalSearchParams<{
+    onboarding_complete?: string;
+    profile_incomplete?: string;
+    build_ready?: string;
+  }>();
+
+  const buildGate = useProfileBuildGate({ autoTrigger: true });
 
   const completionResult = useMemo(
     () => getCompletionResult(),
@@ -127,12 +136,19 @@ export default function DashboardScreen() {
   useEffect(() => {
     if (params.onboarding_complete === "true") {
       Alert.alert(
-        "Website building in progress!",
-        "Your portfolio is being created. We'll notify you once it's live and ready to share!",
-        [{ text: "Great!", onPress: () => router.setParams({ onboarding_complete: undefined }) }]
+        "Website build started",
+        "We are creating your portfolio. You can track progress on this screen.",
+        [{ text: "OK", onPress: () => router.setParams({ onboarding_complete: undefined }) }],
       );
     }
-  }, [params.onboarding_complete]);
+    if (params.profile_incomplete) {
+      setShowMissing(true);
+      router.setParams({ profile_incomplete: undefined });
+    }
+    if (params.build_ready === "true") {
+      router.setParams({ build_ready: undefined });
+    }
+  }, [params.onboarding_complete, params.profile_incomplete, params.build_ready]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -215,8 +231,7 @@ export default function DashboardScreen() {
     );
   }
 
-  const isLive     = buildStatus === "done" && !!portfolioUrl;
-  const isBuilding = buildStatus === "building" || buildStatus === "queued";
+  const isLive = buildStatus === "done" && !!portfolioUrl;
 
 
   return (
@@ -278,95 +293,29 @@ export default function DashboardScreen() {
           </TouchableOpacity>
         </Animated.View>
 
-        {/* Portfolio status card */}
-        <Animated.View entering={FadeInDown.delay(80).springify()}>
-          {isLive ? (
-            <TouchableOpacity onPress={() => router.push("/(main)/(tabs)/portfolio")} activeOpacity={0.9}>
-              <LinearGradient
-                colors={["#7C6AFA", "#FA6A6A"]}
-                style={S.liveCard}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              >
-                <View style={S.liveInfo}>
-                  <View style={S.liveStatusRow}>
-                    <LiveDot color="#6AFAD0" />
-                    <Text style={S.liveLabel}>Your site is live!</Text>
-                  </View>
-                  <Text style={S.liveUrl}>{profile?.handle}.mybexo.com</Text>
-                  <Text style={[S.liveSyncHint, { color: "rgba(255,255,255,0.75)" }]}>
-                    Profile edits sync to your site automatically
-                  </Text>
-                </View>
-                <View style={S.liveActions}>
-                  <TouchableOpacity onPress={handleShare} style={S.liveActionBtn}>
-                    <Feather name="share-2" size={16} color="#fff" />
-                  </TouchableOpacity>
-                  <View style={S.liveActionBtn}>
-                    <Feather name="chevron-right" size={18} color="#fff" />
-                  </View>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          ) : isBuilding ? (
-            <View style={[S.buildingCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <LiveDot color={colors.primary} />
-              <Text style={[S.buildingText, { color: colors.mutedForeground }]}>We're building your site...</Text>
-            </View>
-          ) : completionResult.isPassing ? (
-            <TouchableOpacity
-              style={[S.buildPromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={async () => {
-                if (!profile?.id) return;
-                try {
-                  await triggerBuild(profile.id);
-                } catch (e: any) {
-                  showErrorAlert(e, "Build failed to start");
-                }
-              }}
-            >
-              <LinearGradient
-                colors={[colors.primary + "15", "transparent"]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              />
-              <View style={[S.bpIcon, { backgroundColor: colors.primary + "22" }]}>
-                <Feather name="globe" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[S.bpLabel, { color: colors.foreground }]}>Build My Website</Text>
-                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>
-                  Your profile is ready — we will generate your portfolio site.
-                </Text>
-              </View>
-              <Feather name="arrow-right" size={16} color={colors.primary} />
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[S.buildPromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => setShowMissing(true)}
-            >
-              <LinearGradient
-                colors={[colors.primary + "15", "transparent"]}
-                style={StyleSheet.absoluteFill}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-              />
-              <View style={[S.bpIcon, { backgroundColor: colors.primary + "22" }]}>
-                <Feather name="globe" size={20} color={colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[S.bpLabel, { color: colors.foreground }]}>
-                  Complete profile ({completionResult.score}%)
-                </Text>
-                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>
-                  Reach 90% on your profile before we can build your website.
-                </Text>
-              </View>
-              <Feather name="arrow-right" size={16} color={colors.primary} />
-            </TouchableOpacity>
-          )}
-        </Animated.View>
+        {!completionResult.isPassing && (
+          <ProfileActionStrip
+            result={completionResult}
+            resumeUrl={profile?.resume_url}
+            educationCount={education.length}
+            experienceCount={experiences.length}
+            onFinishPress={() => setShowMissing(true)}
+            onResumePress={() => router.navigate("/edit-profile")}
+          />
+        )}
 
-        {/* Profile completion banner */}
+        <BuildStatusCard
+          phase={buildGate.phase}
+          statusLabel={buildGate.statusLabel}
+          handle={profile?.handle}
+          score={completionResult.score}
+          onPress={() => setShowMissing(true)}
+          onBuildPress={() => {
+            if (isLive) router.push("/(main)/(tabs)/portfolio");
+            else void buildGate.manualTrigger();
+          }}
+        />
+
         {!completionResult.isPassing && (
           <Animated.View entering={FadeInDown.delay(140).springify()}>
             <ProfileCompletenessBanner
@@ -378,9 +327,9 @@ export default function DashboardScreen() {
 
         {/* Stats row */}
         <Animated.View entering={FadeInDown.delay(200).springify()} style={S.statsRow}>
-          <StatCard icon="eye"          value={analytics.views}  label="Views"  color="#7C6AFA" delay={220} />
-          <StatCard icon="mouse-pointer" value={analytics.clicks} label="Clicks" color="#FA6A6A" delay={260} />
-          <StatCard icon="share-2"      value={analytics.shares} label="Shares" color="#6AFAD0" delay={300} />
+          <StatCard icon="eye" value={analytics.views} label="Views" color={colors.primary} delay={220} />
+          <StatCard icon="mouse-pointer" value={analytics.clicks} label="Clicks" color={colors.accent} delay={260} />
+          <StatCard icon="share-2" value={analytics.shares} label="Shares" color={colors.success} delay={300} />
         </Animated.View>
 
         {/* Quick actions */}
@@ -398,12 +347,12 @@ export default function DashboardScreen() {
           />
           <QuickAction
             icon="credit-card" label="Digital Card" sublabel="Customize & share identity"
-            accent="#00C2FF"
+            accent={colors.primary}
             onPress={() => router.push("/(main)/cards")} delay={380}
           />
           <QuickAction
             icon="plus-circle" label="Post an Update" sublabel="Certificate, project or award"
-            accent="#FA6A6A"
+            accent={colors.accent}
             onPress={() => router.navigate("/(main)/(tabs)/update")} delay={410}
           />
         </View>
@@ -517,12 +466,7 @@ export default function DashboardScreen() {
           }}
           activeOpacity={0.85}
         >
-          <LinearGradient
-            colors={["#7C6AFA", "#FA6A6A"]}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-          />
-          <Feather name="plus" size={24} color="#fff" />
+          <Feather name="plus" size={24} color={colors.primaryForeground} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -547,7 +491,7 @@ const S = StyleSheet.create({
   scroll: { paddingHorizontal: 20, gap: 20 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 20 },
   headerLeft: { flex: 1, justifyContent: "center" },
-  avatarThumb: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden", backgroundColor: "#1A1A24" },
+  avatarThumb: { width: 56, height: 56, borderRadius: 28, borderWidth: 2, alignItems: "center", justifyContent: "center", overflow: "hidden" },
   avatarThumbImg: { width: 56, height: 56, borderRadius: 28 },
   avatarInitial: { fontSize: 24, fontWeight: "900" },
   greeting: { fontSize: 16, fontWeight: "600", marginBottom: 2, opacity: 0.6 },

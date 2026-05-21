@@ -6,6 +6,7 @@ import { createEncryptedJSONStorage } from "@/lib/zustandEncryptedStorage";
 import type { ParsedResume } from "@/services/resumeParser";
 import { sanitizeError } from "@/lib/errorUtils";
 import { validateProfileFieldPatch } from "@/lib/profileFields";
+import { COMPLETENESS_PASS_SCORE } from "@/lib/profileCompleteness";
 import { schedulePortfolioSync } from "@/lib/schedulePortfolioSync";
 
 export interface Education {
@@ -167,7 +168,10 @@ interface ProfileState {
   deleteSkill: (id: string) => Promise<void>;
   saveResearch: (res: Research) => Promise<void>;
   deleteResearch: (id: string) => Promise<void>;
+  /** @deprecated Use canBuildWebsite() — true when score >= 90% */
   isProfileComplete: () => boolean;
+  canBuildWebsite: () => boolean;
+  isOnboardingGateComplete: () => boolean;
   getCompletionResult: () => CompletionResult;
 
   // New bulk methods
@@ -228,11 +232,21 @@ export const useProfileStore = create<ProfileState>()(
       addProject: (proj) => set((s) => ({ projects: [...s.projects, proj] })),
       addSkill: (skill) => set((s) => ({ skills: [...s.skills, skill] })),
 
-      isProfileComplete: () => {
-        const { profile } = get();
+      canBuildWebsite: () => get().getCompletionResult().isPassing,
+
+      isProfileComplete: () => get().canBuildWebsite(),
+
+      isOnboardingGateComplete: () => {
+        const { profile, onboardingStep } = get();
+        if (onboardingStep === "completed") return true;
         if (!profile) return false;
-        // Basic completeness check: must have handle, full_name, and email
-        return !!(profile.handle?.trim() && profile.full_name?.trim() && profile.email?.trim());
+        const hasBasics =
+          !!profile.handle?.trim() &&
+          !!profile.full_name?.trim() &&
+          !!profile.email?.trim();
+        const hasTheme =
+          !!profile.portfolio_theme?.trim() && profile.portfolio_theme !== "default";
+        return hasBasics && hasTheme;
       },
 
       getCompletionResult: (): CompletionResult => {
@@ -270,7 +284,11 @@ export const useProfileStore = create<ProfileState>()(
         if (skills.length >= 3) { score += 5; }
         else { missing.push({ key: "skills", label: "Skills", type: "section", placeholder: "Add at least 3 skills" }); }
 
-        return { score, missingFields: missing, isPassing: score >= 90 };
+        return {
+          score,
+          missingFields: missing,
+          isPassing: score >= COMPLETENESS_PASS_SCORE,
+        };
       },
 
       checkHandle: async (val: string) => {
@@ -695,7 +713,7 @@ export const useProfileStore = create<ProfileState>()(
         }
 
         // Default: If they have basic data, move them towards completion
-        if (get().isProfileComplete()) {
+        if (get().isOnboardingGateComplete()) {
           set({ onboardingStep: "completed" });
         }
       },

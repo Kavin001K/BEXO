@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
@@ -24,7 +23,9 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { LocationInput } from "@/components/ui/LocationInput";
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
+import { tapLight } from "@/lib/haptics";
 import { uploadAndParseResume } from "@/services/resumeParser";
 import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -491,7 +492,7 @@ export default function EditProfileScreen() {
                   activeTab === tab.id && { borderBottomColor: colors.primary },
                 ]}
                 onPress={() => {
-                  if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  void tapLight();
                   setActiveTab(tab.id);
                 }}
               >
@@ -569,14 +570,9 @@ export default function EditProfileScreen() {
               <View
                 style={[styles.resumeCard, { backgroundColor: colors.card, borderColor: colors.border }]}
               >
-                <LinearGradient
-                  colors={["#6AFAD011", "transparent"]}
-                  style={StyleSheet.absoluteFill}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
-                />
                 <View style={styles.resumeTop}>
-                  <View style={[styles.resumeIcon, { backgroundColor: "#6AFAD022" }]}>
-                    <Feather name="file-text" size={18} color="#6AFAD0" />
+                  <View style={[styles.resumeIcon, { backgroundColor: colors.primary + "15" }]}>
+                    <Feather name="file-text" size={18} color={colors.primary} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.resumeTitle, { color: colors.foreground }]}>
@@ -592,7 +588,7 @@ export default function EditProfileScreen() {
                   </View>
                   {resumeParsed && (
                     <View style={styles.parsedBadge}>
-                      <Feather name="check-circle" size={14} color="#6AFAD0" />
+                      <Feather name="check-circle" size={14} color={colors.primary} />
                     </View>
                   )}
                 </View>
@@ -1102,7 +1098,7 @@ const styles = StyleSheet.create({
     width: 38, height: 38, borderRadius: 12, borderWidth: 1,
     alignItems: "center", justifyContent: "center",
   },
-  headerTitle: { fontSize: 18, fontWeight: "700" },
+  headerTitle: { fontSize: 18, fontWeight: "700", fontFamily: fonts.sansBold },
   tabs: {
     paddingHorizontal: 16, gap: 0, borderBottomWidth: 1, flexDirection: "row",
   },

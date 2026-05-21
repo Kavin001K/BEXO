@@ -20,6 +20,7 @@ import { useAuthStore } from "@/stores/useAuthStore";
 import { Feather, AntDesign } from "@expo/vector-icons";
 
 import { ComingSoonGateway } from "@/components/ComingSoonGateway";
+import { checkApiHealth } from "@/lib/apiHealth";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -50,6 +51,7 @@ export default function RootLayout() {
 
   useEffect(() => {
     initialize();
+    void checkApiHealth();
   }, []);
 
   useEffect(() => {

@@ -1,25 +1,13 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useState, useRef } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
 import { BexoButton } from "@/components/ui/BexoButton";
 import { useColors } from "@/hooks/useColors";
-import { useAuthStore } from "@/stores/useAuthStore";
+import { tapLight } from "@/lib/haptics";
 import { useProfileStore } from "@/stores/useProfileStore";
 
 function calcAge(dob: Date): number {
@@ -32,29 +20,30 @@ function calcAge(dob: Date): number {
 
 export default function DobScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const profile = useProfileStore((s) => s.profile);
   const { setOnboardingStep, updateProfile } = useProfileStore();
 
-  const dayRef   = useRef<TextInput>(null);
+  const dayRef = useRef<TextInput>(null);
   const monthRef = useRef<TextInput>(null);
-  const yearRef  = useRef<TextInput>(null);
+  const yearRef = useRef<TextInput>(null);
 
   const initialDob = profile?.dob ? new Date(profile.dob) : null;
-  const [day, setDay]     = useState(initialDob ? String(initialDob.getDate()) : "");
+  const [day, setDay] = useState(initialDob ? String(initialDob.getDate()) : "");
   const [month, setMonth] = useState(initialDob ? String(initialDob.getMonth() + 1) : "");
-  const [year, setYear]   = useState(initialDob ? String(initialDob.getFullYear()) : "");
+  const [year, setYear] = useState(initialDob ? String(initialDob.getFullYear()) : "");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const parsedDate = (() => {
-    const d = parseInt(day), m = parseInt(month) - 1, y = parseInt(year);
+    const d = parseInt(day, 10);
+    const m = parseInt(month, 10) - 1;
+    const y = parseInt(year, 10);
     if (!day || !month || !year || isNaN(d) || isNaN(m) || isNaN(y)) return null;
     if (y < 1900 || y > new Date().getFullYear()) return null;
     if (m < 0 || m > 11) return null;
     if (d < 1 || d > 31) return null;
     const date = new Date(y, m, d);
-    if (date.getMonth() !== m) return null; // invalid day for month
+    if (date.getMonth() !== m) return null;
     return date;
   })();
 
@@ -74,7 +63,6 @@ export default function DobScreen() {
       setOnboardingStep("resume");
       router.push("/(onboarding)/resume");
     } catch {
-      // non-critical — continue anyway
       setOnboardingStep("resume");
       router.push("/(onboarding)/resume");
     } finally {
@@ -82,198 +70,128 @@ export default function DobScreen() {
     }
   };
 
-
   const handleSkip = () => {
     setOnboardingStep("resume");
     router.push("/(onboarding)/resume");
   };
 
   const handleBack = () => {
-    if (Platform.OS !== "web") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    void tapLight();
     setOnboardingStep("handle");
     router.replace("/(onboarding)/handle");
   };
 
+  const dateInputStyle = [
+    styles.dateInput,
+    { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground },
+  ];
+
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={["#FA6AFA18", "transparent"]}
-        style={styles.glow}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      />
-      <KeyboardAwareScrollViewCompat
-        contentContainerStyle={[
-          styles.scroll,
-          {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
-            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 20),
-          },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={handleBack}
-          accessibilityRole="button"
-          accessibilityLabel="Go back to edit your name and site URL"
-          style={styles.backRow}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Feather name="arrow-left" size={22} color={colors.primary} />
-          <Text style={[styles.backLabel, { color: colors.foreground }]}>Back</Text>
-        </TouchableOpacity>
-        <Text style={[styles.backHint, { color: colors.mutedForeground }]}>
-          Edit your URL, name, photo, or email
-        </Text>
+    <OnboardingShell
+      stepKey="dob"
+      title="When's your birthday?"
+      subtitle="Help us personalize your portfolio. You can hide this later."
+      onBack={handleBack}
+      footer={
+        <>
+          <BexoButton label="Continue" onPress={handleContinue} loading={loading} disabled={!isValid} />
+          <BexoButton label="Skip for now" onPress={handleSkip} variant="ghost" disabled={loading} />
+        </>
+      }
+    >
+      <Text style={[styles.hint, { color: colors.mutedForeground }]}>
+        Edit your URL, name, photo, or email
+      </Text>
 
-        {/* Step indicator */}
-        <View style={styles.stepRow}>
-          {[0, 1, 2, 3, 4].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                { backgroundColor: i < 3 ? colors.primary : colors.border, opacity: i < 3 ? 0.5 : 1 },
-                i === 3 && { backgroundColor: colors.primary, opacity: 1, width: 30 },
-              ]}
-            />
-          ))}
+      <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.dateRow}>
+        <View style={styles.dateField}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Day</Text>
+          <TextInput
+            ref={dayRef}
+            style={dateInputStyle}
+            placeholder="DD"
+            placeholderTextColor={colors.mutedForeground}
+            keyboardType="number-pad"
+            maxLength={2}
+            value={day}
+            onChangeText={(t) => {
+              const val = t.replace(/\D/g, "");
+              setDay(val);
+              setError("");
+              if (val.length === 2) monthRef.current?.focus();
+            }}
+            selectionColor={colors.primary}
+            autoFocus
+          />
         </View>
 
-        <Animated.Text
+        <View style={styles.dateField}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Month</Text>
+          <TextInput
+            ref={monthRef}
+            style={dateInputStyle}
+            placeholder="MM"
+            placeholderTextColor={colors.mutedForeground}
+            keyboardType="number-pad"
+            maxLength={2}
+            value={month}
+            onChangeText={(t) => {
+              const val = t.replace(/\D/g, "");
+              setMonth(val);
+              setError("");
+              if (val.length === 2) yearRef.current?.focus();
+            }}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === "Backspace" && !month) dayRef.current?.focus();
+            }}
+            selectionColor={colors.primary}
+          />
+        </View>
+
+        <View style={[styles.dateField, { flex: 2 }]}>
+          <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Year</Text>
+          <TextInput
+            ref={yearRef}
+            style={dateInputStyle}
+            placeholder="YYYY"
+            placeholderTextColor={colors.mutedForeground}
+            keyboardType="number-pad"
+            maxLength={4}
+            value={year}
+            onChangeText={(t) => {
+              setYear(t.replace(/\D/g, ""));
+              setError("");
+            }}
+            onKeyPress={({ nativeEvent }) => {
+              if (nativeEvent.key === "Backspace" && !year) monthRef.current?.focus();
+            }}
+            selectionColor={colors.primary}
+            returnKeyType="done"
+            onSubmitEditing={isValid ? handleContinue : undefined}
+          />
+        </View>
+      </Animated.View>
+
+      {isValid && age !== null && (
+        <Animated.View
           entering={FadeInDown.springify()}
-          style={[styles.headline, { color: colors.foreground }]}
+          style={[styles.ageBadge, { backgroundColor: colors.primary + "12", borderColor: colors.primary + "33" }]}
         >
-          When's your birthday?
-        </Animated.Text>
-        <Animated.Text
-          entering={FadeInDown.delay(60).springify()}
-          style={[styles.sub, { color: colors.mutedForeground }]}
-        >
-          Help us personalize your portfolio. Don't worry, you can hide this later.
-        </Animated.Text>
-
-        {/* Date inputs */}
-        <Animated.View entering={FadeInDown.delay(120).springify()} style={styles.dateRow}>
-          <View style={[styles.dateField, { flex: 1 }]}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Day</Text>
-            <TextInput
-              ref={dayRef}
-              style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="DD"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={day}
-              onChangeText={(t) => {
-                const val = t.replace(/\D/g, "");
-                setDay(val);
-                setError("");
-                if (val.length === 2) monthRef.current?.focus();
-              }}
-              selectionColor={colors.primary}
-              autoFocus
-            />
-          </View>
-
-          <View style={[styles.dateField, { flex: 1 }]}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Month</Text>
-            <TextInput
-              ref={monthRef}
-              style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="MM"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-              maxLength={2}
-              value={month}
-              onChangeText={(t) => {
-                const val = t.replace(/\D/g, "");
-                setMonth(val);
-                setError("");
-                if (val.length === 2) yearRef.current?.focus();
-              }}
-              onKeyPress={({ nativeEvent }) => {
-                if (nativeEvent.key === "Backspace" && !month) dayRef.current?.focus();
-              }}
-              selectionColor={colors.primary}
-            />
-          </View>
-
-          <View style={[styles.dateField, { flex: 2 }]}>
-            <Text style={[styles.fieldLabel, { color: colors.mutedForeground }]}>Year</Text>
-            <TextInput
-              ref={yearRef}
-              style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.foreground }]}
-              placeholder="YYYY"
-              placeholderTextColor={colors.mutedForeground}
-              keyboardType="number-pad"
-              maxLength={4}
-              value={year}
-              onChangeText={(t) => {
-                setYear(t.replace(/\D/g, ""));
-                setError("");
-              }}
-              onKeyPress={({ nativeEvent }) => {
-                if (nativeEvent.key === "Backspace" && !year) monthRef.current?.focus();
-              }}
-              selectionColor={colors.primary}
-              returnKeyType="done"
-              onSubmitEditing={isValid ? handleContinue : undefined}
-            />
-          </View>
+          <Feather name="user" size={16} color={colors.primary} />
+          <Text style={[styles.ageText, { color: colors.primary }]}>Age {age}</Text>
         </Animated.View>
+      )}
 
-        {/* Live age display */}
-        {isValid && age !== null && (
-          <Animated.View
-            entering={FadeInDown.springify()}
-            style={[styles.ageBadge, { backgroundColor: colors.primary + "22", borderColor: colors.primary + "44" }]}
-          >
-            <Feather name="user" size={16} color={colors.primary} />
-            <Text style={[styles.ageText, { color: colors.primary }]}>
-              Age {age}
-            </Text>
-          </Animated.View>
-        )}
-
-        {error ? (
-          <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
-        ) : null}
-
-        <View style={{ gap: 10, marginTop: 8 }}>
-          <BexoButton
-            label="Continue"
-            onPress={handleContinue}
-            loading={loading}
-            disabled={!isValid}
-          />
-          <BexoButton
-            label="Skip for now"
-            onPress={handleSkip}
-            variant="ghost"
-            disabled={loading}
-          />
-        </View>
-      </KeyboardAwareScrollViewCompat>
-    </View>
+      {error ? <Text style={[styles.error, { color: colors.destructive }]}>{error}</Text> : null}
+    </OnboardingShell>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 280 },
-  scroll: { paddingHorizontal: 28, gap: 18 },
-  backRow: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start" },
-  backLabel: { fontSize: 17, fontWeight: "600" },
-  backHint: { fontSize: 13, lineHeight: 18, marginBottom: 8 },
-  stepRow: { flexDirection: "row", gap: 6, marginBottom: 8 },
-  dot: { width: 20, height: 4, borderRadius: 2 },
-  headline: { fontSize: 30, fontWeight: "800", letterSpacing: -0.4 },
-  sub: { fontSize: 14, lineHeight: 21 },
+  hint: { fontSize: 13, lineHeight: 18, marginTop: -12 },
   dateRow: { flexDirection: "row", gap: 10 },
-  dateField: { gap: 6 },
-  fieldLabel: { fontSize: 11, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
+  dateField: { flex: 1, gap: 8 },
+  fieldLabel: { fontSize: 14, fontWeight: "600" },
   dateInput: {
     height: 56,
     borderRadius: 14,

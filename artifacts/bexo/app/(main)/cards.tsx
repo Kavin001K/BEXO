@@ -1,11 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import {
-  impactAsync,
-  notificationAsync,
-  ImpactFeedbackStyle,
-  NotificationFeedbackType,
-} from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -33,6 +26,7 @@ import {
   type CardTemplateId,
 } from "@/constants/identityCard";
 import { useColors } from "@/hooks/useColors";
+import { success, tapLight } from "@/lib/haptics";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
@@ -96,9 +90,7 @@ export default function CardsScreen() {
         identity_card_template: selectedTemplate,
         identity_card_font: selectedFont,
       });
-      if (Platform.OS !== "web") {
-        await notificationAsync(NotificationFeedbackType.Success);
-      }
+      await success();
       Alert.alert("Success", "Identity design saved!");
     } catch (e) {
       Alert.alert("Error", "Failed to save design");
@@ -130,7 +122,7 @@ export default function CardsScreen() {
 
     try {
       setIsSharing(true);
-      await impactAsync(ImpactFeedbackStyle.Heavy);
+      await tapLight();
       await runCaptureAndShare();
     } catch (err: any) {
       console.error("Share error:", err);
@@ -183,7 +175,7 @@ export default function CardsScreen() {
                   key={t.id}
                   onPress={() => {
                     setSelectedTemplate(t.id);
-                    if (Platform.OS !== "web") impactAsync(ImpactFeedbackStyle.Light);
+                    void tapLight();
                   }}
                   style={[
                     styles.templateCard,
@@ -205,7 +197,7 @@ export default function CardsScreen() {
                 key={t.id}
                 onPress={() => {
                   setSelectedPalette(t);
-                  if (Platform.OS !== "web") impactAsync(ImpactFeedbackStyle.Light);
+                  void tapLight();
                 }}
                 style={[
                   styles.themeCircle,
@@ -225,7 +217,7 @@ export default function CardsScreen() {
                 key={f.id}
                 onPress={() => {
                   setSelectedFont(f.fontFamily);
-                  if (Platform.OS !== "web") impactAsync(ImpactFeedbackStyle.Light);
+                  void tapLight();
                 }}
                 style={[
                   styles.fontPill,
@@ -264,13 +256,13 @@ export default function CardsScreen() {
           options={{ format: "jpg", quality: 0.92 }}
           style={{ width: SHARE_WIDTH }}
         >
-          <LinearGradient colors={["#050810", "#0a1220"]} style={styles.sharePoster}>
+          <View style={[styles.sharePoster, { backgroundColor: "#F7F5F0" }]}>
             <View style={styles.sharePosterHeader}>
-              <BexoLogo color="#fff" size={18} accentX={selectedPalette.accent} />
-              <Text style={styles.sharePosterKicker}>Your digital identity</Text>
+              <BexoLogo color="#1C1917" size={18} accentX={selectedPalette.accent} />
+              <Text style={[styles.sharePosterKicker, { color: "#78716C" }]}>Your digital identity</Text>
             </View>
 
-            <Text style={styles.sideLabel}>Front</Text>
+            <Text style={[styles.sideLabel, { color: "#78716C" }]}>Front</Text>
             <IdentityCard
               profile={profile}
               stats={stats}
@@ -279,7 +271,7 @@ export default function CardsScreen() {
               noOuterMargins
             />
 
-            <Text style={[styles.sideLabel, { marginTop: 6 }]}>Back</Text>
+            <Text style={[styles.sideLabel, { marginTop: 6, color: "#78716C" }]}>Back</Text>
             <IdentityCard
               profile={profile}
               stats={stats}
@@ -289,12 +281,12 @@ export default function CardsScreen() {
             />
 
             <View style={styles.sharePosterFooter}>
-              <Text style={styles.shareLink}>
+              <Text style={[styles.shareLink, { color: "#1C1917" }]}>
                 Visit: {portfolioUrl || `${profile?.handle ?? "you"}.mybexo.com`}
               </Text>
-              <Text style={styles.shareCTA}>Built with BEXO</Text>
+              <Text style={[styles.shareCTA, { color: "#0D6B5C" }]}>Built with BEXO</Text>
             </View>
-          </LinearGradient>
+          </View>
         </ViewShot>
       </View>
     </View>

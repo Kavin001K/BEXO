@@ -1,5 +1,4 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import React, { useState, useMemo } from "react";
@@ -23,7 +22,9 @@ import { IdentityCard } from "@/components/IdentityCard";
 import { getIdentityCardProps } from "@/constants/identityCard";
 import { RebuildModal } from "@/components/portfolio/RebuildModal";
 import { SkillTag } from "@/components/ui/SkillTag";
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
+import { tapLight } from "@/lib/haptics";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
 
@@ -84,7 +85,7 @@ export default function PortfolioScreen() {
 
   const activeTab = activePortfolioTab as TabId;
   const setActiveTab = (tab: TabId) => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void tapLight();
     setActivePortfolioTab(tab);
   };
 
@@ -183,13 +184,6 @@ export default function PortfolioScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={[colors.primary + "12", "transparent"]}
-        style={styles.ambientTop}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        pointerEvents="none"
-      />
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -483,7 +477,7 @@ export default function PortfolioScreen() {
                     style={[styles.itemCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                   >
                     <View style={styles.achievementRow}>
-                      <View style={styles.awardDot} />
+                      <View style={[styles.awardDot, { backgroundColor: colors.mint }]} />
                       <Text style={[styles.itemTitle, { color: colors.foreground, fontSize: 14 }]}>{update.title}</Text>
                     </View>
                   </TouchableOpacity>
@@ -684,17 +678,10 @@ const emptyStyles = StyleSheet.create({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  ambientTop: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 220,
-  },
   scroll: { paddingHorizontal: 20, gap: 16 },
   pageHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
   pageKicker: { fontSize: 11, fontWeight: "800", letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 4 },
-  pageTitle: { fontSize: 30, fontWeight: "900", letterSpacing: -0.8 },
+  pageTitle: { fontSize: 30, fontWeight: "900", fontFamily: fonts.sansBold, letterSpacing: -0.8 },
   headerActions: { flexDirection: "row", gap: 8 },
   actionBtn: {
     flexDirection: "row", alignItems: "center", gap: 6,
@@ -818,13 +805,12 @@ const styles = StyleSheet.create({
     gap: 5,
     flexShrink: 0,
     alignSelf: "flex-start",
-    backgroundColor: "#6AFAD022",
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
   },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: "#6AFAD0" },
-  liveChipText: { color: "#6AFAD0", fontSize: 12, fontWeight: "600" },
+  liveDot: { width: 7, height: 7, borderRadius: 4 },
+  liveChipText: { fontSize: 12, fontWeight: "600" },
   heroName: { fontSize: 23, fontWeight: "800", letterSpacing: -0.45 },
   heroHeadline: { fontSize: 14, lineHeight: 21, fontWeight: "500" },
   heroHandle: { fontSize: 13, fontWeight: "600", flexShrink: 1 },
@@ -853,7 +839,7 @@ const styles = StyleSheet.create({
   subHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   viewAll: { fontSize: 13, fontWeight: "700" },
   achievementRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  awardDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#6AFAD0" },
+  awardDot: { width: 6, height: 6, borderRadius: 3 },
   itemCard: {
     borderRadius: 20,
     borderWidth: 1,

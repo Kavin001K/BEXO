@@ -2,6 +2,7 @@
  * Profile completeness scoring — must match BEXO app useProfileStore.getCompletionResult.
  */
 
+/** Keep in sync with BEXO/artifacts/bexo/lib/profileCompleteness.ts */
 export const COMPLETENESS_PASS_SCORE = 90;
 
 export interface MissingField {

@@ -15,16 +15,19 @@ export default function RootIndex() {
   useEffect(() => {
     if (!isAuthLoading && !isProfileLoading) {
       if (session) {
-        const isComplete = useProfileStore.getState().isProfileComplete();
-        const hasFinishedOnboarding = onboardingStep === "completed" && isComplete;
-        
+        const hasFinishedOnboarding =
+          onboardingStep === "completed" ||
+          useProfileStore.getState().isOnboardingGateComplete();
+
         if (hasFinishedOnboarding) {
+          if (onboardingStep !== "completed") {
+            useProfileStore.getState().setOnboardingStep("completed");
+          }
           router.replace("/(main)/(tabs)/dashboard");
         } else {
           // Resume from exactly where they left off
           const step = onboardingStep || "email";
-          // Safety mapping: rename 'manual_review' to 'manual-review' for route consistency
-          const route = step === "completed" ? "email" : step === "manual_review" ? "manual-review" : step;
+          const route = step === "manual_review" ? "manual-review" : step;
           router.replace(`/(onboarding)/${route}`);
         }
       } else {
@@ -33,5 +36,5 @@ export default function RootIndex() {
     }
   }, [isAuthLoading, isProfileLoading, session, onboardingStep]);
 
-  return <View style={{ flex: 1, backgroundColor: "#0A0A0F" }} />;
+  return <View style={{ flex: 1, backgroundColor: "#F7F5F0" }} />;
 }

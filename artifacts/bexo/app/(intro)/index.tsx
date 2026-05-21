@@ -1,4 +1,3 @@
-import * as Haptics from "expo-haptics";
 import { router } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
@@ -21,37 +20,38 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
+import { tapLight } from "@/lib/haptics";
 
-const { width: W, height: H } = Dimensions.get("window");
+const { width: W } = Dimensions.get("window");
 
 const SCREENS = [
   {
     image: require("../../assets/images/Screen_1.png"),
-    headline: "Your Portfolio.\nYour Identity.",
+    headline: "Your portfolio.\nYour identity.",
     subtitle: "Create a professional portfolio website in minutes.",
   },
   {
     image: require("../../assets/images/Screen_2.png"),
-    headline: "Upload Resume.\nLet AI Do The Work.",
-    subtitle: "We automatically extract projects, skills, experience and more.",
+    headline: "Upload resume.\nLet AI do the work.",
+    subtitle: "We extract projects, skills, experience, and more.",
   },
   {
     image: require("../../assets/images/Screen_3.png"),
-    headline: "Stand Out\nOnline.",
-    subtitle: "Choose themes, fonts and your personal style.",
+    headline: "Stand out\nonline.",
+    subtitle: "Choose themes, fonts, and your personal style.",
   },
   {
     image: require("../../assets/images/Screen_4.png"),
-    headline: "Launch Your\nPersonal Website.",
+    headline: "Launch your\npersonal website.",
     subtitle: "username.mybexo.com — live in minutes.",
   },
 ];
 
-function AnimatedDot({ active }: { active: boolean }) {
+function AnimatedDot({ active, color }: { active: boolean; color: string }) {
   const dotWidth = useSharedValue(active ? 28 : 8);
 
   React.useEffect(() => {
@@ -62,19 +62,21 @@ function AnimatedDot({ active }: { active: boolean }) {
     width: dotWidth.value,
     height: 8,
     borderRadius: 4,
-    backgroundColor: active ? "#7C6AFA" : "rgba(255,255,255,0.2)",
+    backgroundColor: active ? color : color + "33",
   }));
 
   return <Animated.View style={style} />;
 }
 
 export default function IntroScreen() {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
   const isLast = activeIdx === SCREENS.length - 1;
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 16);
+  const topPad = insets.top + (Platform.OS === "web" ? 67 : 20);
 
   const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const idx = Math.round(e.nativeEvent.contentOffset.x / W);
@@ -93,7 +95,7 @@ export default function IntroScreen() {
   }, [activeIdx]);
 
   const goNext = () => {
-    if (Platform.OS !== "web") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void tapLight();
     if (isLast) {
       router.replace("/(auth)");
       return;
@@ -105,8 +107,7 @@ export default function IntroScreen() {
   const current = SCREENS[activeIdx];
 
   return (
-    <View style={[styles.container, { backgroundColor: "#08081A" }]}>
-      {/* Full-screen image carousel */}
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -114,97 +115,53 @@ export default function IntroScreen() {
         showsHorizontalScrollIndicator={false}
         onScroll={onScroll}
         scrollEventThrottle={16}
-        style={StyleSheet.absoluteFill}
+        style={styles.carousel}
         bounces={false}
         decelerationRate="fast"
       >
         {SCREENS.map((screen, i) => (
-          <View key={i} style={{ width: W, height: H }}>
-            <Image
-              source={screen.image}
-              style={styles.screenImage}
-              resizeMode="cover"
-            />
+          <View key={i} style={{ width: W }}>
+            <Image source={screen.image} style={styles.screenImage} resizeMode="cover" />
           </View>
         ))}
       </ScrollView>
 
-      {/* Top logo */}
-      <Animated.View
-        entering={FadeIn.duration(500)}
-        style={[styles.logoContainer, { top: insets.top + (Platform.OS === "web" ? 67 : 20) }]}
-      >
-        <Image
-          source={require("../../assets/images/icon.png")}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+      <Animated.View entering={FadeIn.duration(500)} style={[styles.logoContainer, { top: topPad }]}>
+        <Image source={require("../../assets/images/icon.png")} style={styles.logo} resizeMode="contain" />
       </Animated.View>
 
-      {/* Skip button */}
       {!isLast && (
-        <Animated.View
-          entering={FadeIn.duration(400)}
-          style={[styles.skipWrap, { top: insets.top + (Platform.OS === "web" ? 67 : 20) }]}
-        >
+        <Animated.View entering={FadeIn.duration(400)} style={[styles.skipWrap, { top: topPad }]}>
           <TouchableOpacity
-            style={styles.skipBtn}
+            style={[styles.skipBtn, { backgroundColor: colors.card, borderColor: colors.border }]}
             onPress={() => router.replace("/(auth)")}
-            activeOpacity={0.7}
+            activeOpacity={0.85}
           >
-            <Text style={styles.skipText}>Skip</Text>
+            <Text style={[styles.skipText, { color: colors.mutedForeground }]}>Skip</Text>
           </TouchableOpacity>
         </Animated.View>
       )}
 
-      {/* Bottom gradient + content */}
-      <LinearGradient
-        colors={["transparent", "rgba(8,8,26,0.5)", "rgba(8,8,26,0.97)"]}
-        style={styles.bottomGradient}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        pointerEvents="none"
-      />
-
       <Animated.View
         entering={FadeInUp.delay(200).springify()}
-        style={[styles.bottom, { paddingBottom: bottomPad + 12 }]}
+        style={[styles.bottom, { paddingBottom: bottomPad + 12, backgroundColor: colors.background }]}
       >
-        {/* Per-slide text */}
         <View style={styles.textBlock}>
-          <Text style={styles.headline}>{current.headline}</Text>
-          <Text style={styles.subtitle}>{current.subtitle}</Text>
+          <Text style={[styles.headline, { color: colors.foreground }]}>{current.headline}</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{current.subtitle}</Text>
         </View>
 
-        {/* Dots */}
         <View style={styles.dots}>
           {SCREENS.map((_, i) => (
-            <AnimatedDot key={i} active={i === activeIdx} />
+            <AnimatedDot key={i} active={i === activeIdx} color={colors.primary} />
           ))}
         </View>
 
-        {/* CTA */}
         <View style={styles.ctaWrap}>
           {isLast ? (
-            <BexoButton
-              label="Get Started"
-              onPress={() => router.replace("/(auth)")}
-            />
+            <BexoButton label="Get started" onPress={() => router.replace("/(auth)")} />
           ) : (
-            <TouchableOpacity
-              onPress={goNext}
-              activeOpacity={0.85}
-              style={styles.nextBtnWrap}
-            >
-              <LinearGradient
-                colors={["#7C6AFA", "#9C6AFA"]}
-                style={styles.nextBtn}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <Text style={styles.nextBtnText}>Next</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <BexoButton label="Next" variant="secondary" onPress={goNext} />
           )}
         </View>
       </Animated.View>
@@ -214,86 +171,35 @@ export default function IntroScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  screenImage: { width: W, height: H },
-  bottomGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: 380,
-  },
-  logoContainer: {
-    position: "absolute",
-    left: 20,
-    zIndex: 10,
-  },
-  logo: { width: 80, height: 32 },
-  skipWrap: {
-    position: "absolute",
-    right: 20,
-    zIndex: 10,
-  },
+  carousel: { flex: 1 },
+  screenImage: { width: W, height: "72%" },
+  logoContainer: { position: "absolute", left: 24, zIndex: 10 },
+  logo: { width: 72, height: 72, borderRadius: 18 },
+  skipWrap: { position: "absolute", right: 24, zIndex: 10 },
   skipBtn: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     paddingVertical: 10,
-    borderRadius: 24,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
   },
-  skipText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "rgba(255,255,255,0.7)",
-  },
+  skipText: { fontSize: 14, fontWeight: "600" },
   bottom: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
+    flex: 1,
     paddingHorizontal: 28,
     gap: 20,
+    paddingTop: 20,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
   },
   textBlock: { gap: 8 },
   headline: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    letterSpacing: -0.5,
-    lineHeight: 40,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: "rgba(255,255,255,0.65)",
-    lineHeight: 22,
-  },
-  dots: {
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
-  },
-  ctaWrap: { width: "100%" },
-  nextBtnWrap: { width: "100%" },
-  nextBtn: {
-    height: 56,
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#7C6AFA",
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.4,
-        shadowRadius: 16,
-      },
-      android: { elevation: 8 },
-      web: { boxShadow: "0 8px 24px rgba(124,106,250,0.4)" },
-    }),
-  },
-  nextBtnText: {
-    color: "#fff",
-    fontSize: 16,
+    fontSize: 30,
     fontWeight: "700",
-    letterSpacing: 0.3,
+    fontFamily: fonts.sansBold,
+    letterSpacing: -0.5,
+    lineHeight: 38,
   },
+  subtitle: { fontSize: 15, lineHeight: 22 },
+  dots: { flexDirection: "row", gap: 6, alignItems: "center" },
+  ctaWrap: { width: "100%" },
 });

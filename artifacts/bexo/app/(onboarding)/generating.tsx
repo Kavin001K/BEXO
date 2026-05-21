@@ -1,187 +1,147 @@
-import { LinearGradient } from "expo-linear-gradient";
+import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Image,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import React, { useEffect } from "react";
+import { ActivityIndicator, Image, Platform, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { BexoButton } from "@/components/ui/BexoButton";
+import { useProfileBuildGate } from "@/hooks/useProfileBuildGate";
 import { useColors } from "@/hooks/useColors";
+import { success as hapticSuccess } from "@/lib/haptics";
 import { usePortfolioStore } from "@/stores/usePortfolioStore";
 import { useProfileStore } from "@/stores/useProfileStore";
-
-const STEPS = [
-  "Parsing your profile data...",
-  "Crafting your portfolio layout...",
-  "Generating your card design...",
-  "Applying BEXO magic...",
-  "Your portfolio is almost ready!",
-  "Ready! Taking you to dashboard...",
-];
-
-const THREE_MINUTES = 3 * 60 * 1000;
-const FIVE_MINUTES = 5 * 60 * 1000;
 
 export default function GeneratingScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const profile = useProfileStore((s) => s.profile);
-  const { triggerBuild, subscribeToBuilds, buildStatus, portfolioUrl } =
-    usePortfolioStore();
+  const setOnboardingStep = useProfileStore((s) => s.setOnboardingStep);
+  const subscribeToBuilds = usePortfolioStore((s) => s.subscribeToBuilds);
+  const buildStatus = usePortfolioStore((s) => s.buildStatus);
+  const portfolioUrl = usePortfolioStore((s) => s.portfolioUrl);
 
-  const [stepIdx, setStepIdx] = useState(0);
-  const pulseAnim = useRef(new Animated.Value(0.6)).current;
-  const progressAnim = useRef(new Animated.Value(0)).current;
+  const { completion, phase, statusLabel, tryAutoBuild, triggering } = useProfileBuildGate({
+    autoTrigger: false,
+  });
+
+  const pulse = useSharedValue(1);
+  const pulseStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
   useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 0.6, duration: 900, useNativeDriver: true }),
-      ])
+    pulse.value = withRepeat(
+      withSequence(
+        withTiming(0.55, { duration: 900 }),
+        withTiming(1, { duration: 900 }),
+      ),
+      -1,
+      true,
     );
-    pulse.start();
-
-    const interval = setInterval(() => {
-      setStepIdx((prev) => (prev < STEPS.length - 1 ? prev + 1 : prev));
-    }, 1800);
-
-    // Animation lasts for STEPS.length * 1800ms
-    Animated.timing(progressAnim, {
-      toValue: 1,
-      duration: STEPS.length * 1800,
-      useNativeDriver: false,
-    }).start(() => {
-      // Once the bar is fully loaded, take user to dashboard
-      useProfileStore.getState().setOnboardingStep("completed");
-      router.replace({ 
-        pathname: "/dashboard", 
-        params: { onboarding_complete: "true" } 
-      });
-    });
-
-    const failTimer = setTimeout(() => {
-      useProfileStore.getState().setOnboardingStep("completed");
-      router.replace("/dashboard");
-    }, FIVE_MINUTES);
-
-    return () => {
-      pulse.stop();
-      clearInterval(interval);
-      clearTimeout(failTimer);
-    };
-  }, []);
+  }, [pulse]);
 
   useEffect(() => {
     if (!profile?.id) return;
 
-    const completion = useProfileStore.getState().getCompletionResult();
     if (!completion.isPassing) {
-      console.warn(
-        `[Generating] Profile ${completion.score}% complete — need 90% before build.`,
-      );
-      useProfileStore.getState().setOnboardingStep("completed");
-      setTimeout(
-        () =>
-          router.replace({
-            pathname: "/dashboard",
-            params: { profile_incomplete: String(completion.score) },
-          }),
-        1500,
-      );
-      return;
+      const t = setTimeout(() => {
+        setOnboardingStep("completed");
+        router.replace({
+          pathname: "/(main)/(tabs)/dashboard",
+          params: { profile_incomplete: String(completion.score) },
+        });
+      }, 2200);
+      return () => clearTimeout(t);
     }
 
-    triggerBuild(profile.id);
+    void tryAutoBuild();
     const unsub = subscribeToBuilds(profile.id);
     return unsub;
-  }, [profile?.id]);
-  useEffect(() => {
-    if (buildStatus === "done" && portfolioUrl) {
-      useProfileStore.getState().setOnboardingStep("completed");
-      router.replace({ 
-        pathname: "/dashboard", 
-        params: { onboarding_complete: "true" } 
-      });
-    }
-  }, [buildStatus, portfolioUrl]);
+  }, [profile?.id, completion.isPassing, completion.score]);
 
-  const progressWidth = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["0%", "100%"],
-  });
+  useEffect(() => {
+    if (buildStatus !== "done" || !portfolioUrl) return;
+    void hapticSuccess();
+    setOnboardingStep("completed");
+    router.replace({
+      pathname: "/(main)/(tabs)/dashboard",
+      params: { onboarding_complete: "true", build_ready: "true" },
+    });
+  }, [buildStatus, portfolioUrl, setOnboardingStep]);
+
+  const goDashboard = () => {
+    setOnboardingStep("completed");
+    router.replace("/(main)/(tabs)/dashboard");
+  };
+
+  const label = statusLabel;
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={["#7C6AFA20", "#FA6A6A10", "transparent"]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-      />
-
       <View
         style={[
           styles.content,
           {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 40),
-            paddingBottom: insets.bottom + (Platform.OS === "web" ? 34 : 40),
+            paddingTop: insets.top + (Platform.OS === "web" ? 48 : 32),
+            paddingBottom: insets.bottom + 32,
           },
         ]}
       >
-        <View style={styles.logoWrap}>
-          <Animated.View style={{ opacity: pulseAnim }}>
-            <Image
-              source={require("../../assets/images/icon.png")}
-              style={styles.logoImageBig}
-            />
+        {!completion.isPassing ? (
+          <Animated.View entering={FadeIn.duration(400)} style={styles.center}>
+            <Feather name="alert-circle" size={48} color={colors.warning} />
+            <Text style={[styles.headline, { color: colors.foreground }]}>
+              Almost there
+            </Text>
+            <Text style={[styles.sub, { color: colors.mutedForeground }]}>
+              Your profile is {completion.score}% complete. We need 90% before we
+              can build your site. You can finish from home.
+            </Text>
+            <BexoButton label="Go to Home" onPress={goDashboard} />
           </Animated.View>
-        </View>
-
-        <Text style={[styles.headline, { color: colors.foreground }]}>
-          Building your portfolio
-        </Text>
-        <Text style={[styles.sub, { color: colors.mutedForeground }]}>
-          Sit back — we're assembling something amazing for you
-        </Text>
-
-        <View style={[styles.progressTrack, { backgroundColor: colors.surface }]}>
-          <Animated.View style={[styles.progressFill, { width: progressWidth }]}>
-            <LinearGradient
-              colors={["#7C6AFA", "#FA6A6A"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={StyleSheet.absoluteFill}
-            />
+        ) : (
+          <Animated.View entering={FadeIn.duration(400)} style={styles.center}>
+            <Animated.View style={pulseStyle}>
+              <Image
+                source={require("../../assets/images/icon.png")}
+                style={styles.logo}
+              />
+            </Animated.View>
+            <Text style={[styles.headline, { color: colors.foreground }]}>
+              Building your portfolio
+            </Text>
+            <Text style={[styles.sub, { color: colors.mutedForeground }]}>{label}</Text>
+            {(triggering || buildStatus === "queued" || buildStatus === "building") && (
+              <ActivityIndicator color={colors.primary} style={{ marginTop: 16 }} />
+            )}
+            <View
+              style={[
+                styles.urlCard,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+              ]}
+            >
+              <Text style={[styles.urlLabel, { color: colors.mutedForeground }]}>
+                Your URL
+              </Text>
+              <Text style={[styles.url, { color: colors.primary }]}>
+                {profile?.handle ?? "you"}.mybexo.com
+              </Text>
+            </View>
+            {(buildStatus === "failed" || phase === "failed") && (
+              <BexoButton
+                label="Continue to Home"
+                variant="secondary"
+                onPress={goDashboard}
+              />
+            )}
           </Animated.View>
-        </View>
-
-        <Text style={[styles.step, { color: colors.mutedForeground }]}>
-          {STEPS[stepIdx]}
-        </Text>
-
-
-
-        <View style={[styles.previewCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <LinearGradient
-            colors={["#7C6AFA15", "transparent"]}
-            style={StyleSheet.absoluteFill}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
-          <Text style={[styles.previewLabel, { color: colors.mutedForeground }]}>
-            Your portfolio URL
-          </Text>
-          <Text style={[styles.previewUrl, { color: colors.primary }]}>
-            {profile?.handle ?? "you"}.mybexo.com
-          </Text>
-        </View>
+        )}
       </View>
     </View>
   );
@@ -189,61 +149,25 @@ export default function GeneratingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: {
-    flex: 1,
-    paddingHorizontal: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 24,
-  },
-  logoWrap: { marginBottom: 8 },
-  logoImageBig: {
-    width: 100,
-    height: 100,
-    borderRadius: 24,
-  },
+  content: { flex: 1, paddingHorizontal: 28, justifyContent: "center" },
+  center: { alignItems: "center", gap: 16 },
+  logo: { width: 88, height: 88, borderRadius: 22 },
   headline: {
-    fontSize: 28,
-    fontWeight: "800",
+    fontSize: 26,
+    fontWeight: "700",
     textAlign: "center",
     letterSpacing: -0.4,
   },
-  sub: { fontSize: 14, textAlign: "center", lineHeight: 21 },
-  progressTrack: {
+  sub: { fontSize: 15, textAlign: "center", lineHeight: 22, maxWidth: 300 },
+  urlCard: {
     width: "100%",
-    height: 4,
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 2,
-    overflow: "hidden",
-  },
-  step: { fontSize: 13, textAlign: "center", minHeight: 18 },
-  delayBanner: {
-    width: "100%",
-    padding: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 8,
-    alignItems: "center",
-  },
-  delayText: { fontSize: 13, textAlign: "center", lineHeight: 19 },
-  delayAction: { fontSize: 14, fontWeight: "600" },
-  previewCard: {
-    width: "100%",
-    padding: 20,
+    marginTop: 8,
+    padding: 18,
     borderRadius: 16,
     borderWidth: 1,
     alignItems: "center",
-    gap: 8,
-    overflow: "hidden",
+    gap: 6,
   },
-  previewLabel: { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
-  previewUrl: {
-    fontSize: 18,
-    fontWeight: "700",
-    fontFamily: Platform.OS === "ios" ? "Courier" : "monospace",
-  },
+  urlLabel: { fontSize: 12, fontWeight: "600", textTransform: "uppercase" },
+  url: { fontSize: 17, fontWeight: "700" },
 });

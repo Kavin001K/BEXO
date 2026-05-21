@@ -7,11 +7,17 @@ import colors from "@/constants/colors";
  * Switches between `theme` and `dark` palettes based on the device
  * appearance setting. When no `dark` key exists, falls back to `theme`.
  */
+type ThemePalette = typeof colors.theme;
+
 export function useColors() {
   const scheme = useColorScheme();
-  const palette =
+  const palette: ThemePalette =
     scheme === "dark" && "dark" in colors
-      ? (colors as Record<string, typeof colors.theme>).dark
+      ? (colors.dark as ThemePalette)
       : colors.theme;
-  return { ...palette, radius: colors.radius };
+  return {
+    ...palette,
+    radius: colors.radius,
+    spacing: colors.spacing,
+  };
 }

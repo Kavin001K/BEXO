@@ -1,6 +1,5 @@
 import { Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
-import { LinearGradient } from "expo-linear-gradient";
 import React, { useState } from "react";
 import {
   ActivityIndicator, Alert, Modal, Platform,
@@ -182,8 +181,7 @@ export function RebuildModal({ visible, onClose }: Props) {
                 style={[M.optionCard, { backgroundColor: colors.card, borderColor: colors.primary + "44" }]}
                 onPress={handleUploadResume}
               >
-                <LinearGradient colors={["#7C6AFA11", "transparent"]} style={StyleSheet.absoluteFill} />
-                <View style={[M.optionIcon, { backgroundColor: colors.primary + "22" }]}>
+                <View style={[M.optionIcon, { backgroundColor: colors.primary + "18" }]}>
                   <Feather name="upload-cloud" size={22} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -199,8 +197,8 @@ export function RebuildModal({ visible, onClose }: Props) {
                 style={[M.optionCard, { backgroundColor: colors.card, borderColor: colors.border }]}
                 onPress={handleRebuildNow}
               >
-                <View style={[M.optionIcon, { backgroundColor: "#FA6A6A22" }]}>
-                  <Feather name="refresh-cw" size={22} color="#FA6A6A" />
+                <View style={[M.optionIcon, { backgroundColor: colors.secondary }]}>
+                  <Feather name="refresh-cw" size={22} color={colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[M.optionLabel, { color: colors.foreground }]}>Rebuild with current data</Text>
@@ -235,7 +233,7 @@ export function RebuildModal({ visible, onClose }: Props) {
                   We found the following in your resume. Choose how to update your portfolio:
                 </Text>
               ) : (
-                <Text style={[M.desc, { color: "#FA6A6A" }]}>
+                <Text style={[M.desc, { color: colors.destructive }]}>
                   AI couldn't extract structured data from this resume. The data will be saved, but you may want to add items manually.
                 </Text>
               )}
@@ -243,9 +241,9 @@ export function RebuildModal({ visible, onClose }: Props) {
               <View style={M.summaryRow}>
                 {[
                   { label: `${parsedResult.education?.length ?? 0} Education`,   icon: "book",      color: colors.primary },
-                  { label: `${parsedResult.experiences?.length ?? 0} Experience`, icon: "briefcase", color: "#FA6A6A"      },
-                  { label: `${parsedResult.projects?.length ?? 0} Projects`,      icon: "code",      color: "#6AFAD0"      },
-                  { label: `${parsedResult.skills?.length ?? 0} Skills`,          icon: "zap",       color: "#FAD06A"      },
+                  { label: `${parsedResult.experiences?.length ?? 0} Experience`, icon: "briefcase", color: colors.accent },
+                  { label: `${parsedResult.projects?.length ?? 0} Projects`,      icon: "code",      color: colors.mint },
+                  { label: `${parsedResult.skills?.length ?? 0} Skills`,          icon: "zap",       color: colors.warning },
                 ].map((item) => (
                   <View key={item.label} style={[M.summaryChip, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Feather name={item.icon as any} size={12} color={item.color} />
@@ -255,7 +253,7 @@ export function RebuildModal({ visible, onClose }: Props) {
               </View>
 
               <TouchableOpacity
-                style={[M.mergeCard, { backgroundColor: "#FA6A6A11", borderColor: "#FA6A6A44" }]}
+                style={[M.mergeCard, { backgroundColor: colors.destructive + "11", borderColor: colors.destructive + "33" }]}
                 onPress={() => Alert.alert(
                   "Replace all data?",
                   "This will delete your existing education, experience, projects, and skills, then replace them with what was found in this resume. This cannot be undone.",
@@ -265,18 +263,18 @@ export function RebuildModal({ visible, onClose }: Props) {
                   ]
                 )}
               >
-                <Feather name="trash-2" size={18} color="#FA6A6A" />
+                <Feather name="trash-2" size={18} color={colors.destructive} />
                 <View style={{ flex: 1 }}>
-                  <Text style={[M.mergeLabel, { color: "#FA6A6A" }]}>Replace all data</Text>
+                  <Text style={[M.mergeLabel, { color: colors.destructive }]}>Replace all data</Text>
                   <Text style={[M.mergeSub, { color: colors.mutedForeground }]}>
                     Delete everything and use only what's in this resume
                   </Text>
                 </View>
-                <Feather name="chevron-right" size={14} color="#FA6A6A" />
+                <Feather name="chevron-right" size={14} color={colors.destructive} />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[M.mergeCard, { backgroundColor: "#7C6AFA11", borderColor: "#7C6AFA44" }]}
+                style={[M.mergeCard, { backgroundColor: colors.primary + "11", borderColor: colors.primary + "33" }]}
                 onPress={handleMerge}
               >
                 <Feather name="git-merge" size={18} color={colors.primary} />
@@ -305,8 +303,8 @@ export function RebuildModal({ visible, onClose }: Props) {
           {/* SAVED — user chooses to rebuild or close */}
           {step === "saved" && (
             <Animated.View entering={FadeInDown.springify()} style={M.centeredContent}>
-              <View style={[M.successIcon, { backgroundColor: "#6AFAD022" }]}>
-                <Feather name="check-circle" size={32} color="#6AFAD0" />
+              <View style={[M.successIcon, { backgroundColor: colors.primary + "18" }]}>
+                <Feather name="check-circle" size={32} color={colors.primary} />
               </View>
               <Text style={[M.statusLabel, { color: colors.foreground }]}>Data saved successfully!</Text>
               <Text style={[M.statusSub, { color: colors.mutedForeground }]}>
@@ -348,8 +346,8 @@ export function RebuildModal({ visible, onClose }: Props) {
           {/* ERROR */}
           {step === "error" && (
             <Animated.View entering={FadeIn.duration(300)} style={M.centeredContent}>
-              <View style={[M.errorIcon, { backgroundColor: "#FA6A6A22" }]}>
-                <Feather name="alert-circle" size={32} color="#FA6A6A" />
+              <View style={[M.errorIcon, { backgroundColor: colors.destructive + "18" }]}>
+                <Feather name="alert-circle" size={32} color={colors.destructive} />
               </View>
               <Text style={[M.statusLabel, { color: colors.foreground }]}>Something went wrong</Text>
               <Text style={[M.errorMsg, { color: colors.mutedForeground }]}>{error}</Text>

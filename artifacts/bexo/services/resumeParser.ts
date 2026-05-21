@@ -1,5 +1,6 @@
 import { uploadResume, getResumeSignedUrl } from "@/services/upload";
 import { apiFetch } from "@/lib/apiConfig";
+import { isServerAiAvailable } from "@/lib/apiHealth";
 import { decode } from "base64-arraybuffer";
 import { sanitizeError } from "@/lib/errorUtils";
 
@@ -12,6 +13,9 @@ const MSG_RESUME_AI_DOWN =
  * expired keys and 403/400 Gemini responses never surface raw JSON in the UI.
  */
 export function friendlyResumeAiError(raw: string): string {
+  if (!isServerAiAvailable()) {
+    return MSG_RESUME_AI_DOWN;
+  }
   const s = raw.toLowerCase();
   if (
     s.includes("api_key_invalid") ||

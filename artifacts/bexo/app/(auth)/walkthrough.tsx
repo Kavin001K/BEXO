@@ -17,32 +17,55 @@ import Animated, {
   Easing,
   cancelAnimation,
 } from "react-native-reanimated";
-import { Feather } from "@expo/vector-icons";
 
 import { BexoButton } from "@/components/ui/BexoButton";
+import { fonts } from "@/constants/typography";
+import { useColors } from "@/hooks/useColors";
+import { tapLight } from "@/lib/haptics";
 import { useAuthStore } from "@/stores/useAuthStore";
 
 const { width, height } = Dimensions.get("window");
 const AUTO_SCROLL_MS = 15000;
 
 const SLIDES = [
-  { id: "1", image: require("../../assets/images/Screen_1.png") },
-  { id: "2", image: require("../../assets/images/Screen_2.png") },
-  { id: "3", image: require("../../assets/images/Screen_3.png") },
-  { id: "4", image: require("../../assets/images/Screen_4.png") },
+  {
+    id: "1",
+    image: require("../../assets/images/Screen_1.png"),
+    title: "Your work, beautifully framed",
+    subtitle: "A portfolio that feels editorial, not templated.",
+  },
+  {
+    id: "2",
+    image: require("../../assets/images/Screen_2.png"),
+    title: "Built in minutes",
+    subtitle: "Upload a resume or add details step by step.",
+  },
+  {
+    id: "3",
+    image: require("../../assets/images/Screen_3.png"),
+    title: "Share one link",
+    subtitle: "A clean home for projects, experience, and contact.",
+  },
+  {
+    id: "4",
+    image: require("../../assets/images/Screen_4.png"),
+    title: "Ready when you are",
+    subtitle: "Sign in with WhatsApp and start shaping your site.",
+  },
 ];
 
 export default function WalkthroughScreen() {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const setHasSeenWalkthrough = useAuthStore((s) => s.setHasSeenWalkthrough);
   const [activeIndex, setActiveIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const timerRef = useRef<any>(null);
-  
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const progress = useSharedValue(0);
 
   const progressStyle = useAnimatedStyle(() => ({
-    width: `${progress.value * 100}%` as any,
+    width: `${progress.value * 100}%` as `${number}%`,
   }));
 
   const stopTimer = useCallback(() => {
@@ -78,7 +101,7 @@ export default function WalkthroughScreen() {
       duration: AUTO_SCROLL_MS,
       easing: Easing.linear,
     });
-    
+
     timerRef.current = setInterval(() => {
       handleNext();
     }, AUTO_SCROLL_MS);
@@ -89,28 +112,29 @@ export default function WalkthroughScreen() {
     return () => stopTimer();
   }, [activeIndex, startTimer, stopTimer]);
 
-  const renderItem = ({ item }: { item: typeof SLIDES[0] }) => (
+  const renderItem = ({ item }: { item: (typeof SLIDES)[0] }) => (
     <View style={styles.slide}>
-      <Image 
-        source={item.image} 
-        style={styles.image} 
-        resizeMode="cover" 
+      <Image
+        source={item.image}
+        style={styles.image}
+        resizeMode="cover"
         fadeDuration={0}
       />
     </View>
   );
 
-  const getItemLayout = (_: any, index: number) => ({
+  const getItemLayout = (_: unknown, index: number) => ({
     length: width,
     offset: width * index,
     index,
   });
 
+  const slide = SLIDES[activeIndex];
+
   return (
-    <View style={[styles.container, { backgroundColor: "#000" }]}>
-      {/* Minimal Timer Bar */}
-      <View style={[styles.timerTrack, { top: insets.top }]}>
-        <Animated.View style={[styles.timerProgress, progressStyle]} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.timerTrack, { top: insets.top, backgroundColor: colors.border }]}>
+        <Animated.View style={[styles.timerProgress, { backgroundColor: colors.primary }, progressStyle]} />
       </View>
 
       <FlatList
@@ -119,7 +143,7 @@ export default function WalkthroughScreen() {
         renderItem={renderItem}
         horizontal
         pagingEnabled
-        scrollEnabled={true}
+        scrollEnabled
         showsHorizontalScrollIndicator={false}
         getItemLayout={getItemLayout}
         initialNumToRender={4}
@@ -130,7 +154,6 @@ export default function WalkthroughScreen() {
           if (index !== activeIndex) {
             setActiveIndex(index);
           } else {
-            // User swiped but it snapped back to current index, reset timer
             startTimer();
           }
         }}
@@ -143,37 +166,47 @@ export default function WalkthroughScreen() {
         }}
         keyExtractor={(item) => item.id}
       />
-      
-      <View style={styles.skipContainer}>
-        <TouchableOpacity 
-          style={[styles.skipBtn, { top: insets.top + 20 }]} 
-          onPress={handleFinish}
-        >
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
-      </View>
 
-      <View style={[styles.footer, { bottom: insets.bottom + 30 }]}>
-        <View style={styles.pagination}>
-          {SLIDES.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor: i === activeIndex ? "#fff" : "rgba(255,255,255,0.3)",
-                  width: i === activeIndex ? 20 : 8,
-                },
-              ]}
-            />
-          ))}
+      <TouchableOpacity
+        style={[styles.skipBtn, { top: insets.top + 16 }]}
+        onPress={() => {
+          void tapLight();
+          handleFinish();
+        }}
+      >
+        <Text style={[styles.skipText, { color: colors.mutedForeground }]}>Skip</Text>
+      </TouchableOpacity>
+
+      <View style={[styles.footer, { bottom: insets.bottom + 24, backgroundColor: colors.background }]}>
+        <View style={styles.copyBlock}>
+          <Text style={[styles.slideTitle, { color: colors.foreground, fontFamily: fonts.sansBold }]}>
+            {slide.title}
+          </Text>
+          <Text style={[styles.slideSub, { color: colors.mutedForeground }]}>{slide.subtitle}</Text>
         </View>
 
-        <View style={styles.nextBtn}>
-          <BexoButton
-            label={activeIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
-            onPress={handleNext}
-          />
+        <View style={styles.footerActions}>
+          <View style={styles.pagination}>
+            {SLIDES.map((_, i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor: i === activeIndex ? colors.primary : colors.border,
+                    width: i === activeIndex ? 20 : 8,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+
+          <View style={styles.nextBtn}>
+            <BexoButton
+              label={activeIndex === SLIDES.length - 1 ? "Get Started" : "Next"}
+              onPress={handleNext}
+            />
+          </View>
         </View>
       </View>
     </View>
@@ -184,31 +217,27 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   timerTrack: {
     position: "absolute",
-    left: 0,
-    right: 0,
+    left: 24,
+    right: 24,
     height: 2,
-    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 1,
     zIndex: 20,
+    overflow: "hidden",
   },
   timerProgress: {
     height: "100%",
-    backgroundColor: "rgba(255,255,255,0.4)",
-  },
-  skipContainer: {
-    position: "absolute",
-    right: 20,
-    zIndex: 10,
+    borderRadius: 1,
   },
   skipBtn: {
-    paddingHorizontal: 16,
+    position: "absolute",
+    right: 24,
+    zIndex: 10,
+    paddingHorizontal: 12,
     paddingVertical: 8,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    borderRadius: 20,
   },
   skipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "rgba(255,255,255,0.7)",
+    fontSize: 14,
+    fontWeight: "600",
   },
   slide: {
     width,
@@ -216,19 +245,39 @@ const styles = StyleSheet.create({
   },
   image: {
     width,
-    height,
+    height: height * 0.62,
   },
   footer: {
     position: "absolute",
     left: 0,
     right: 0,
-    paddingHorizontal: 30,
+    paddingHorizontal: 24,
+    paddingTop: 20,
     gap: 20,
-    alignItems: "center",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  copyBlock: {
+    alignItems: "flex-start",
+    gap: 8,
+    maxWidth: "88%",
+  },
+  slideTitle: {
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: -0.5,
+    lineHeight: 32,
+  },
+  slideSub: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  footerActions: {
+    gap: 16,
   },
   pagination: {
     flexDirection: "row",
-    justifyContent: "center",
+    justifyContent: "flex-start",
     gap: 8,
   },
   dot: {

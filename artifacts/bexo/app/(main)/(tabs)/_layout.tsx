@@ -8,6 +8,7 @@ import React from "react";
 import { Platform, StyleSheet, View, useColorScheme } from "react-native";
 
 import { useColors } from "@/hooks/useColors";
+import { tapLight } from "@/lib/haptics";
 
 function NativeTabLayout() {
   return (
@@ -35,6 +36,11 @@ function ClassicTabLayout({ colors, colorScheme }: { colors: any; colorScheme: a
 
   return (
     <Tabs
+      screenListeners={{
+        tabPress: () => {
+          void tapLight();
+        },
+      }}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
@@ -51,7 +57,7 @@ function ClassicTabLayout({ colors, colorScheme }: { colors: any; colorScheme: a
           isIOS ? (
             <BlurView
               intensity={80}
-              tint={isDark ? "dark" : "dark"}
+              tint={isDark ? "dark" : "light"}
               style={StyleSheet.absoluteFill}
             />
           ) : isWeb ? (

@@ -1,37 +1,34 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { OnboardingShell } from "@/components/onboarding/OnboardingShell";
+import { BexoButton } from "@/components/ui/BexoButton";
 import { SkillTag } from "@/components/ui/SkillTag";
 import { useColors } from "@/hooks/useColors";
+import { tapLight, tapMedium } from "@/lib/haptics";
 import { useProfileStore } from "@/stores/useProfileStore";
 
 const TERMS_URL = "https://mybexo.com/terms";
 const PRIVACY_URL = "https://mybexo.com/privacy";
 
 const SECTION_META = [
-  { label: "About", sub: "Headline & bio", icon: "user" as const, color: "#FA6AB8" },
-  { label: "Education", sub: "Schools & degrees", icon: "book-open" as const, color: "#8B7CF8" },
-  { label: "Experience", sub: "Roles & impact", icon: "briefcase" as const, color: "#FABD6A" },
-  { label: "Projects", sub: "Things you shipped", icon: "code" as const, color: "#6AFAD0" },
-  { label: "Skills", sub: "Stack & tools", icon: "zap" as const, color: "#6AB8FA" },
-  { label: "Research", sub: "Publications & papers", icon: "search" as const, color: "#FAD06A" },
-  { label: "Contact", sub: "Email & presence", icon: "mail" as const, color: "#6AFA6A" },
+  { label: "About", sub: "Headline & bio", icon: "user" as const },
+  { label: "Education", sub: "Schools & degrees", icon: "book-open" as const },
+  { label: "Experience", sub: "Roles & impact", icon: "briefcase" as const },
+  { label: "Projects", sub: "Things you shipped", icon: "code" as const },
+  { label: "Skills", sub: "Stack & tools", icon: "zap" as const },
+  { label: "Research", sub: "Publications & papers", icon: "search" as const },
+  { label: "Contact", sub: "Email & presence", icon: "mail" as const },
 ];
 
 function yearFromIso(iso: string | null | undefined): string {
@@ -48,7 +45,6 @@ function parseStep(raw: string | undefined, max: number): number {
 
 export default function ManualReviewScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ step?: string }>();
 
   const profile = useProfileStore((s) => s.profile);
@@ -74,7 +70,6 @@ export default function ManualReviewScreen() {
     [lastIndex, setManualReviewStepIndex],
   );
 
-  // Deep link (e.g. from full manual) wins over persisted index.
   useEffect(() => {
     const raw = params.step;
     if (raw === undefined || String(raw).trim() === "") return;
@@ -83,7 +78,6 @@ export default function ManualReviewScreen() {
     setManualReviewStepIndex(p);
   }, [params.step, lastIndex, setManualReviewStepIndex]);
 
-  // Cold restart: restore last summary step from persisted store when no URL step.
   useEffect(() => {
     const raw = params.step;
     if (raw !== undefined && String(raw).trim() !== "") return;
@@ -96,15 +90,9 @@ export default function ManualReviewScreen() {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [finishing, setFinishing] = useState(false);
 
-  const haptic = useCallback((style: "light" | "medium" = "light") => {
-    if (Platform.OS === "web") return;
-    if (style === "medium") Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  }, []);
-
   const openFullEditor = useCallback(
     (sectionIdx: number) => {
-      haptic("medium");
+      void tapMedium();
       setManualReviewStepIndex(sectionIdx);
       setOnboardingStep("manual");
       router.push({
@@ -116,17 +104,17 @@ export default function ManualReviewScreen() {
         },
       });
     },
-    [haptic, setManualReviewStepIndex, setOnboardingStep],
+    [setManualReviewStepIndex, setOnboardingStep],
   );
 
   const goBack = () => {
-    haptic();
+    void tapLight();
     if (step > 0) applyStep(step - 1);
     else router.replace("/(onboarding)/resume");
   };
 
   const goNext = () => {
-    haptic();
+    void tapLight();
     if (step < termsIndex) applyStep(step + 1);
   };
 
@@ -146,11 +134,14 @@ export default function ManualReviewScreen() {
   };
 
   const meta = step < termsIndex ? SECTION_META[step] : null;
-  const accentColor = meta?.color ?? colors.primary;
-  const topPad = insets.top + (Platform.OS === "web" ? 56 : 8);
-  const botPad = insets.bottom + (Platform.OS === "web" ? 28 : 16);
-
   const progress = useMemo(() => (step + 1) / (lastIndex + 1), [step, lastIndex]);
+
+  const shellTitle =
+    step < termsIndex && meta ? meta.label : "Terms & privacy";
+  const shellSubtitle =
+    step < termsIndex && meta
+      ? meta.sub
+      : "One quick confirmation before themes.";
 
   const renderSummary = () => {
     if (!profile) {
@@ -370,14 +361,14 @@ export default function ManualReviewScreen() {
 
       <Pressable
         onPress={() => {
-          haptic();
+          void tapLight();
           setTermsAccepted((v) => !v);
         }}
-        style={({ pressed }) => [
+        style={[
           styles.consentRow,
           {
-            borderColor: termsAccepted ? colors.primary + "66" : colors.border,
-            backgroundColor: pressed ? colors.surface : colors.card,
+            borderColor: termsAccepted ? colors.primary + "55" : colors.border,
+            backgroundColor: colors.card,
           },
         ]}
       >
@@ -390,7 +381,7 @@ export default function ManualReviewScreen() {
             },
           ]}
         >
-          {termsAccepted ? <Feather name="check" size={14} color="#fff" /> : null}
+          {termsAccepted ? <Feather name="check" size={14} color={colors.primaryForeground} /> : null}
         </View>
         <Text style={[styles.consentText, { color: colors.foreground }]}>
           I have read and agree to the{" "}
@@ -408,142 +399,67 @@ export default function ManualReviewScreen() {
   );
 
   return (
-    <View style={[styles.root, { backgroundColor: colors.background }]}>
-      <LinearGradient
-        colors={[SECTION_META[Math.min(step, SECTION_META.length - 1)].color + "22", "transparent"]}
-        style={StyleSheet.absoluteFill}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 1, y: 0.45 }}
-        pointerEvents="none"
-      />
-
-      <ScrollView
-        contentContainerStyle={[styles.scroll, { paddingTop: topPad, paddingBottom: botPad + 88 }]}
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View entering={FadeIn.duration(420)}>
-          <View style={styles.topRow}>
-            <TouchableOpacity onPress={goBack} style={[styles.iconBtn, { borderColor: colors.border }]} hitSlop={12}>
-              <Feather name="arrow-left" size={20} color={colors.foreground} />
-            </TouchableOpacity>
-            <Text style={[styles.stepPill, { color: colors.mutedForeground, borderColor: colors.border }]}>
-              {step < termsIndex ? `Summary ${step + 1} / ${SECTION_META.length}` : "Terms"}
-            </Text>
-          </View>
-
-          <View style={[styles.progressTrack, { backgroundColor: colors.surface }]}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${progress * 100}%`,
-                  backgroundColor: accentColor,
-                },
-              ]}
-            />
-          </View>
-
-          {step <= termsIndex - 1 && meta ? (
-            <Animated.View entering={FadeInDown.springify()} style={styles.hero}>
-              <View style={[styles.heroIcon, { backgroundColor: meta.color + "22" }]}>
-                <Feather name={meta.icon} size={22} color={meta.color} />
-              </View>
-              <Text style={[styles.heroTitle, { color: colors.foreground }]}>{meta.label}</Text>
-              <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>{meta.sub}</Text>
-            </Animated.View>
-          ) : (
-            <Animated.View entering={FadeInDown.springify()} style={styles.hero}>
-              <View style={[styles.heroIcon, { backgroundColor: colors.primary + "22" }]}>
-                <Feather name="shield" size={22} color={colors.primary} />
-              </View>
-              <Text style={[styles.heroTitle, { color: colors.foreground }]}>Terms & privacy</Text>
-              <Text style={[styles.heroSub, { color: colors.mutedForeground }]}>
-                One quick confirmation before themes.
-              </Text>
-            </Animated.View>
-          )}
-
-          {step < termsIndex ? (
-            <>
-              {renderSummary()}
-              <TouchableOpacity
-                onPress={() => openFullEditor(step)}
-                style={[styles.secondaryBtn, { borderColor: colors.primary + "44", backgroundColor: colors.primary + "10" }]}
-                activeOpacity={0.85}
-              >
-                <Feather name="edit-3" size={16} color={colors.primary} />
-                <Text style={[styles.secondaryBtnTxt, { color: colors.primary }]}>Add or edit in full form</Text>
-              </TouchableOpacity>
-            </>
-          ) : (
-            renderTerms()
-          )}
-        </Animated.View>
-      </ScrollView>
-
-      <View
-        style={[
-          styles.footer,
-          {
-            paddingBottom: botPad,
-            borderTopColor: colors.border,
-            backgroundColor: colors.background,
-          },
-        ]}
-      >
-        {step < termsIndex ? (
-          <TouchableOpacity onPress={goNext} activeOpacity={0.9} style={styles.primaryWrap}>
-            <LinearGradient
-              colors={[accentColor, accentColor + "AA"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.primaryBtn}
-            >
-              <Text style={styles.primaryTxt}>Next summary</Text>
-              <Feather name="arrow-right" size={18} color="#fff" />
-            </LinearGradient>
-          </TouchableOpacity>
+    <OnboardingShell
+      stepKey="manual_review"
+      title={shellTitle}
+      subtitle={shellSubtitle}
+      onBack={goBack}
+      footer={
+        step < termsIndex ? (
+          <BexoButton label="Next summary" onPress={goNext} icon={<Feather name="arrow-right" size={16} color={colors.primaryForeground} />} />
         ) : (
-          <TouchableOpacity
+          <BexoButton
+            label="Continue to theme"
             onPress={onFinishToTheme}
+            loading={finishing}
             disabled={!termsAccepted || finishing}
-            activeOpacity={0.9}
-            style={[styles.primaryWrap, (!termsAccepted || finishing) && { opacity: 0.38 }]}
-          >
-            <LinearGradient
-              colors={[colors.primary, colors.primary + "AA"]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.primaryBtn}
-            >
-              {finishing ? <ActivityIndicator color="#fff" /> : null}
-              <Text style={styles.primaryTxt}>Continue to theme</Text>
-              {!finishing ? <Feather name="arrow-right" size={18} color="#fff" /> : null}
-            </LinearGradient>
-          </TouchableOpacity>
+            icon={<Feather name="arrow-right" size={16} color={colors.primaryForeground} />}
+          />
+        )
+      }
+    >
+      <Animated.View entering={FadeIn.duration(320)}>
+        <Text style={[styles.stepPill, { color: colors.mutedForeground, borderColor: colors.border }]}>
+          {step < termsIndex ? `Summary ${step + 1} / ${SECTION_META.length}` : "Terms"}
+        </Text>
+
+        <View style={[styles.progressTrack, { backgroundColor: colors.surface }]}>
+          <View
+            style={[styles.progressFill, { width: `${progress * 100}%`, backgroundColor: colors.primary }]}
+          />
+        </View>
+
+        {step < termsIndex && meta ? (
+          <View style={[styles.heroIcon, { backgroundColor: colors.primary + "14" }]}>
+            <Feather name={meta.icon} size={22} color={colors.primary} />
+          </View>
+        ) : (
+          <View style={[styles.heroIcon, { backgroundColor: colors.primary + "14" }]}>
+            <Feather name="shield" size={22} color={colors.primary} />
+          </View>
         )}
-      </View>
-    </View>
+
+        {step < termsIndex ? (
+          <>
+            {renderSummary()}
+            <TouchableOpacity
+              onPress={() => openFullEditor(step)}
+              style={[styles.secondaryBtn, { borderColor: colors.primary + "44", backgroundColor: colors.primary + "10" }]}
+              activeOpacity={0.85}
+            >
+              <Feather name="edit-3" size={16} color={colors.primary} />
+              <Text style={[styles.secondaryBtnTxt, { color: colors.primary }]}>Add or edit in full form</Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          renderTerms()
+        )}
+      </Animated.View>
+    </OnboardingShell>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  scroll: { paddingHorizontal: 22, gap: 18 },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-  iconBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   stepPill: {
     fontSize: 12,
     fontWeight: "700",
@@ -552,34 +468,25 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
+    alignSelf: "flex-start",
+    marginBottom: 12,
   },
   progressTrack: {
     height: 5,
     borderRadius: 999,
     overflow: "hidden",
-    marginBottom: 22,
+    marginBottom: 20,
   },
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-  },
-  hero: { marginBottom: 8, gap: 6 },
+  progressFill: { height: "100%", borderRadius: 999 },
   heroIcon: {
     width: 48,
     height: 48,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 4,
+    marginBottom: 16,
   },
-  heroTitle: { fontSize: 28, fontWeight: "800", letterSpacing: -0.6 },
-  heroSub: { fontSize: 15, lineHeight: 22, marginBottom: 8 },
-  card: {
-    borderRadius: 18,
-    borderWidth: 1,
-    padding: 18,
-    gap: 8,
-  },
+  card: { borderRadius: 18, borderWidth: 1, padding: 18, gap: 8 },
   previewLabel: { fontSize: 11, fontWeight: "800", letterSpacing: 1.2, textTransform: "uppercase" },
   previewHeadline: { fontSize: 18, fontWeight: "700", lineHeight: 26 },
   previewBody: { fontSize: 15, lineHeight: 23 },
@@ -634,22 +541,4 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   consentText: { flex: 1, fontSize: 14, lineHeight: 22 },
-  footer: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    paddingHorizontal: 22,
-    paddingTop: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  primaryWrap: { borderRadius: 16, overflow: "hidden" },
-  primaryBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 10,
-    paddingVertical: 16,
-  },
-  primaryTxt: { color: "#fff", fontSize: 16, fontWeight: "800" },
 });

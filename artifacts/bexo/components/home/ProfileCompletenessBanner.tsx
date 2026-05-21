@@ -1,7 +1,7 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import React, { useEffect, useRef } from "react";
-import { Animated, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { warning as hapticWarning } from "@/lib/haptics";
 import AnimatedRN, { FadeInDown } from "react-native-reanimated";
 
 import { useColors } from "@/hooks/useColors";
@@ -32,16 +32,17 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
       setDisplayScore(Math.round(value));
     });
 
-    // Haptic when score is low
-    if (score < 90 && Platform.OS !== "web") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    }
+    if (score < 90) void hapticWarning();
 
     return () => animatedScore.removeListener(listenerId);
   }, [score]);
 
   const barColor =
-    displayScore >= 90 ? "#6AFAD0" : displayScore >= 50 ? colors.primary : "#FA6A6A";
+    displayScore >= 90
+      ? colors.success
+      : displayScore >= 50
+        ? colors.primary
+        : colors.accent;
 
   return (
     <AnimatedRN.View

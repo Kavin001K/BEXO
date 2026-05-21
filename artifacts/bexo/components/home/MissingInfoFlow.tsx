@@ -1,7 +1,5 @@
 import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -13,7 +11,9 @@ import Animated, { FadeIn, FadeInRight, FadeOutLeft } from "react-native-reanima
 
 import { BexoButton } from "@/components/ui/BexoButton";
 import { LocationInput } from "@/components/ui/LocationInput";
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
+import { success } from "@/lib/haptics";
 import { uploadAvatar } from "@/services/upload";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useProfileStore, type MissingField, type Profile } from "@/stores/useProfileStore";
@@ -125,9 +125,7 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
         return;
       }
 
-      if (Platform.OS !== "web") {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
+      await success();
       goNext();
     } catch (e: any) {
       Alert.alert("Error", e.message ?? "Failed to save");
@@ -149,11 +147,6 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
       onRequestClose={onClose}
     >
       <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <LinearGradient
-          colors={["#7C6AFA18", "transparent"]}
-          style={styles.glow}
-          start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }}
-        />
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <View style={[styles.header, { paddingTop: topPad }]}>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
@@ -326,7 +319,6 @@ export function MissingInfoFlow({ visible, missingFields, onClose, onDone }: Pro
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 200 },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, paddingBottom: 12,
@@ -339,7 +331,7 @@ const styles = StyleSheet.create({
   card: { gap: 16, alignItems: "center" },
   stepIndicator: { fontSize: 12, fontWeight: "600", textTransform: "uppercase", letterSpacing: 0.5 },
   iconCircle: { width: 80, height: 80, borderRadius: 24, alignItems: "center", justifyContent: "center" },
-  fieldLabel: { fontSize: 22, fontWeight: "800", textAlign: "center" },
+  fieldLabel: { fontSize: 22, fontWeight: "800", fontFamily: fonts.sansBold, textAlign: "center" },
   fieldSub: { fontSize: 14, textAlign: "center", lineHeight: 20, maxWidth: 300 },
   input: {
     width: "100%", borderWidth: 1, borderRadius: 14,

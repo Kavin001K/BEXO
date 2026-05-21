@@ -1,113 +1,183 @@
-import React, { useRef, useState } from "react";
+import React, {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 import {
-  NativeSyntheticEvent,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TextInput,
-  TextInputKeyPressEventData,
   View,
 } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
+import { fonts } from "@/constants/typography";
 import { useColors } from "@/hooks/useColors";
+import { error as hapticError } from "@/lib/haptics";
+
+export interface OTPInputRef {
+  reset: () => void;
+  focus: () => void;
+}
 
 interface Props {
   length?: number;
   onComplete: (code: string) => void;
   onCodeChange?: (code: string) => void;
   autoFocus?: boolean;
+  hasError?: boolean;
 }
 
-export function OTPInput({ length = 4, onComplete, onCodeChange, autoFocus = false }: Props) {
+function OTPInputInner(
+  {
+    length = 4,
+    onComplete,
+    onCodeChange,
+    autoFocus = false,
+    hasError = false,
+  }: Props,
+  ref: React.Ref<OTPInputRef>,
+) {
   const colors = useColors();
-  const [values, setValues] = useState<string[]>(Array(length).fill(""));
-  const inputs = useRef<(TextInput | null)[]>([]);
+  const [values, setValues] = useState<string[]>(() => Array(length).fill(""));
+  const hiddenRef = useRef<TextInput>(null);
+  const shake = useSharedValue(0);
 
-  const handleChange = (text: string, idx: number) => {
-    // Handle pasting: if text length > 1, assume it's a code
-    if (text.length > 1) {
-      const code = text.replace(/[^0-9]/g, "").slice(0, length);
-      const next = [...values];
-      for (let i = 0; i < code.length; i++) {
-        next[i] = code[i];
-      }
+  const shakeStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shake.value }],
+  }));
+
+  const applyDigits = useCallback(
+    (raw: string) => {
+      const code = raw.replace(/[^0-9]/g, "").slice(0, length);
+      const next = Array(length)
+        .fill("")
+        .map((_, i) => code[i] ?? "");
       setValues(next);
-      onCodeChange?.(next.join(""));
-      
-      const lastIdx = Math.min(code.length - 1, length - 1);
-      inputs.current[lastIdx]?.focus();
+      const joined = next.join("");
+      onCodeChange?.(joined);
+      if (joined.length === length) onComplete(joined);
+      return joined;
+    },
+    [length, onComplete, onCodeChange],
+  );
 
-      if (code.length === length) {
-        onComplete(code);
-      }
-      return;
-    }
+  const reset = useCallback(() => {
+    setValues(Array(length).fill(""));
+    onCodeChange?.("");
+    hiddenRef.current?.clear();
+  }, [length, onCodeChange]);
 
-    const cleaned = text.replace(/[^0-9]/g, "").slice(-1);
-    const next = [...values];
-    next[idx] = cleaned;
-    setValues(next);
-    onCodeChange?.(next.join(""));
+  useImperativeHandle(ref, () => ({ reset, focus: () => hiddenRef.current?.focus() }), [
+    reset,
+  ]);
 
-    if (cleaned && idx < length - 1) {
-      inputs.current[idx + 1]?.focus();
-    }
+  React.useEffect(() => {
+    if (!hasError) return;
+    void hapticError();
+    shake.value = withSequence(
+      withTiming(-8, { duration: 50 }),
+      withTiming(8, { duration: 50 }),
+      withTiming(-6, { duration: 50 }),
+      withTiming(0, { duration: 50 }),
+    );
+  }, [hasError, shake]);
 
-    const fullCode = next.join("");
-    if (fullCode.length === length) {
-      onComplete(fullCode);
-    }
+  const handleHiddenChange = (text: string) => {
+    applyDigits(text);
   };
 
-  const handleKeyPress = (
-    e: NativeSyntheticEvent<TextInputKeyPressEventData>,
-    idx: number
-  ) => {
-    if (e.nativeEvent.key === "Backspace" && !values[idx] && idx > 0) {
-      const next = [...values];
-      next[idx - 1] = "";
-      setValues(next);
-      inputs.current[idx - 1]?.focus();
+  const handleKeyPress = (e: { nativeEvent: { key: string } }) => {
+    if (e.nativeEvent.key !== "Backspace") return;
+    const joined = values.join("");
+    if (!joined) return;
+    const next = [...values];
+    let idx = -1;
+    for (let i = next.length - 1; i >= 0; i--) {
+      if (next[i] !== "") {
+        idx = i;
+        break;
+      }
     }
+    if (idx < 0) idx = length - 1;
+    next[idx] = "";
+    setValues(next);
+    const out = next.join("");
+    onCodeChange?.(out);
+    hiddenRef.current?.setNativeProps({ text: out });
   };
 
   return (
-    <View style={styles.row}>
-      {values.map((val, i) => (
-        <TextInput
-          key={i}
-          ref={(r) => {
-            inputs.current[i] = r;
-          }}
-          style={[
-            styles.box,
-            {
-              backgroundColor: colors.surface,
-              borderColor: val ? colors.primary : colors.border,
-              color: colors.foreground,
-            },
-          ]}
-          value={val}
-          onChangeText={(t) => handleChange(t, i)}
-          onKeyPress={(e) => handleKeyPress(e, i)}
-          keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
-          maxLength={i === 0 ? length : 1}
-          textAlign="center"
-          selectionColor={colors.primary}
-          returnKeyType={i === length - 1 ? "done" : "next"}
-          autoComplete="one-time-code"
-          textContentType="oneTimeCode"
-          selectTextOnFocus
-          blurOnSubmit={i === length - 1}
-          cursorColor={colors.primary}
-          autoFocus={autoFocus && i === 0}
-        />
-      ))}
+    <View style={styles.wrap}>
+      <TextInput
+        ref={hiddenRef}
+        value={values.join("")}
+        onChangeText={handleHiddenChange}
+        onKeyPress={handleKeyPress}
+        keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+        maxLength={length}
+        textContentType="oneTimeCode"
+        autoComplete={Platform.OS === "android" ? "sms-otp" : "one-time-code"}
+        importantForAutofill="yes"
+        autoFocus={autoFocus}
+        caretHidden
+        style={styles.hidden}
+        accessibilityLabel="One-time code"
+      />
+
+      <Animated.View style={[styles.row, shakeStyle]}>
+        {values.map((val, i) => (
+          <Pressable
+            key={i}
+            onPress={() => hiddenRef.current?.focus()}
+            style={[
+              styles.box,
+              {
+                backgroundColor: colors.surface,
+                borderColor: hasError
+                  ? colors.destructive
+                  : val
+                    ? colors.primary
+                    : colors.border,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.digit,
+                { color: colors.foreground, fontFamily: fonts.monoBold },
+              ]}
+            >
+              {val}
+            </Text>
+          </Pressable>
+        ))}
+      </Animated.View>
     </View>
   );
 }
 
+export const OTPInput = React.memo(forwardRef(OTPInputInner));
+
 const styles = StyleSheet.create({
+  wrap: { position: "relative" },
+  hidden: {
+    position: "absolute",
+    opacity: 0,
+    height: 1,
+    width: 1,
+    left: 0,
+    top: 0,
+  },
   row: {
     flexDirection: "row",
     gap: 12,
@@ -115,14 +185,12 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   box: {
-    width: 50,
-    height: 60,
-    borderRadius: 14,
+    width: 56,
+    height: 64,
+    borderRadius: 16,
     borderWidth: 1.5,
-    fontSize: 24,
-    fontWeight: "700",
-    ...Platform.select({
-      web: { outlineStyle: "none" } as any,
-    }),
+    alignItems: "center",
+    justifyContent: "center",
   },
+  digit: { fontSize: 24, fontWeight: "700" },
 });
