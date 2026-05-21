@@ -25,7 +25,9 @@ Set these on your host (Railway, VPS, Docker, etc.):
 
 `EXPO_PUBLIC_API_BASE_URL` must reach the **Express api-server** (`GET /api/healthz` returns JSON like `{"status":"ok","ai":true,...}`).
 
-If curl returns HTML or `Portfolio not found for handle: ...`, the hostname is pointing at the **static portfolio router**, not the API. Fix DNS or use the correct API host (e.g. your Replit/Railway URL) in `eas.json` and EAS secrets.
+If curl returns `Portfolio not found for handle: backend`, the **Cloudflare portfolio worker** is treating `backend.mybexo.com` as a user handle. Add `backend` to `SKIP_HOSTS` in `bexo-codegen/infra/cloudflare/worker/portfolio-proxy.js` and redeploy the worker, then point `backend` DNS to your Render api-server service.
+
+If curl returns HTML for other hosts, the hostname may still point at the portfolio router instead of the API. Fix DNS or use the correct API host in `eas.json` and EAS secrets.
 
 ## 3. Smoke tests (run after deploy)
 

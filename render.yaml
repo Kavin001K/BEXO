@@ -1,0 +1,13 @@
+# Render Blueprint — BEXO api-server (Express)
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: bexo-api
+    runtime: node
+    plan: free
+    buildCommand: pnpm install && pnpm --filter @workspace/api-server build
+    startCommand: pnpm --filter @workspace/api-server start
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
