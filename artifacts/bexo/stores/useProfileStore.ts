@@ -6,6 +6,7 @@ import { createEncryptedJSONStorage } from "@/lib/zustandEncryptedStorage";
 import type { ParsedResume } from "@/services/resumeParser";
 import { sanitizeError } from "@/lib/errorUtils";
 import { validateProfileFieldPatch } from "@/lib/profileFields";
+import { schedulePortfolioSync } from "@/lib/schedulePortfolioSync";
 
 export interface Education {
   id?: string;
@@ -254,6 +255,9 @@ export const useProfileStore = create<ProfileState>()(
         if (profile?.location?.trim()) { score += 5; }
         else { missing.push({ key: "location", label: "Location", type: "text", placeholder: "City, Country" }); }
 
+        if (profile?.handle?.trim()) { score += 10; }
+        else { missing.push({ key: "handle", label: "Username / handle", type: "text", placeholder: "yourname (for mybexo.com)" }); }
+
         if (education.length > 0) { score += 15; }
         else { missing.push({ key: "education", label: "Education", type: "section", placeholder: "Add at least one education entry" }); }
 
@@ -266,7 +270,7 @@ export const useProfileStore = create<ProfileState>()(
         if (skills.length >= 3) { score += 5; }
         else { missing.push({ key: "skills", label: "Skills", type: "section", placeholder: "Add at least 3 skills" }); }
 
-        return { score, missingFields: missing, isPassing: score >= 80 };
+        return { score, missingFields: missing, isPassing: score >= 90 };
       },
 
       checkHandle: async (val: string) => {
@@ -371,6 +375,7 @@ export const useProfileStore = create<ProfileState>()(
         
         if (error) throw error;
         set({ profile: data });
+        schedulePortfolioSync(profile.id);
       },
 
       saveEducation: async (edu: Education) => {
@@ -393,12 +398,15 @@ export const useProfileStore = create<ProfileState>()(
             ? s.education.map((e) => (e.id === edu.id ? data : e))
             : [...s.education, data],
         }));
+        schedulePortfolioSync(profile.id);
       },
 
       deleteEducation: async (id: string) => {
+        const profile = get().profile;
         const { error } = await supabase.from("education").delete().eq("id", id);
         if (error) throw error;
         set((s) => ({ education: s.education.filter((e) => e.id !== id) }));
+        if (profile?.id) schedulePortfolioSync(profile.id);
       },
 
       saveExperience: async (exp: Experience) => {
@@ -421,12 +429,15 @@ export const useProfileStore = create<ProfileState>()(
             ? s.experiences.map((e) => (e.id === exp.id ? data : e))
             : [...s.experiences, data],
         }));
+        schedulePortfolioSync(profile.id);
       },
 
       deleteExperience: async (id: string) => {
+        const profile = get().profile;
         const { error } = await supabase.from("experiences").delete().eq("id", id);
         if (error) throw error;
         set((s) => ({ experiences: s.experiences.filter((e) => e.id !== id) }));
+        if (profile?.id) schedulePortfolioSync(profile.id);
       },
 
       saveProject: async (proj: Project) => {
@@ -445,12 +456,15 @@ export const useProfileStore = create<ProfileState>()(
             ? s.projects.map((p) => (p.id === proj.id ? data : p))
             : [...s.projects, data],
         }));
+        schedulePortfolioSync(profile.id);
       },
 
       deleteProject: async (id: string) => {
+        const profile = get().profile;
         const { error } = await supabase.from("projects").delete().eq("id", id);
         if (error) throw error;
         set((s) => ({ projects: s.projects.filter((p) => p.id !== id) }));
+        if (profile?.id) schedulePortfolioSync(profile.id);
       },
 
       saveSkill: async (skill: Skill) => {
@@ -469,12 +483,15 @@ export const useProfileStore = create<ProfileState>()(
             ? s.skills.map((sk) => (sk.id === skill.id ? data : sk))
             : [...s.skills, data],
         }));
+        schedulePortfolioSync(profile.id);
       },
 
       deleteSkill: async (id: string) => {
+        const profile = get().profile;
         const { error } = await supabase.from("skills").delete().eq("id", id);
         if (error) throw error;
         set((s) => ({ skills: s.skills.filter((sk) => sk.id !== id) }));
+        if (profile?.id) schedulePortfolioSync(profile.id);
       },
 
       saveResearch: async (res: Research) => {
@@ -687,6 +704,8 @@ export const useProfileStore = create<ProfileState>()(
         const profile = get().profile;
         if (!profile) return;
         await get().fetchProfile(profile.user_id);
+        const p = get().profile;
+        if (p?.id) schedulePortfolioSync(p.id);
       },
 
       reset: () => set({

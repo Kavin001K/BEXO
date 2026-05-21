@@ -33,7 +33,7 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
     });
 
     // Haptic when score is low
-    if (score < 80 && Platform.OS !== "web") {
+    if (score < 90 && Platform.OS !== "web") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     }
 
@@ -41,7 +41,7 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
   }, [score]);
 
   const barColor =
-    displayScore >= 80 ? "#6AFAD0" : displayScore >= 50 ? colors.primary : "#FA6A6A";
+    displayScore >= 90 ? "#6AFAD0" : displayScore >= 50 ? colors.primary : "#FA6A6A";
 
   return (
     <AnimatedRN.View
@@ -57,7 +57,7 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
           style={[styles.iconBadge, { backgroundColor: barColor + "22" }]}
         >
           <Feather
-            name={score >= 80 ? "check-circle" : "alert-circle"}
+            name={score >= 90 ? "check-circle" : "alert-circle"}
             size={18}
             color={barColor}
           />
@@ -67,9 +67,9 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
             Profile {displayScore}% complete
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            {score < 80
-              ? `${80 - score}% more needed to enable portfolio generation`
-              : "Profile ready! Your portfolio can be generated."}
+            {score < 90
+              ? `${Math.max(0, 90 - score)}% more needed before we can build your site`
+              : "Profile ready! You can build your portfolio website."}
           </Text>
         </View>
       </View>
@@ -88,11 +88,11 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
             },
           ]}
         />
-        <View style={[styles.threshold, { left: "80%" as any, backgroundColor: colors.border }]} />
+        <View style={[styles.threshold, { left: "90%" as any, backgroundColor: colors.border }]} />
       </View>
 
       {/* Missing fields */}
-      {score < 80 && missingFields.length > 0 && (
+      {score < 90 && missingFields.length > 0 && (
         <View style={styles.missingRow}>
           {missingFields.slice(0, 4).map((f) => (
             <View
@@ -118,7 +118,7 @@ export function ProfileCompletenessBanner({ result, onCompletePress }: Props) {
       )}
 
       {/* Action */}
-      {score < 80 && (
+      {score < 90 && (
         <TouchableOpacity
           style={[styles.actionBtn, { backgroundColor: colors.primary }]}
           onPress={onCompletePress}

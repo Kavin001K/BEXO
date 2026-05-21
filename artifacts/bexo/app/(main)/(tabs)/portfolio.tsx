@@ -4,9 +4,13 @@ import { LinearGradient } from "expo-linear-gradient";
 import { router, useFocusEffect } from "expo-router";
 import React, { useState, useMemo } from "react";
 import {
+  ActivityIndicator,
+  Alert,
+  Clipboard,
   Linking,
   Platform,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -55,6 +59,7 @@ export default function PortfolioScreen() {
   const { profile, education, experiences, projects, skills, isLoading, fetchProfile } = useProfileStore();
   const {
     buildStatus,
+    portfolioUrl,
     updates,
     activePortfolioTab,
     setActivePortfolioTab,
@@ -136,6 +141,25 @@ export default function PortfolioScreen() {
     router.push("/(main)/cards");
   }, []);
 
+  const isLive = buildStatus === "done" && !!portfolioUrl;
+  const isBuilding = buildStatus === "building" || buildStatus === "queued";
+
+  const copyToClipboard = (text: string) => {
+    if (Platform.OS === 'web') {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text);
+        Alert.alert("Link copied!", "Portfolio link copied to clipboard.");
+      }
+    } else {
+      try {
+        Clipboard.setString(text);
+        Alert.alert("Link copied!", "Portfolio link copied to clipboard.");
+      } catch (e) {
+        console.warn("Clipboard setString failed", e);
+      }
+    }
+  };
+
   // Skeleton loading state while profile data is loading
   if (isLoading || !profile) {
     return (
@@ -209,6 +233,73 @@ export default function PortfolioScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {isLive && (
+          <View style={[styles.bannerCard, { backgroundColor: colors.card, borderColor: colors.mint + "33" }]}>
+            <View style={styles.bannerHeaderInline}>
+              <View style={[styles.pulseDot, { backgroundColor: colors.mint }]} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.bannerTitle, { color: colors.foreground }]}>Your site is live!</Text>
+                <Text style={[styles.bannerSub, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {profile?.handle}.mybexo.com
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerActions}>
+              <TouchableOpacity
+                style={[styles.bannerBtn, { backgroundColor: colors.primary }]}
+                onPress={() => Linking.openURL(`https://${profile.handle}.mybexo.com`)}
+              >
+                <Feather name="external-link" size={13} color="#fff" />
+                <Text style={styles.bannerBtnTextMain}>Open</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bannerBtnSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={async () => {
+                  const url = `https://${profile.handle}.mybexo.com`;
+                  const name = profile.full_name ?? profile.handle;
+                  await Share.share({ message: `Check out ${name}'s portfolio: ${url}`, url });
+                }}
+              >
+                <Feather name="share-2" size={13} color={colors.foreground} />
+                <Text style={[styles.bannerBtnText, { color: colors.foreground }]}>Share</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.bannerBtnSecondary, { backgroundColor: colors.surface, borderColor: colors.border }]}
+                onPress={() => copyToClipboard(`https://${profile.handle}.mybexo.com`)}
+              >
+                <Feather name="copy" size={13} color={colors.foreground} />
+                <Text style={[styles.bannerBtnText, { color: colors.foreground }]}>Copy</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {isBuilding && (
+          <View style={[styles.bannerCard, { backgroundColor: colors.card, borderColor: colors.primary + "33" }]}>
+            <View style={styles.bannerHeaderInline}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.bannerTitle, { color: colors.foreground }]}>Building your portfolio…</Text>
+                <Text style={[styles.bannerSub, { color: colors.mutedForeground }]}>Your site will be live in about 90 seconds.</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {buildStatus === "failed" && (
+          <View style={[styles.bannerCard, { backgroundColor: colors.card, borderColor: colors.accent + "33" }]}>
+            <View style={styles.bannerHeaderInline}>
+              <Feather name="alert-circle" size={16} color={colors.accent} />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.bannerTitle, { color: colors.foreground }]}>Build failed</Text>
+                <Text style={[styles.bannerSub, { color: colors.mutedForeground }]}>
+                  Something went wrong during generation. Tap Rebuild to try again.
+                </Text>
+              </View>
+            </View>
+          </View>
+        )}
 
         {/* Hero card — redesigned flipping card */}
         <IdentityCard
@@ -784,4 +875,65 @@ const styles = StyleSheet.create({
   linkChip: { flexDirection: "row", alignItems: "center", gap: 4 },
   linkText: { fontSize: 12, fontWeight: "500" },
   tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  bannerCard: {
+    padding: 16,
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 12,
+    marginBottom: 10,
+  },
+  bannerHeaderInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  bannerTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  bannerSub: {
+    fontSize: 12,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  bannerActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 4,
+  },
+  bannerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    flex: 1,
+  },
+  bannerBtnSecondary: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+  },
+  bannerBtnTextMain: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  bannerBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
 });

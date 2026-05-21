@@ -103,7 +103,7 @@ export default function DashboardScreen() {
   const { profile, skills, education, experiences, projects,
           fetchProfile, getCompletionResult } = useProfileStore();
   const { updates, analytics, buildStatus, portfolioUrl,
-          fetchUpdates, fetchBuildStatus, fetchAnalytics, subscribeToBuilds } = usePortfolioStore();
+          fetchUpdates, fetchBuildStatus, fetchAnalytics, subscribeToBuilds, triggerBuild } = usePortfolioStore();
 
   const [refreshing,     setRefreshing]     = useState(false);
   const [showMissing,    setShowMissing]    = useState(false);
@@ -293,6 +293,9 @@ export default function DashboardScreen() {
                     <Text style={S.liveLabel}>Your site is live!</Text>
                   </View>
                   <Text style={S.liveUrl}>{profile?.handle}.mybexo.com</Text>
+                  <Text style={[S.liveSyncHint, { color: "rgba(255,255,255,0.75)" }]}>
+                    Profile edits sync to your site automatically
+                  </Text>
                 </View>
                 <View style={S.liveActions}>
                   <TouchableOpacity onPress={handleShare} style={S.liveActionBtn}>
@@ -309,10 +312,17 @@ export default function DashboardScreen() {
               <LiveDot color={colors.primary} />
               <Text style={[S.buildingText, { color: colors.mutedForeground }]}>We're building your site...</Text>
             </View>
-          ) : (
+          ) : completionResult.isPassing ? (
             <TouchableOpacity
               style={[S.buildPromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}
-              onPress={() => router.push("/(main)/(tabs)/portfolio")}
+              onPress={async () => {
+                if (!profile?.id) return;
+                try {
+                  await triggerBuild(profile.id);
+                } catch (e: any) {
+                  showErrorAlert(e, "Build failed to start");
+                }
+              }}
             >
               <LinearGradient
                 colors={[colors.primary + "15", "transparent"]}
@@ -323,8 +333,33 @@ export default function DashboardScreen() {
                 <Feather name="globe" size={20} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[S.bpLabel, { color: colors.foreground }]}>Launch Your Website</Text>
-                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>Ready to show the world? It only takes 90 seconds.</Text>
+                <Text style={[S.bpLabel, { color: colors.foreground }]}>Build My Website</Text>
+                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>
+                  Your profile is ready — we will generate your portfolio site.
+                </Text>
+              </View>
+              <Feather name="arrow-right" size={16} color={colors.primary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={[S.buildPromptCard, { backgroundColor: colors.card, borderColor: colors.border }]}
+              onPress={() => setShowMissing(true)}
+            >
+              <LinearGradient
+                colors={[colors.primary + "15", "transparent"]}
+                style={StyleSheet.absoluteFill}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+              />
+              <View style={[S.bpIcon, { backgroundColor: colors.primary + "22" }]}>
+                <Feather name="globe" size={20} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[S.bpLabel, { color: colors.foreground }]}>
+                  Complete profile ({completionResult.score}%)
+                </Text>
+                <Text style={[S.bpSub, { color: colors.mutedForeground }]}>
+                  Reach 90% on your profile before we can build your website.
+                </Text>
               </View>
               <Feather name="arrow-right" size={16} color={colors.primary} />
             </TouchableOpacity>
@@ -529,6 +564,7 @@ const S = StyleSheet.create({
   liveStatusRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   liveLabel: { color: "#fff", fontWeight: "900", fontSize: 17, letterSpacing: -0.3 },
   liveUrl: { color: "rgba(255,255,255,0.85)", fontSize: 13, fontWeight: "600" },
+  liveSyncHint: { fontSize: 11, marginTop: 4, fontWeight: "500" },
   liveActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   liveActionBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center" },
   buildingCard: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 18, borderWidth: 1 },

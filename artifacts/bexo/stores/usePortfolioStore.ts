@@ -189,14 +189,6 @@ export const usePortfolioStore = create<PortfolioState>()(
     if (triggerBuildInFlightFor === profileId) return;
     triggerBuildInFlightFor = profileId;
 
-    const markBuildFailed = async (buildId: string | undefined) => {
-      if (!buildId) return;
-      await supabase
-        .from("site_builds")
-        .update({ status: "failed" })
-        .eq("id", buildId);
-    };
-
     try {
       set({ buildStatus: "queued" });
       const { data: buildData, error: insertErr } = await supabase
@@ -217,8 +209,10 @@ export const usePortfolioStore = create<PortfolioState>()(
       const token = sessionData.session?.access_token;
       if (!token) {
         console.warn("[Portfolio] No session token — skipping n8n trigger-build proxy");
-        await markBuildFailed(buildData.id);
-        set({ buildStatus: "failed", currentBuild: buildData });
+        set({
+          buildStatus: "failed",
+          currentBuild: { ...buildData, status: "failed", build_log: "No active session" },
+        });
         return;
       }
 
@@ -230,14 +224,34 @@ export const usePortfolioStore = create<PortfolioState>()(
         });
         if (!res.ok) {
           const payload = await res.json().catch(() => ({}));
+          const err = payload.error ?? {};
           console.warn("[Portfolio] trigger-build API failed:", res.status, payload);
-          await markBuildFailed(buildData.id);
-          set({ buildStatus: "failed", currentBuild: buildData });
+          const logMsg =
+            err.code === "profile_incomplete"
+              ? `Profile ${err.score ?? "?"}% complete (need 90%): ${(err.missingFields ?? [])
+                  .map((m: { label?: string }) => m.label)
+                  .filter(Boolean)
+                  .join(", ")}`
+              : err.message || "Build trigger failed";
+          set({
+            buildStatus: "failed",
+            currentBuild: {
+              ...buildData,
+              status: "failed",
+              build_log: logMsg,
+            },
+          });
         }
       } catch (e) {
         console.warn("[Portfolio] trigger-build network error:", e);
-        await markBuildFailed(buildData.id);
-        set({ buildStatus: "failed", currentBuild: buildData });
+        set({
+          buildStatus: "failed",
+          currentBuild: {
+            ...buildData,
+            status: "failed",
+            build_log: e instanceof Error ? e.message : String(e),
+          },
+        });
       }
     } finally {
       triggerBuildInFlightFor = null;

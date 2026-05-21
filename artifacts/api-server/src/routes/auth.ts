@@ -232,6 +232,8 @@ router.post("/verify-otp", async (req, res) => {
           verified: true,
           verified_at: new Date().toISOString(),
         });
+
+
       }
     }
 

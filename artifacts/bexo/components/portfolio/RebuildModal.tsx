@@ -120,15 +120,27 @@ export function RebuildModal({ visible, onClose }: Props) {
     }
   };
 
+  const ensureCompleteness = (): boolean => {
+    const completion = useProfileStore.getState().getCompletionResult();
+    if (!completion.isPassing) {
+      Alert.alert(
+        "Profile incomplete",
+        `Your profile is ${completion.score}% complete. Reach 90% on the home screen before rebuilding your site.`,
+      );
+      return false;
+    }
+    return true;
+  };
+
   // Only trigger rebuild after data is confirmed saved
   const handleRebuildAfterSave = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !ensureCompleteness()) return;
     setStep("rebuilding");
     await triggerBuild(profile.id);
   };
 
   const handleRebuildNow = async () => {
-    if (!profile?.id) return;
+    if (!profile?.id || !ensureCompleteness()) return;
     setStep("rebuilding");
     await triggerBuild(profile.id);
   };
