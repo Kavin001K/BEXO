@@ -62,9 +62,6 @@ export default function EmailScreen() {
         await supabase.auth.refreshSession();
       };
 
-      // 1) Edge Function (works when self-hosted API has no /api/auth/update-email — e.g. 404 on backend host)
-      // 2) BEXO API server
-      // 3) supabase.auth.updateUser (can rate-limit if 1+2 are retried too often)
       type EdgePayload = { success?: boolean; error?: string };
       const edge = await supabase.functions.invoke<EdgePayload>("update-email", {
         body: { email: trimmedEmail },
@@ -73,14 +70,11 @@ export default function EmailScreen() {
       const edgeOk = !edge.error && ep?.success === true;
 
       if (!edgeOk) {
-        let apiErr: unknown = edge.error ?? edgeData?.error;
+        let apiErr: unknown = edge.error ?? ep?.error;
         try {
           const resp = await apiFetch("/auth/update-email", {
             method: "POST",
-            body: JSON.stringify({
-              email: trimmedEmail,
-              user_id: user.id,
-            }),
+            body: JSON.stringify({ email: trimmedEmail }),
           });
           const result = await readApiJson<{ error?: string }>(resp);
           if (!resp.ok) throw new Error(result.error || "Failed to update email");
@@ -92,7 +86,7 @@ export default function EmailScreen() {
             throw new Error(
               [
                 "Could not update your email.",
-                "Deploy the `update-email` Edge Function (`supabase functions deploy update-email`), or mount POST /api/auth/update-email on your API host.",
+                "Deploy the `update-email` Edge Function, or mount POST /api/auth/update-email on your API host.",
                 `Details: ${sanitizeError(apiErr)} / ${sanitizeError(suErr)}`,
               ].join(" "),
             );
@@ -139,21 +133,12 @@ export default function EmailScreen() {
           <View style={[styles.iconWrap, { backgroundColor: colors.primary + "15" }]}>
             <Feather name="mail" size={32} color={colors.primary} />
           </View>
-          <Text style={[styles.title, { color: colors.foreground }]}>
-            What's your email?
-          </Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
-            We'll use this to send you important updates about your website.
-          </Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>What's your email?</Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>We'll use this to send you important updates about your website.</Text>
         </View>
 
         <View style={styles.form}>
-          <View
-            style={[
-              styles.inputContainer,
-              { backgroundColor: colors.surface, borderColor: colors.border },
-            ]}
-          >
+          <View style={[styles.inputContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <TextInput
               style={[styles.input, { color: colors.foreground }]}
               placeholder="email@example.com"
@@ -162,33 +147,17 @@ export default function EmailScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               value={email}
-              onChangeText={(t) => {
-                setEmail(t);
-                setError("");
-              }}
+              onChangeText={(t) => { setEmail(t); setError(""); }}
               onSubmitEditing={handleContinue}
             />
           </View>
-
-          {error ? (
-            <Text style={[styles.error, { color: colors.accent }]}>{error}</Text>
-          ) : null}
+          {error ? <Text style={[styles.error, { color: colors.accent }]}>{error}</Text> : null}
         </View>
 
         <View style={styles.footer}>
-          <BexoButton
-            label="Continue"
-            onPress={handleContinue}
-            loading={loading}
-          />
-          
-          <TouchableOpacity 
-            style={styles.signOutBtn}
-            onPress={() => useAuthStore.getState().signOut()}
-          >
-            <Text style={[styles.signOutText, { color: colors.mutedForeground }]}>
-              Sign Out & Start Fresh
-            </Text>
+          <BexoButton label="Continue" onPress={handleContinue} loading={loading} />
+          <TouchableOpacity style={styles.signOutBtn} onPress={() => useAuthStore.getState().signOut()}>
+            <Text style={[styles.signOutText, { color: colors.mutedForeground }]}>Sign Out & Start Fresh</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAwareScrollViewCompat>
@@ -198,72 +167,17 @@ export default function EmailScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  glow: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 300,
-  },
-  scroll: {
-    flexGrow: 1,
-    paddingHorizontal: 24,
-    justifyContent: "center",
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 40,
-  },
-  iconWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: "center",
-    lineHeight: 24,
-    paddingHorizontal: 20,
-  },
-  form: {
-    gap: 16,
-    marginBottom: 40,
-  },
-  inputContainer: {
-    height: 60,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 20,
-    justifyContent: "center",
-  },
-  input: {
-    fontSize: 18,
-    fontWeight: "500",
-  },
-  error: {
-    fontSize: 14,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  footer: {
-    gap: 20,
-  },
-  signOutBtn: {
-    alignItems: "center",
-    paddingVertical: 10,
-  },
-  signOutText: {
-    fontSize: 14,
-    fontWeight: "600",
-    textDecorationLine: "underline",
-  },
+  glow: { position: "absolute", top: 0, left: 0, right: 0, height: 300 },
+  scroll: { flexGrow: 1, paddingHorizontal: 24, justifyContent: "center" },
+  header: { alignItems: "center", marginBottom: 40 },
+  iconWrap: { width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 24 },
+  title: { fontSize: 32, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  subtitle: { fontSize: 16, textAlign: "center", lineHeight: 24, paddingHorizontal: 20 },
+  form: { gap: 16, marginBottom: 40 },
+  inputContainer: { height: 60, borderRadius: 16, borderWidth: 1, paddingHorizontal: 20, justifyContent: "center" },
+  input: { fontSize: 18, fontWeight: "500" },
+  error: { fontSize: 14, textAlign: "center", fontWeight: "500" },
+  footer: { gap: 20 },
+  signOutBtn: { alignItems: "center", paddingVertical: 10 },
+  signOutText: { fontSize: 15, fontWeight: "600" },
 });
