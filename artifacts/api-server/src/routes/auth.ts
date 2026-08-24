@@ -23,8 +23,34 @@ function generateOTP(): string {
 }
 
 function hashOTP(otp: string): string {
-  const secret = process.env.OTP_SECRET ?? "bexo_otp_secret";
+  const secret = process.env.OTP_SECRET?.trim();
+  if (!secret) {
+    throw new Error("OTP_SECRET is not configured on the server");
+  }
   return crypto.createHmac("sha256", secret).update(otp).digest("hex");
+}
+
+async function getAuthenticatedUser(req: any) {
+  const authHeader = req.headers?.authorization;
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  if (!token) return null;
+
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!serviceRoleKey) throw new Error("SUPABASE_SERVICE_ROLE_KEY not configured");
+
+  const admin = createClient(SUPABASE_URL, serviceRoleKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+
+  const {
+    data: { user },
+    error,
+  } = await admin.auth.getUser(token);
+
+  if (error || !user) return null;
+  return user;
 }
 
 /** Deterministic placeholder handle matching profiles_handle_check (must not collide with user-chosen slugs). */
@@ -123,7 +149,7 @@ router.post("/send-otp", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/verify-otp  — Cross-auth linking (Section 2A)
+// POST /api/auth/verify-otp
 // ---------------------------------------------------------------------------
 router.post("/verify-otp", async (req, res) => {
   const { phone, code } = req.body as { phone?: string; code?: string };
@@ -145,7 +171,6 @@ router.post("/verify-otp", async (req, res) => {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // ── Step 1: Validate OTP ──
   const { data: otpRow, error: otpErr } = await admin
     .from("otp_codes")
     .select("*")
@@ -178,10 +203,6 @@ router.post("/verify-otp", async (req, res) => {
     let userId: string;
     let signInEmail: string;
 
-    // ── Step 2: Cross-auth lookup ──
-    // Priority: phone_identities → profiles.phone → create new
-
-    // 2a. Check phone_identities (fastest, most reliable)
     const { data: phoneIdentity } = await admin
       .from("phone_identities")
       .select("user_id, verified")
@@ -198,7 +219,6 @@ router.post("/verify-otp", async (req, res) => {
         phone: normalised,
       });
     } else {
-      // 2b. Check profiles table by phone field (catches old data)
       const { data: profileByPhone } = await admin
         .from("profiles")
         .select("user_id")
@@ -221,7 +241,6 @@ router.post("/verify-otp", async (req, res) => {
           verified_at: new Date().toISOString(),
         }, { onConflict: "phone" });
       } else {
-        // 2c. No existing account — create new user
         const { data: createData, error: createErr } = await admin.auth.admin.createUser({
           email: fakeEmail,
           phone: normalised,
@@ -245,7 +264,6 @@ router.post("/verify-otp", async (req, res) => {
       }
     }
 
-    // ── Step 2b: Ensure profiles row has phone + placeholder handle (real email comes from onboarding) ──
     const tempHandle = tempHandleFromUserId(userId);
     const { data: existingProfile } = await admin
       .from("profiles")
@@ -270,16 +288,11 @@ router.post("/verify-otp", async (req, res) => {
         return;
       }
     } else {
-      await admin
-        .from("profiles")
+      await admin.from("profiles")
         .update({ phone: normalised, phone_verified: true })
         .eq("user_id", userId);
     }
 
-    // ── Step 3: Create a real session ──
-    // WhatsApp OTP users must NOT rely on the Email provider: signInWithPassword({ email }) fails with
-    // "Email logins are disabled" when Email is turned off in Supabase Dashboard.
-    // Phone + password uses the Phone provider path (enable Phone under Authentication → Providers).
     const anonClient = createClient(SUPABASE_URL, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
@@ -309,11 +322,10 @@ router.post("/verify-otp", async (req, res) => {
     }
 
     const sessionData = authResult.data;
-
     res.json({
-      access_token:  sessionData.session.access_token,
+      access_token: sessionData.session.access_token,
       refresh_token: sessionData.session.refresh_token,
-      user:          sessionData.user,
+      user: sessionData.user,
     });
   } catch (err: any) {
     console.error("verify-otp error:", err);
@@ -322,109 +334,124 @@ router.post("/verify-otp", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/link-phone  — Link phone to existing authenticated user (Section 2D)
+// POST /api/auth/link-phone — authenticated account mutation
 // ---------------------------------------------------------------------------
 router.post("/link-phone", async (req, res) => {
-  const { phone, code, user_id } = req.body as {
-    phone?: string;
-    code?: string;
-    user_id?: string;
-  };
-
-  if (!phone || !code || !user_id) {
-    res.status(400).json({ error: "phone, code, and user_id are required" });
+  const { phone, code } = req.body as { phone?: string; code?: string };
+  if (!phone || !code) {
+    res.status(400).json({ error: "phone and code are required" });
     return;
   }
 
-  const normalised = phone.replace(/\s/g, "");
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceRoleKey) {
-    res.status(500).json({ error: "Server config error" });
-    return;
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const normalised = phone.replace(/\s/g, "");
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      res.status(500).json({ error: "Server config error" });
+      return;
+    }
+
+    const admin = createClient(SUPABASE_URL, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: otpRow } = await admin
+      .from("otp_codes")
+      .select("*")
+      .eq("phone", normalised)
+      .eq("verified", false)
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!otpRow || hashOTP(code.trim()) !== otpRow.code_hash) {
+      res.status(400).json({ error: "Invalid or expired OTP" });
+      return;
+    }
+
+    await admin.from("otp_codes").update({ verified: true }).eq("id", otpRow.id);
+
+    const { data: existing } = await admin
+      .from("phone_identities")
+      .select("user_id")
+      .eq("phone", normalised)
+      .single();
+
+    if (existing && existing.user_id !== authUser.id) {
+      res.status(409).json({ error: "This phone number is already linked to another account." });
+      return;
+    }
+
+    await admin.from("phone_identities").upsert({
+      user_id: authUser.id,
+      phone: normalised,
+      verified: true,
+      verified_at: new Date().toISOString(),
+    }, { onConflict: "phone" });
+
+    await admin.from("profiles")
+      .update({ phone: normalised, phone_verified: true })
+      .eq("user_id", authUser.id);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("link-phone error:", err);
+    res.status(500).json({ error: err.message ?? "Internal server error" });
   }
-
-  const admin = createClient(SUPABASE_URL, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-
-  const { data: otpRow } = await admin
-    .from("otp_codes")
-    .select("*")
-    .eq("phone", normalised)
-    .eq("verified", false)
-    .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .single();
-
-  if (!otpRow || hashOTP(code.trim()) !== otpRow.code_hash) {
-    res.status(400).json({ error: "Invalid or expired OTP" });
-    return;
-  }
-
-  await admin.from("otp_codes").update({ verified: true }).eq("id", otpRow.id);
-
-  const { data: existing } = await admin
-    .from("phone_identities")
-    .select("user_id")
-    .eq("phone", normalised)
-    .single();
-
-  if (existing && existing.user_id !== user_id) {
-    res.status(409).json({ error: "This phone number is already linked to another account." });
-    return;
-  }
-
-  await admin.from("phone_identities").upsert({
-    user_id,
-    phone: normalised,
-    verified: true,
-    verified_at: new Date().toISOString(),
-  }, { onConflict: "phone" });
-
-  await admin
-    .from("profiles")
-    .update({ phone: normalised, phone_verified: true })
-    .eq("user_id", user_id);
-
-  res.json({ success: true });
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/auth/update-email — Replace placeholder with real email (Admin)
+// POST /api/auth/update-email — authenticated account mutation
 // ---------------------------------------------------------------------------
 router.post("/update-email", async (req, res) => {
-  const { email, user_id } = req.body as { email?: string; user_id?: string };
-  if (!email || !user_id) {
-    res.status(400).json({ error: "Email and user_id are required" });
+  const { email } = req.body as { email?: string };
+  if (!email) {
+    res.status(400).json({ error: "Email is required" });
     return;
   }
-
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!serviceRoleKey) {
-    res.status(500).json({ error: "Server configuration error" });
-    return;
-  }
-
-  const admin = createClient(SUPABASE_URL, serviceRoleKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
 
   try {
-    // Update the auth user's email directly using Admin API
-    // This avoids mandatory email confirmation if desired, or replaces the placeholder.
-    const { data, error } = await admin.auth.admin.updateUserById(user_id, {
-      email: email,
-      email_confirm: true, // Auto-confirm since they just provided it in a verified flow
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      res.status(400).json({ error: "Valid email is required" });
+      return;
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      res.status(500).json({ error: "Server configuration error" });
+      return;
+    }
+
+    const admin = createClient(SUPABASE_URL, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data, error } = await admin.auth.admin.updateUserById(authUser.id, {
+      email: normalizedEmail,
+      email_confirm: true,
     });
 
     if (error) throw error;
 
-    // Also update the profile record
-    await admin
+    const { error: profileError } = await admin
       .from("profiles")
-      .update({ email })
-      .eq("user_id", user_id);
+      .update({ email: normalizedEmail })
+      .eq("user_id", authUser.id);
+    if (profileError) throw profileError;
 
     res.json({ success: true, user: data.user });
   } catch (err: any) {
